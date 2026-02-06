@@ -23,6 +23,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"github.com/wso2/openfgc/internal/authresource/model"
+	"github.com/wso2/openfgc/internal/system/config"
 )
 
 func TestValidateAuthResourceCreateRequest_Success(t *testing.T) {
@@ -79,8 +80,13 @@ func TestValidateAuthResourceCreateRequest_MissingAuthStatus(t *testing.T) {
 }
 
 func TestValidateAuthStatus_ValidStatus(t *testing.T) {
-	t.Skip("Skipping - requires config initialization")
-	err := ValidateAuthStatus("authorized")
+	// Create mock mappings
+	mappings := config.AuthStatusMappings{
+		SystemExpiredState: "system_expired",
+		SystemRevokedState: "system_revoked",
+	}
+
+	err := ValidateAuthStatus("authorized", mappings)
 	require.NoError(t, err)
 }
 

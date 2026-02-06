@@ -41,7 +41,11 @@ func ValidateAuthResourceCreateRequest(req model.ConsentAuthResourceCreateReques
 	}
 
 	// Validate auth status
-	if err := ValidateAuthStatus(req.AuthStatus); err != nil {
+	cfg := config.Get()
+	if cfg == nil {
+		return fmt.Errorf("configuration not initialized")
+	}
+	if err := ValidateAuthStatus(req.AuthStatus, cfg.Consent.AuthStatusMappings); err != nil {
 		return err
 	}
 
@@ -49,10 +53,9 @@ func ValidateAuthResourceCreateRequest(req model.ConsentAuthResourceCreateReques
 }
 
 // ValidateAuthStatus validates authorization status and rejects system-reserved statuses
-func ValidateAuthStatus(status string) error {
-	cfg := config.Get().Consent
-	if cfg.AuthStatusMappings.SystemExpiredState == status ||
-		cfg.AuthStatusMappings.SystemRevokedState == status {
+func ValidateAuthStatus(status string, mappings config.AuthStatusMappings) error {
+	if mappings.SystemExpiredState == status ||
+		mappings.SystemRevokedState == status {
 		return fmt.Errorf("authorization status '%s' is system-reserved and cannot be set by users", status)
 	}
 	return nil
@@ -67,7 +70,11 @@ func ValidateAuthResourceUpdateRequest(req model.ConsentAuthResourceUpdateReques
 
 	// Validate status if provided
 	if req.AuthStatus != "" {
-		if err := ValidateAuthStatus(req.AuthStatus); err != nil {
+		cfg := config.Get()
+		if cfg == nil {
+			return fmt.Errorf("configuration not initialized")
+		}
+		if err := ValidateAuthStatus(req.AuthStatus, cfg.Consent.AuthStatusMappings); err != nil {
 			return err
 		}
 	}

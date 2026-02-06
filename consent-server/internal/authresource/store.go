@@ -107,7 +107,7 @@ func (s *store) GetByID(ctx context.Context, authID, orgID string) (*model.AuthR
 		return nil, err
 	}
 	if len(results) == 0 {
-		return nil, fmt.Errorf("auth resource not found")
+		return nil, nil
 	}
 	return mapToAuthResource(results[0]), nil
 }

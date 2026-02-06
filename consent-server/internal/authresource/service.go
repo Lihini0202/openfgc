@@ -28,6 +28,7 @@ import (
 	authvalidator "github.com/wso2/openfgc/internal/authresource/validator"
 	consentModel "github.com/wso2/openfgc/internal/consent/model"
 	"github.com/wso2/openfgc/internal/consent/validator"
+	"github.com/wso2/openfgc/internal/system/config"
 	dbmodel "github.com/wso2/openfgc/internal/system/database/model"
 	"github.com/wso2/openfgc/internal/system/error/serviceerror"
 	"github.com/wso2/openfgc/internal/system/log"
@@ -103,51 +104,55 @@ func (s *authResourceService) CreateAuthResource(
 		OrgID:       orgID,
 	}
 
-	// Create auth resource and update consent status in a transaction
+	// Fetch existing auth resources and consent outside transaction to avoid races
 	store := s.stores.AuthResource
+	allAuthResources, err := store.GetByConsentID(ctx, consentID, orgID)
+	if err != nil {
+		logger.Error("Failed to retrieve auth resources",
+			log.Error(err),
+			log.String("consent_id", consentID),
+		)
+		return nil, serviceerror.CustomServiceError(
+			ErrorInternalServerError,
+			fmt.Sprintf("failed to retrieve auth resources: %v", err),
+		)
+	}
 
-	err := s.stores.ExecuteTransaction([]func(tx dbmodel.TxInterface) error{
+	currentConsent, err := s.stores.Consent.GetByID(ctx, consentID, orgID)
+	if err != nil {
+		logger.Error("Failed to retrieve consent",
+			log.Error(err),
+			log.String("consent_id", consentID),
+		)
+		return nil, serviceerror.CustomServiceError(
+			ErrorInternalServerError,
+			fmt.Sprintf("failed to retrieve consent: %v", err),
+		)
+	}
+
+	// Extract auth statuses including the newly created one
+	authStatuses := make([]string, 0, len(allAuthResources)+1)
+	authStatuses = append(authStatuses, authResource.AuthStatus)
+	for _, ar := range allAuthResources {
+		authStatuses = append(authStatuses, ar.AuthStatus)
+	}
+
+	// Derive consent status based on all authorization statuses
+	derivedConsentStatus := validator.EvaluateConsentStatusFromAuthStatuses(authStatuses)
+
+	// Create auth resource and update consent status in a transaction
+	err = s.stores.ExecuteTransaction([]func(tx dbmodel.TxInterface) error{
 		func(tx dbmodel.TxInterface) error {
 			return store.Create(tx, authResource)
 		},
 		func(tx dbmodel.TxInterface) error {
-			// After creating auth resource, derive consent status from all auth resources
-			allAuthResources, err := store.GetByConsentID(ctx, consentID, orgID)
-			if err != nil {
-				return fmt.Errorf("failed to retrieve auth resources: %w", err)
-			}
-
-			// Extract auth statuses - IMPORTANT: Include the newly created auth resource
-			// because the database read above happens outside the transaction context
-			// and won't see the auth resource we just created in this transaction
-			authStatuses := make([]string, 0, len(allAuthResources)+1)
-
-			// First, add the newly created auth resource status
-			authStatuses = append(authStatuses, authResource.AuthStatus)
-
-			// Then add existing auth resources (excluding the newly created one if it somehow appears)
-			for _, ar := range allAuthResources {
-				if ar.AuthID != authID {
-					authStatuses = append(authStatuses, ar.AuthStatus)
-				}
-			}
-
-			// Derive consent status based on all authorization statuses
-			derivedConsentStatus := validator.EvaluateConsentStatusFromAuthStatuses(authStatuses)
-
-			// Get current consent to check if status changed
-			currentConsent, err := s.stores.Consent.GetByID(ctx, consentID, orgID)
-			if err != nil {
-				return fmt.Errorf("failed to retrieve consent: %w", err)
-			}
-
 			// Check if status actually changed
 			if currentConsent.CurrentStatus == derivedConsentStatus {
-				// Status hasn't changed, skip update, audit
+				// Status hasn't changed, skip update and audit
 				return nil
 			}
 
-			// Status changed - update consent status with direct type-safe call
+			// Status changed - update consent status
 			updatedTime := utils.GetCurrentTimeMillis()
 			if err := s.stores.Consent.UpdateStatus(tx, consentID, orgID, derivedConsentStatus, updatedTime); err != nil {
 				return err
@@ -165,7 +170,7 @@ func (s *authResourceService) CreateAuthResource(
 				ActionBy:       nil,
 				PreviousStatus: &currentConsent.CurrentStatus,
 				OrgID:          orgID,
-			} // Create audit record with type safety
+			}
 			if err := s.stores.Consent.CreateStatusAudit(tx, audit); err != nil {
 				return err
 			}
@@ -365,7 +370,15 @@ func (s *authResourceService) UpdateAuthResource(
 	statusChanged := false
 	if request.AuthStatus != "" {
 		// Validate that auth status is not a system-reserved status
-		if err := authvalidator.ValidateAuthStatus(request.AuthStatus); err != nil {
+		cfg := config.Get()
+		if cfg == nil {
+			logger.Error("Configuration not initialized")
+			return nil, serviceerror.CustomServiceError(
+				ErrorInternalServerError,
+				"configuration not initialized",
+			)
+		}
+		if err := authvalidator.ValidateAuthStatus(request.AuthStatus, cfg.Consent.AuthStatusMappings); err != nil {
 			logger.Warn("Invalid auth status provided",
 				log.String("auth_id", authID),
 				log.String("status", request.AuthStatus),
@@ -403,6 +416,58 @@ func (s *authResourceService) UpdateAuthResource(
 		updatedAuthResource.Resources = &resourcesStr
 	}
 
+	// Fetch all auth resources and consent outside transaction if status changed
+	var allAuthResources []model.AuthResource
+	var currentConsent *consentModel.Consent
+	var derivedConsentStatus string
+
+	if statusChanged {
+		// Pre-fetch data outside transaction to avoid races
+		var err error
+		allAuthResources, err = store.GetByConsentID(ctx, existingAuthResource.ConsentID, orgID)
+		if err != nil {
+			logger.Error("Failed to retrieve auth resources",
+				log.Error(err),
+				log.String("consent_id", existingAuthResource.ConsentID),
+			)
+			return nil, serviceerror.CustomServiceError(
+				ErrorInternalServerError,
+				fmt.Sprintf("failed to retrieve auth resources: %v", err),
+			)
+		}
+
+		currentConsent, err = s.stores.Consent.GetByID(ctx, existingAuthResource.ConsentID, orgID)
+		if err != nil {
+			logger.Error("Failed to retrieve consent",
+				log.Error(err),
+				log.String("consent_id", existingAuthResource.ConsentID),
+			)
+			return nil, serviceerror.CustomServiceError(
+				ErrorInternalServerError,
+				fmt.Sprintf("failed to retrieve consent: %v", err),
+			)
+		}
+
+		// Extract auth statuses (including the updated one)
+		authStatuses := make([]string, 0, len(allAuthResources))
+		for _, ar := range allAuthResources {
+			if ar.AuthID == authID {
+				// Use the new status for this auth resource
+				authStatuses = append(authStatuses, updatedAuthResource.AuthStatus)
+			} else {
+				authStatuses = append(authStatuses, ar.AuthStatus)
+			}
+		}
+
+		// Derive consent status
+		derivedConsentStatus = validator.EvaluateConsentStatusFromAuthStatuses(authStatuses)
+		logger.Debug("Derived consent status from auth statuses",
+			log.String("consent_id", existingAuthResource.ConsentID),
+			log.String("derived_status", derivedConsentStatus),
+			log.Int("auth_count", len(authStatuses)),
+		)
+	}
+
 	// Update auth resource and potentially consent status in transaction
 	transactionSteps := []func(tx dbmodel.TxInterface) error{
 		func(tx dbmodel.TxInterface) error {
@@ -413,37 +478,6 @@ func (s *authResourceService) UpdateAuthResource(
 	// If auth status changed, update consent status accordingly
 	if statusChanged {
 		transactionSteps = append(transactionSteps, func(tx dbmodel.TxInterface) error {
-			// Get all auth resources for this consent
-			allAuthResources, err := store.GetByConsentID(ctx, existingAuthResource.ConsentID, orgID)
-			if err != nil {
-				return fmt.Errorf("failed to retrieve auth resources: %w", err)
-			}
-
-			// Extract auth statuses (including the updated one)
-			authStatuses := make([]string, 0, len(allAuthResources))
-			for _, ar := range allAuthResources {
-				if ar.AuthID == authID {
-					// Use the new status for this auth resource
-					authStatuses = append(authStatuses, updatedAuthResource.AuthStatus)
-				} else {
-					authStatuses = append(authStatuses, ar.AuthStatus)
-				}
-			}
-
-			// Derive consent status
-			derivedConsentStatus := validator.EvaluateConsentStatusFromAuthStatuses(authStatuses)
-			logger.Debug("Derived consent status from auth statuses",
-				log.String("consent_id", existingAuthResource.ConsentID),
-				log.String("derived_status", derivedConsentStatus),
-				log.Int("auth_count", len(authStatuses)),
-			)
-
-			// Get current consent to check if status changed
-			currentConsent, err := s.stores.Consent.GetByID(ctx, existingAuthResource.ConsentID, orgID)
-			if err != nil {
-				return fmt.Errorf("failed to retrieve consent: %w", err)
-			}
-
 			// Only update if consent status actually changed
 			if currentConsent.CurrentStatus != derivedConsentStatus {
 				updatedTime := utils.GetCurrentTimeMillis()
@@ -571,7 +605,14 @@ func (s *authResourceService) validateCreateRequest(consentID, orgID string, req
 		)
 	}
 	// Validate that auth status is not a system-reserved status
-	if err := authvalidator.ValidateAuthStatus(request.AuthStatus); err != nil {
+	cfg := config.Get()
+	if cfg == nil {
+		return serviceerror.CustomServiceError(
+			ErrorInternalServerError,
+			"configuration not initialized",
+		)
+	}
+	if err := authvalidator.ValidateAuthStatus(request.AuthStatus, cfg.Consent.AuthStatusMappings); err != nil {
 		return serviceerror.CustomServiceError(
 			ErrorValidationFailed,
 			err.Error(),
@@ -632,7 +673,15 @@ func (s *authResourceService) buildResponse(authResource *model.AuthResource) *m
 	var resources interface{}
 	if authResource.Resources != nil && *authResource.Resources != "" {
 		// Try to unmarshal resources
-		json.Unmarshal([]byte(*authResource.Resources), &resources)
+		if err := json.Unmarshal([]byte(*authResource.Resources), &resources); err != nil {
+			// Log the error with contextual information
+			log.GetLogger().Error("Failed to unmarshal auth resource resources field",
+				log.String("auth_id", authResource.AuthID),
+				log.String("raw_resources", *authResource.Resources),
+				log.Error(err),
+			)
+			// Continue with nil resources rather than failing the entire response
+		}
 	}
 
 	return &model.Response{

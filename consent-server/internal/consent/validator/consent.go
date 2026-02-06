@@ -51,7 +51,11 @@ func ValidateConsentCreateRequest(req model.ConsentAPIRequest, clientID, orgID s
 		}
 		// Status is optional and defaults to "created" in ToAuthResourceCreateRequest (or "approved" in consent-embedded flows)
 		if authReq.Status != "" {
-			if err := authvalidator.ValidateAuthStatus(authReq.Status); err != nil {
+			cfg := config.Get()
+			if cfg == nil {
+				return fmt.Errorf("configuration not initialized")
+			}
+			if err := authvalidator.ValidateAuthStatus(authReq.Status, cfg.Consent.AuthStatusMappings); err != nil {
 				return fmt.Errorf("authorizations[%d]: %w", i, err)
 			}
 		}
@@ -103,7 +107,11 @@ func ValidateConsentUpdateRequest(req model.ConsentAPIUpdateRequest) error {
 			}
 			// Validate auth status if provided
 			if authReq.Status != "" {
-				if err := authvalidator.ValidateAuthStatus(authReq.Status); err != nil {
+				cfg := config.Get()
+				if cfg == nil {
+					return fmt.Errorf("configuration not initialized")
+				}
+				if err := authvalidator.ValidateAuthStatus(authReq.Status, cfg.Consent.AuthStatusMappings); err != nil {
 					return fmt.Errorf("authorizations[%d]: %w", i, err)
 				}
 			}

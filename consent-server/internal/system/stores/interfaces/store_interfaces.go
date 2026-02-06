@@ -64,7 +64,7 @@ type AuthResourceStore interface {
 	UpdateAllStatusByConsentID(tx dbmodel.TxInterface, consentID, orgID, status string, updatedTime int64) error
 }
 
-// ConsentElementStore defines the interface for consent purpose data operations
+// ConsentElementStore defines the interface for consent element data operations
 type ConsentElementStore interface {
 	GetByID(ctx context.Context, purposeID, orgID string) (*consentElementModel.ConsentElement, error)
 	GetByName(ctx context.Context, name, orgID string) (*consentElementModel.ConsentElement, error)

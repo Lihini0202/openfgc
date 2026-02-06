@@ -29,6 +29,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/wso2/openfgc/internal/consent/model"
 	"github.com/wso2/openfgc/internal/system/constants"
+	"github.com/wso2/openfgc/internal/system/error/serviceerror"
 )
 
 const (
@@ -109,12 +110,70 @@ func TestCreateConsent_MissingOrgID(t *testing.T) {
 }
 
 func TestGetConsent_Success(t *testing.T) {
-	// Skipping - requires mux router for path variables
-	t.Skip("Skipping - requires mux router for path variables")
+	mockService := NewMockConsentService(t)
+
+	expectedResponse := &model.ConsentResponse{
+		ConsentID:     "550e8400-e29b-41d4-a716-446655440000",
+		ConsentType:   "accounts",
+		CurrentStatus: "active",
+		ClientID:      testClientID,
+		OrgID:         testOrgID,
+	}
+
+	mockService.On("GetConsent", mock.Anything, "550e8400-e29b-41d4-a716-446655440000", testOrgID).
+		Return(expectedResponse, nil)
+
+	handler := newConsentHandler(mockService)
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET "+constants.APIBasePath+"/consents/{consentId}", handler.getConsent)
+
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	req, err := http.NewRequest(http.MethodGet, server.URL+"/api/v1/consents/550e8400-e29b-41d4-a716-446655440000", nil)
+	require.NoError(t, err)
+	req.Header.Set(constants.HeaderOrgID, testOrgID)
+
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	var response model.ConsentAPIResponse
+	err = json.NewDecoder(resp.Body).Decode(&response)
+	require.NoError(t, err)
+	require.Equal(t, "550e8400-e29b-41d4-a716-446655440000", response.ID)
+	require.Equal(t, "accounts", response.Type)
+	mockService.AssertExpectations(t)
 }
 
 func TestGetConsent_NotFound(t *testing.T) {
-	t.Skip("Skipping - requires mux router for path variables")
+	mockService := NewMockConsentService(t)
+
+	mockService.On("GetConsent", mock.Anything, "550e8400-e29b-41d4-a716-446655440001", testOrgID).
+		Return(nil, serviceerror.CustomServiceError(
+			ErrorConsentNotFound,
+			"Consent not found",
+		))
+
+	handler := newConsentHandler(mockService)
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET "+constants.APIBasePath+"/consents/{consentId}", handler.getConsent)
+
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	req, err := http.NewRequest(http.MethodGet, server.URL+"/api/v1/consents/550e8400-e29b-41d4-a716-446655440001", nil)
+	require.NoError(t, err)
+	req.Header.Set(constants.HeaderOrgID, testOrgID)
+
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	require.Equal(t, http.StatusNotFound, resp.StatusCode)
+	mockService.AssertExpectations(t)
 }
 
 func TestListConsents_Success(t *testing.T) {
@@ -156,7 +215,49 @@ func TestListConsents_Success(t *testing.T) {
 }
 
 func TestRevokeConsent_Success(t *testing.T) {
-	t.Skip("Skipping - requires mux router for path variables")
+	mockService := NewMockConsentService(t)
+
+	revokeRequest := model.ConsentRevokeRequest{
+		ActionBy:         "user-123",
+		RevocationReason: "User requested revocation",
+	}
+
+	expectedResponse := &model.ConsentRevokeResponse{
+		ActionTime:       1234567890,
+		ActionBy:         "user-123",
+		RevocationReason: "User requested revocation",
+	}
+
+	mockService.On("RevokeConsent", mock.Anything, "550e8400-e29b-41d4-a716-446655440000", testOrgID, revokeRequest).
+		Return(expectedResponse, nil)
+
+	handler := newConsentHandler(mockService)
+	mux := http.NewServeMux()
+	mux.HandleFunc("PUT "+constants.APIBasePath+"/consents/{consentId}/revoke", handler.revokeConsent)
+
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	body, err := json.Marshal(revokeRequest)
+	require.NoError(t, err)
+
+	req, err := http.NewRequest(http.MethodPut, server.URL+"/api/v1/consents/550e8400-e29b-41d4-a716-446655440000/revoke", bytes.NewBuffer(body))
+	require.NoError(t, err)
+	req.Header.Set(constants.HeaderOrgID, testOrgID)
+	req.Header.Set(constants.HeaderContentType, constants.ContentTypeJSON)
+
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	var response model.ConsentRevokeResponse
+	err = json.NewDecoder(resp.Body).Decode(&response)
+	require.NoError(t, err)
+	require.Equal(t, "user-123", response.ActionBy)
+	require.Equal(t, "User requested revocation", response.RevocationReason)
+	mockService.AssertExpectations(t)
 }
 
 func TestValidateConsent_Success(t *testing.T) {
@@ -539,6 +640,62 @@ func TestRevokeConsent_InvalidJSON(t *testing.T) {
 	handler.revokeConsent(rr, req)
 
 	require.Equal(t, http.StatusBadRequest, rr.Code)
+}
+
+func TestUpdateConsent_Success(t *testing.T) {
+	mockService := NewMockConsentService(t)
+
+	updateRequest := model.ConsentAPIUpdateRequest{
+		Type: "accounts",
+		Purposes: []model.ConsentPurposeItem{
+			{
+				PurposeName: "purpose-1",
+				Elements: []model.ConsentElementApprovalItem{
+					{ElementName: "element-1", IsUserApproved: true},
+				},
+			},
+		},
+	}
+
+	expectedResponse := &model.ConsentResponse{
+		ConsentID:     "550e8400-e29b-41d4-a716-446655440000",
+		ConsentType:   "accounts",
+		CurrentStatus: "active",
+		ClientID:      testClientID,
+		OrgID:         testOrgID,
+	}
+
+	mockService.On("UpdateConsent", mock.Anything, updateRequest, testClientID, testOrgID, "550e8400-e29b-41d4-a716-446655440000").
+		Return(expectedResponse, nil)
+
+	handler := newConsentHandler(mockService)
+	mux := http.NewServeMux()
+	mux.HandleFunc("PUT "+constants.APIBasePath+"/consents/{consentId}", handler.updateConsent)
+
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	body, err := json.Marshal(updateRequest)
+	require.NoError(t, err)
+
+	req, err := http.NewRequest(http.MethodPut, server.URL+"/api/v1/consents/550e8400-e29b-41d4-a716-446655440000", bytes.NewBuffer(body))
+	require.NoError(t, err)
+	req.Header.Set(constants.HeaderOrgID, testOrgID)
+	req.Header.Set(constants.HeaderTPPClientID, testClientID)
+	req.Header.Set(constants.HeaderContentType, constants.ContentTypeJSON)
+
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	var response model.ConsentAPIResponse
+	err = json.NewDecoder(resp.Body).Decode(&response)
+	require.NoError(t, err)
+	require.Equal(t, "550e8400-e29b-41d4-a716-446655440000", response.ID)
+	require.Equal(t, "accounts", response.Type)
+	mockService.AssertExpectations(t)
 }
 
 func TestUpdateConsent_MissingOrgID(t *testing.T) {

@@ -31,7 +31,7 @@ func Initialize(mux *http.ServeMux, registry *stores.StoreRegistry) ConsentServi
 	service := newConsentService(registry)
 	handler := newConsentHandler(service)
 
-	// Register routes with CORS middleware
+	// Register routes
 	registerRoutes(mux, handler)
 
 	return service
