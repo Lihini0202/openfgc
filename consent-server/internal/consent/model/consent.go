@@ -343,6 +343,7 @@ type ConsentSearchFilters struct {
 	ConsentStatuses []string // e.g., ["active", "revoked"]
 	ClientIDs       []string // TPP client IDs
 	UserIDs         []string // End-user IDs
+	PurposeNames    []string // Purpose names - returns consents containing ANY of these purposes
 	FromTime        *int64   // Unix timestamp - start of time window
 	ToTime          *int64   // Unix timestamp - end of time window
 	Limit           int

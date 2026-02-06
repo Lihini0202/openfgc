@@ -252,6 +252,19 @@ func (s *store) Search(ctx context.Context, filters model.ConsentSearchFilters) 
 		whereConditions = append(whereConditions, fmt.Sprintf("car.USER_ID IN (%s)", strings.Join(placeholders, ",")))
 	}
 
+	// Add purposeNames filter (via JOIN with PURPOSE_CONSENT_MAPPING and CONSENT_PURPOSE)
+	if len(filters.PurposeNames) > 0 {
+		placeholders := make([]string, len(filters.PurposeNames))
+		for i, purposeName := range filters.PurposeNames {
+			placeholders[i] = "?"
+			args = append(args, purposeName)
+			countArgs = append(countArgs, purposeName)
+		}
+		joinClause += " INNER JOIN PURPOSE_CONSENT_MAPPING pcm ON CONSENT.CONSENT_ID = pcm.CONSENT_ID AND CONSENT.ORG_ID = pcm.ORG_ID"
+		joinClause += " INNER JOIN CONSENT_PURPOSE cp ON pcm.PURPOSE_ID = cp.ID AND pcm.ORG_ID = cp.ORG_ID"
+		whereConditions = append(whereConditions, fmt.Sprintf("cp.NAME IN (%s)", strings.Join(placeholders, ",")))
+	}
+
 	// Add time range filters (timestamps in milliseconds) - filter by UPDATED_TIME
 	if filters.FromTime != nil {
 		whereConditions = append(whereConditions, "CONSENT.UPDATED_TIME >= ?")

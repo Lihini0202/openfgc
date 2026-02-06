@@ -384,6 +384,7 @@ func (consentService *consentService) SearchConsentsDetailed(ctx context.Context
 		log.String("org_id", filters.OrgID),
 		log.Int("client_ids_count", len(filters.ClientIDs)),
 		log.Int("user_ids_count", len(filters.UserIDs)),
+		log.Int("purpose_names_count", len(filters.PurposeNames)),
 		log.Int("statuses_count", len(filters.ConsentStatuses)),
 		log.Int("limit", filters.Limit))
 

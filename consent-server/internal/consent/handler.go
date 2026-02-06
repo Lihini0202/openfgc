@@ -164,6 +164,14 @@ func (h *consentHandler) listConsents(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Parse purposeNames (comma-separated)
+	if purposeNamesStr := r.URL.Query().Get("purposeNames"); purposeNamesStr != "" {
+		filters.PurposeNames = strings.Split(purposeNamesStr, ",")
+		for i := range filters.PurposeNames {
+			filters.PurposeNames[i] = strings.TrimSpace(filters.PurposeNames[i])
+		}
+	}
+
 	// Parse fromTime (Unix timestamp in milliseconds)
 	if fromTimeStr := r.URL.Query().Get("fromTime"); fromTimeStr != "" {
 		if ft, err := strconv.ParseInt(fromTimeStr, 10, 64); err == nil {
