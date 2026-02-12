@@ -1,21 +1,66 @@
-# OpenFGC
+# OpenFGC - Open Fine-Grained Consent
 
-An industry-agnostic, flexible fine-grained consent management engine built for developers.
+> An industry-agnostic consent management engine with granular control and complete audit trails.
 
-OpenFGC provides the Open Fine-Grained Consent API for managing consent elements, consent purposes, and user consents with organization-level multi-tenancy support.
+**OpenFGC** is an open-source API service that enables developers to implement consent management at any level of granularity — from individual data elements to broad purposes. Designed for scale with complete audit trails and lifecycle management, it provides everything needed to track, validate, and audit user consent across your applications.
+
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![Version](https://img.shields.io/badge/version-v0.5.0-green.svg)](./version.txt)
+[![Go Version](https://img.shields.io/badge/Go-1.21%2B-00ADD8?logo=go)](https://go.dev)
+[![MySQL](https://img.shields.io/badge/MySQL-8.0%2B-4479A1?logo=mysql)](https://www.mysql.com)
+
+## Quick Navigation
+
+| New to the project? | [Quick Start](#quick-start) |
+|---------------------|---------------------------|
+| Using the API? | [API Endpoints](#api-endpoints) |
+| Contributing? | [Development](#development) |
+
+## Table of Contents
+
+- [Features](#features)
+- [Core Concepts](#core-concepts)
+- [Technology Stack](#technology-stack)
+- [Prerequisites](#prerequisites)
+- [Project Structure](#project-structure)
+- [Quick Start](#quick-start)
+- [API Endpoints](#api-endpoints)
+- [Development](#development)
 
 ## Features
 
-- **Consent Elements**: Define and manage granular data attributes and processing activities
-- **Consent Purposes**: Group elements into logical purposes with type-based validation
-- **Consent Management**: Create, retrieve, update, revoke, and validate user consents
-- **Authorization Resources**: Track granular authorization status for each consent
-- **Attribute Search**: Search consents by custom attributes (key or key-value pairs)
-- **Status Auditing**: Complete audit trail for consent status changes
-- **Multi-tenancy**: Organization-level data isolation with `org-id` header
+- **Flexible Consent Model**: Define consent elements (data points), group them into purposes, and track user approvals for any industry or solution
+- **Complete Consent Lifecycle Management**: Create, retrieve, update, revoke, and validate user consents with full status tracking
+- **Audit Trails**: Every status change is recorded for accountability and compliance
+- **Multi-tenancy**: Organization-level data isolation via `org-id` header
+- **Authorization Resources**: Track granular authorization status per user per consent
+- **Attribute Search**: Query consents by custom metadata (key or key-value pairs)
 - **Expiration Handling**: Automatic consent expiration with cascading status updates
 
 ## Core Concepts
+
+OpenFGC is built on three core concepts:
+
+```
+┌───────────────────────────┐
+│     Consent Elements      │  Data points or actions
+│         (What)            │  e.g., user_email, location_tracking
+└───────────────────────────┘
+         │              ▲
+     1:N │              │ 1:M
+         ▼              │
+┌───────────────────────────┐
+│     Consent Purposes      │  Logical groupings of elements
+│         (Why)             │  e.g., marketing, analytics
+└───────────────────────────┘
+         │              ▲
+     1:N │              │ 1:M
+         ▼              │
+┌───────────────────────────┐
+│        Consents           │  User approval record
+│        (Record)           │  Links user → purposes → elements
+└───────────────────────────┘
+```
 
 ### 1. Consent Element
 The Consent Element is the most granular unit of data or specific activity being consented to.

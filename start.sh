@@ -136,7 +136,7 @@ fi
 
 # Run consent management server
 if [ "$DEBUG_MODE" = "true" ]; then
-    echo "🔒 Starting Consent Management Server in DEBUG mode..."
+    echo "🔒 Starting OpenFGC Server in DEBUG mode..."
     echo "🐛 Remote debugger will listen on: localhost:$DEBUG_PORT"
     echo ""
     echo "💡 Connect using remote debugging configuration:"
@@ -161,7 +161,7 @@ if [ "$DEBUG_MODE" = "true" ]; then
     dlv exec --listen=:$DEBUG_PORT --headless=true --api-version=2 --accept-multiclient --continue ./$BINARY_NAME &
     SERVER_PID=$!
 else
-    echo "🔒 Starting Consent Management Server..."
+    echo "🔒 Starting OpenFGC Server..."
     echo ""
 
     # Run normally (GIN_MODE will default to release mode in main.go)
@@ -187,7 +187,6 @@ trap cleanup SIGINT SIGTERM
 
 # Status
 echo "🚀 Server running (PID: $SERVER_PID)"
-echo "📋 Configuration: ./repository/conf/deployment.yaml"
 echo ""
 echo "Press Ctrl+C to stop the server."
 echo ""
