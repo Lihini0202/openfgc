@@ -16,18 +16,18 @@
 
 schemaVersion: 1.2
 endpoints:
-    - name: open-fgc-service
-      displayName: Open FGC Service
-      service:
-        basePath: /api/v1/
-        port: 8080
-      type: REST
-      networkVisibilities:
-        - Project
-        - Public
-      schemaFilePath: ../api/consent-management-API.yaml
+  - name: open-fgc-service
+    displayName: Open FGC Service
+    service:
+      basePath: /api/v1/
+      port: 8080
+    type: REST
+    networkVisibilities:
+      - Project
+      - Public
+    schemaFilePath: ../api/consent-management-API.yaml
 
 dependencies:
-    connectionReferences:
-    - name: openfgc-db-connection
-      resourceRef: database:healthcare-demo-db/consent-mgt-v050
+  connectionReferences:
+    - name: openfgc_db_connection
+      resourceRef: database:healthcare-demo-db/openfgc_db
