@@ -463,8 +463,6 @@ func (s *store) FindConsentIDsByAttributeKey(ctx context.Context, key, orgID str
 	for _, row := range rows {
 		if consentID := getString(row, "consent_id"); consentID != "" {
 			consentIDs = append(consentIDs, consentID)
-		} else if consentID := getString(row, "CONSENT_ID"); consentID != "" {
-			consentIDs = append(consentIDs, consentID)
 		}
 	}
 
@@ -486,8 +484,6 @@ func (s *store) FindConsentIDsByAttribute(ctx context.Context, key, value, orgID
 	consentIDs := make([]string, 0, len(rows))
 	for _, row := range rows {
 		if consentID := getString(row, "consent_id"); consentID != "" {
-			consentIDs = append(consentIDs, consentID)
-		} else if consentID := getString(row, "CONSENT_ID"); consentID != "" {
 			consentIDs = append(consentIDs, consentID)
 		}
 	}
