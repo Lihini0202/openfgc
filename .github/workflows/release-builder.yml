@@ -290,7 +290,7 @@ jobs:
           git config --local user.name "GitHub Action"
           TAG_VERSION="${{ needs.prepare.outputs.version }}"
           git tag -a "$TAG_VERSION" -m "Release $TAG_VERSION"
-          git push origin "$TAG_VERSION"
+          echo "✅ Created local tag $TAG_VERSION (will be pushed after all steps succeed)"
 
       - name: � Generate Detailed Release Notes
         id: release_notes
@@ -435,3 +435,9 @@ jobs:
           git commit -m "[Release] Bump version to ${NEXT_VERSION} for next development iteration"
           git push origin HEAD:${{ github.ref_name }}
           echo "✅ Updated version.txt to $NEXT_VERSION"
+
+      - name: 📤 Push Git Tag
+        run: |
+          TAG_VERSION="${{ needs.prepare.outputs.version }}"
+          git push origin "$TAG_VERSION"
+          echo "✅ Pushed tag $TAG_VERSION"
