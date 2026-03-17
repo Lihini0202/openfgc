@@ -32,6 +32,8 @@ import (
 
 // DBClientInterface defines the interface for database operations.
 type DBClientInterface interface {
+	// GetDBType returns the database type identifier (e.g. "mysql", "sqlite").
+	GetDBType() string
 	// Query executes a sql query that returns rows, typically a SELECT, and returns the result as a slice of maps.
 	Query(query model.DBQuery, args ...interface{}) ([]map[string]interface{}, error)
 	// QueryContext executes a sql query with context awareness (checks for transaction in context).
@@ -55,6 +57,11 @@ type DBClient struct {
 // NewDBClient creates a new instance of DBClient with the provided database connection.
 func NewDBClient(db model.DBInterface, dbType string) DBClientInterface {
 	return &DBClient{db: db, dbType: dbType}
+}
+
+// GetDBType returns the database type identifier for this client.
+func (client *DBClient) GetDBType() string {
+	return client.dbType
 }
 
 // Query executes a sql query that returns rows, typically a SELECT, and returns the result as a slice of maps.

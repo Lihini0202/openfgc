@@ -29,9 +29,16 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
 	"github.com/wso2/openfgc/internal/system/config"
+	"github.com/wso2/openfgc/internal/system/database/constants"
 	"github.com/wso2/openfgc/internal/system/database/model"
 	"github.com/wso2/openfgc/internal/system/database/transaction"
 	"github.com/wso2/openfgc/internal/system/log"
+	_ "modernc.org/sqlite"
+)
+
+const (
+	dataSourceTypeMySQL  = constants.DatabaseTypeMySQL
+	dataSourceTypeSQLite = constants.DatabaseTypeSQLite
 )
 
 // transactionDBWrapper wraps model.DB to implement transaction.DBInterface
@@ -176,7 +183,7 @@ func (d *dbProvider) initializeClientLocked() error {
 	}
 
 	d.db = db
-	d.consentClient = NewDBClient(d.db, "mysql")
+	d.consentClient = NewDBClient(d.db, dbConfig.Type)
 	d.consentTransactioner = transaction.NewTransactioner(&transactionDBWrapper{db: d.db})
 	logger.Debug("Consent DB client initialized")
 
@@ -211,13 +218,23 @@ func initializeDB(cfg *config.DatabaseConfig) (*model.DB, error) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "Database"))
 	dsn := cfg.GetDSN()
 
-	logger.Debug("Connecting to database...",
-		log.String("hostname", cfg.Hostname),
-		log.Int("port", cfg.Port),
-		log.String("database", cfg.Database))
+	// Select the appropriate driver and log connection details
+	driverName := cfg.Type
+	if driverName == "" {
+		driverName = string(dataSourceTypeMySQL)
+	}
+
+	if cfg.Type == string(dataSourceTypeSQLite) {
+		logger.Debug("Connecting to SQLite database...", log.String("path", cfg.Path))
+	} else {
+		logger.Debug("Connecting to database...",
+			log.String("hostname", cfg.Hostname),
+			log.Int("port", cfg.Port),
+			log.String("database", cfg.Database))
+	}
 
 	// Open database connection
-	db, err := sqlx.Open("mysql", dsn)
+	db, err := sqlx.Open(driverName, dsn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
@@ -236,6 +253,16 @@ func initializeDB(cfg *config.DatabaseConfig) (*model.DB, error) {
 			logger.Error("Failed to close database after ping failure", log.Error(closeErr))
 		}
 		return nil, fmt.Errorf("failed to ping database: %w", err)
+	}
+
+	// SQLite requires explicit PRAGMA to enforce foreign key constraints
+	if cfg.Type == string(dataSourceTypeSQLite) {
+		if _, pragmaErr := db.Exec("PRAGMA foreign_keys = ON;"); pragmaErr != nil {
+			if closeErr := db.Close(); closeErr != nil {
+				logger.Error("Failed to close database after PRAGMA failure", log.Error(closeErr))
+			}
+			return nil, fmt.Errorf("failed to enable foreign key constraints: %w", pragmaErr)
+		}
 	}
 
 	logger.Debug("Successfully connected to database")

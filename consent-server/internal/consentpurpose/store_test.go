@@ -239,7 +239,7 @@ func TestBuildListPurposesQuery(t *testing.T) {
 	s := &store{}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			query, countQuery, args, countArgs := s.buildListPurposesQuery(tc.orgID, tc.purposeName, tc.clientIDs, tc.elementNames)
+			query, countQuery, args, countArgs := s.buildListPurposesQuery("", tc.orgID, tc.purposeName, tc.clientIDs, tc.elementNames)
 
 			// Verify query contains expected parts
 			require.Contains(t, query, "WHERE ORG_ID = ?")
@@ -284,7 +284,7 @@ func TestBuildListPurposesQuery(t *testing.T) {
 func TestBuildListPurposesQuery_BaseQueries(t *testing.T) {
 	s := &store{}
 
-	query, countQuery, _, _ := s.buildListPurposesQuery("org-123", "", nil, nil)
+	query, countQuery, _, _ := s.buildListPurposesQuery("", "org-123", "", nil, nil)
 
 	// Verify base queries are included
 	require.Contains(t, query, "SELECT ID, NAME, DESCRIPTION, CLIENT_ID, CREATED_TIME, UPDATED_TIME, ORG_ID")

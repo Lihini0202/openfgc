@@ -81,7 +81,7 @@ The Consent is the immutable evidence of a user’s decision regarding specific 
 
 - **Go** 1.25+
 - **Web Framework**: net/http (standard library) with gorilla/mux style routing
-- **Database**: MySQL 8.0+
+- **Database**: MySQL 8.0+ (**recommended**; SQLite supported for testing only)
 - **ORM/Data Access**: sqlx
 - **Architecture**: Domain-driven layered architecture
 - **Transaction Management**: Atomic operations
@@ -89,7 +89,8 @@ The Consent is the immutable evidence of a user’s decision regarding specific 
 ## Prerequisites
 
 - Go 1.25 or higher
-- MySQL 8.0 or higher
+- MySQL 8.0 or higher (**recommended** for production)
+- sqlite3 (optional, if using SQLite)
 - Make (optional, for build commands)
 
 ## Project Structure
@@ -118,7 +119,8 @@ openfgc/
 │   │       ├── stores/                     # Store registry
 │   │       └── utils/                      # Utilities
 │   ├── dbscripts/
-│   │   ├── db_schema_mysql.sql             # Consent tables schema
+│   │   ├── db_schema_mysql.sql             # Consent tables schema (MySQL)
+│   │   ├── db_schema_sqlite.sql            # Consent tables schema (SQLite)
 │   │   └── WIP-db_schema_config_mysql.sql  # Config tables schema
 │   └── docs/                               # Internal documentation
 ├── tests/
@@ -261,4 +263,31 @@ cd tests/integration
 
 # Run all tests
 go test ./... -v
+```
+
+### Using SQLite for Local Testing
+
+**1. Initialize the database**
+
+```bash
+# Create the database directory
+mkdir -p target/server/repository/database
+
+# Initialize the SQLite database with the schema
+sqlite3 target/server/repository/database/consent.db < consent-server/dbscripts/db_schema_sqlite.sql
+```
+
+**2. Update `target/server/repository/conf/deployment.yaml`**
+
+```yaml
+database:
+  consent:
+    type: sqlite
+    # Path to the SQLite database file (relative to the server binary)
+    path: ./repository/database/consent.db
+    # Optional DSN query parameters for additional SQLite pragmas
+    # options: "_pragma=journal_mode(WAL)&_pragma=cache_size(-16000)"
+    max_open_conns: 25
+    max_idle_conns: 5
+    conn_max_lifetime: 5m
 ```
