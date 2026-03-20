@@ -63,6 +63,8 @@ type DatabaseConfig struct {
 	User            string        `yaml:"user"`
 	Password        string        `yaml:"password"`
 	Database        string        `yaml:"database"`
+	Path            string        `yaml:"path"`
+	Options         string        `yaml:"options"`
 	MaxOpenConns    int           `yaml:"max_open_conns"`
 	MaxIdleConns    int           `yaml:"max_idle_conns"`
 	ConnMaxLifetime time.Duration `yaml:"conn_max_lifetime"`
@@ -267,12 +269,18 @@ func validateConfig(config *Config) error {
 		return fmt.Errorf("invalid server port: %d", config.Server.Port)
 	}
 
-	if config.Database.Consent.Hostname == "" {
-		return fmt.Errorf("database hostname is required")
-	}
-
-	if config.Database.Consent.Database == "" {
-		return fmt.Errorf("database name is required")
+	switch config.Database.Consent.Type {
+	case "sqlite":
+		if config.Database.Consent.Path == "" {
+			return fmt.Errorf("database path is required for SQLite")
+		}
+	default: // mysql (default) and any other relational DB
+		if config.Database.Consent.Hostname == "" {
+			return fmt.Errorf("database hostname is required")
+		}
+		if config.Database.Consent.Database == "" {
+			return fmt.Errorf("database name is required")
+		}
 	}
 
 	// Validate consent status mappings
@@ -322,15 +330,26 @@ func SetGlobal(cfg *Config) {
 	globalConfig = cfg
 }
 
-// GetDSN returns the database connection string
+// GetDSN returns the database connection string appropriate for the configured database type.
+// For SQLite it returns the file path with optional query parameters.
+// For MySQL (default) it returns the standard TCP DSN.
 func (d *DatabaseConfig) GetDSN() string {
-	return fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?parseTime=true&multiStatements=true",
-		d.User,
-		d.Password,
-		d.Hostname,
-		d.Port,
-		d.Database,
-	)
+	switch d.Type {
+	case "sqlite":
+		options := d.Options
+		if options != "" && options[0] != '?' {
+			options = "?" + options
+		}
+		return d.Path + options
+	default: // mysql
+		return fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?parseTime=true&multiStatements=true",
+			d.User,
+			d.Password,
+			d.Hostname,
+			d.Port,
+			d.Database,
+		)
+	}
 }
 
 // GetServerAddress returns the server address in host:port format

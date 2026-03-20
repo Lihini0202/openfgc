@@ -412,6 +412,51 @@ func (_c *DBClientInterface_QueryContext_Call) RunAndReturn(run func(context.Con
 	return _c
 }
 
+// GetDBType provides a mock function with no fields
+func (_m *DBClientInterface) GetDBType() string {
+	ret := _m.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetDBType")
+	}
+
+	var r0 string
+	if rf, ok := ret.Get(0).(func() string); ok {
+		r0 = rf()
+	} else {
+		r0 = ret.Get(0).(string)
+	}
+
+	return r0
+}
+
+// DBClientInterface_GetDBType_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetDBType'
+type DBClientInterface_GetDBType_Call struct {
+	*mock.Call
+}
+
+// GetDBType is a helper method to define mock.On call
+func (_e *DBClientInterface_Expecter) GetDBType() *DBClientInterface_GetDBType_Call {
+	return &DBClientInterface_GetDBType_Call{Call: _e.mock.On("GetDBType")}
+}
+
+func (_c *DBClientInterface_GetDBType_Call) Run(run func()) *DBClientInterface_GetDBType_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *DBClientInterface_GetDBType_Call) Return(_a0 string) *DBClientInterface_GetDBType_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *DBClientInterface_GetDBType_Call) RunAndReturn(run func() string) *DBClientInterface_GetDBType_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // NewDBClientInterface creates a new instance of DBClientInterface. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
 // The first argument is typically a *testing.T value.
 func NewDBClientInterface(t interface {

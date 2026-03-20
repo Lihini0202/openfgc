@@ -25,6 +25,7 @@ import (
 	"strings"
 
 	"github.com/wso2/openfgc/internal/consentelement/model"
+	dbconst "github.com/wso2/openfgc/internal/system/database/constants"
 	dbmodel "github.com/wso2/openfgc/internal/system/database/model"
 	"github.com/wso2/openfgc/internal/system/database/provider"
 	"github.com/wso2/openfgc/internal/system/stores/interfaces"
@@ -53,8 +54,9 @@ var (
 	}
 
 	QueryListElementsWithName = dbmodel.DBQuery{
-		ID:    "LIST_CONSENT_ELEMENTS_WITH_NAME",
-		Query: "SELECT ID, NAME, DESCRIPTION, TYPE, ORG_ID FROM CONSENT_ELEMENT WHERE ORG_ID = ? AND NAME LIKE ? ORDER BY NAME LIMIT ? OFFSET ?",
+		ID:          "LIST_CONSENT_ELEMENTS_WITH_NAME",
+		Query:       "SELECT ID, NAME, DESCRIPTION, TYPE, ORG_ID FROM CONSENT_ELEMENT WHERE ORG_ID = ? AND NAME LIKE ? ORDER BY NAME LIMIT ? OFFSET ?",
+		SQLiteQuery: "SELECT ID, NAME, DESCRIPTION, TYPE, ORG_ID FROM CONSENT_ELEMENT WHERE ORG_ID = ? AND NAME LIKE ? ESCAPE '|' ORDER BY NAME LIMIT ? OFFSET ?",
 	}
 
 	QueryCountElements = dbmodel.DBQuery{
@@ -63,8 +65,9 @@ var (
 	}
 
 	QueryCountElementsWithName = dbmodel.DBQuery{
-		ID:    "COUNT_CONSENT_ELEMENTS_WITH_NAME",
-		Query: "SELECT COUNT(*) as count FROM CONSENT_ELEMENT WHERE ORG_ID = ? AND NAME LIKE ?",
+		ID:          "COUNT_CONSENT_ELEMENTS_WITH_NAME",
+		Query:       "SELECT COUNT(*) as count FROM CONSENT_ELEMENT WHERE ORG_ID = ? AND NAME LIKE ?",
+		SQLiteQuery: "SELECT COUNT(*) as count FROM CONSENT_ELEMENT WHERE ORG_ID = ? AND NAME LIKE ? ESCAPE '|'",
 	}
 
 	QueryUpdateElement = dbmodel.DBQuery{
@@ -171,7 +174,14 @@ func (elementStore *store) List(ctx context.Context, orgID string, limit, offset
 	// Use different queries based on whether name filter is provided
 	if name != "" {
 		// Escape SQL wildcard characters to prevent unintended matches
-		escaper := strings.NewReplacer("%", "\\%", "_", "\\_")
+		var escaper *strings.Replacer
+		if dbClient.GetDBType() == dbconst.DatabaseTypeSQLite {
+			// SQLite: use '|' as the escape character (single char, no quoting issues)
+			escaper = strings.NewReplacer("|", "||", "%", "|%", "_", "|_")
+		} else {
+			// MySQL: use '\' as the escape character (MySQL default)
+			escaper = strings.NewReplacer("%", "\\%", "_", "\\_")
+		}
 		escapedName := escaper.Replace(name)
 		// Add wildcards for partial match (case-insensitive search)
 		namePattern := "%" + escapedName + "%"

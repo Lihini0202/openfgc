@@ -25,6 +25,7 @@ import (
 	"strings"
 
 	"github.com/wso2/openfgc/internal/consentpurpose/model"
+	dbconst "github.com/wso2/openfgc/internal/system/database/constants"
 	dbmodel "github.com/wso2/openfgc/internal/system/database/model"
 	"github.com/wso2/openfgc/internal/system/database/provider"
 	"github.com/wso2/openfgc/internal/system/stores/interfaces"
@@ -116,36 +117,27 @@ func (s *store) getDBClient() (provider.DBClientInterface, error) {
 func (s *store) mapRowToPurpose(row map[string]interface{}) model.ConsentPurpose {
 	var purpose model.ConsentPurpose
 
-	if id, ok := row["id"].([]uint8); ok {
-		purpose.ID = string(id)
+	purpose.ID = getString(row, "id")
+	purpose.Name = getString(row, "name")
+	purpose.ClientID = getString(row, "client_id")
+	purpose.OrgID = getString(row, "org_id")
+
+	if desc := getStringPtr(row, "description"); desc != nil {
+		purpose.Description = desc
 	}
-	if name, ok := row["name"].([]uint8); ok {
-		purpose.Name = string(name)
-	}
-	if desc, ok := row["description"]; ok && desc != nil {
-		if descBytes, ok := desc.([]uint8); ok {
-			descStr := string(descBytes)
-			purpose.Description = &descStr
-		}
-	}
-	if clientID, ok := row["client_id"].([]uint8); ok {
-		purpose.ClientID = string(clientID)
-	}
+
 	if createdTime, ok := row["created_time"].(int64); ok {
 		purpose.CreatedTime = createdTime
 	}
 	if updatedTime, ok := row["updated_time"].(int64); ok {
 		purpose.UpdatedTime = updatedTime
 	}
-	if orgID, ok := row["org_id"].([]uint8); ok {
-		purpose.OrgID = string(orgID)
-	}
 
 	return purpose
 }
 
 // buildListPurposesQuery builds dynamic query with filters for listing purposes
-func (s *store) buildListPurposesQuery(orgID, name string, clientIDs []string, elementNames []string) (string, string, []interface{}, []interface{}) {
+func (s *store) buildListPurposesQuery(dbType, orgID, name string, clientIDs []string, elementNames []string) (string, string, []interface{}, []interface{}) {
 	baseQuery := BaseListPurposesQuery
 	countQuery := BaseCountPurposesQuery
 
@@ -154,14 +146,23 @@ func (s *store) buildListPurposesQuery(orgID, name string, clientIDs []string, e
 
 	// Filter by name (partial match using LIKE)
 	if name != "" {
-		// Escape SQL wildcard characters and backslashes to prevent unintended matches
-		escaper := strings.NewReplacer("\\", "\\\\", "%", "\\%", "_", "\\_")
+		var escaper *strings.Replacer
+		var escapeClause string
+		if dbType == dbconst.DatabaseTypeSQLite {
+			// SQLite: use '|' as the escape character (single char, no quoting issues)
+			escaper = strings.NewReplacer("|", "||", "%", "|%", "_", "|_")
+			escapeClause = ` AND NAME LIKE ? ESCAPE '|'`
+		} else {
+			// MySQL: use '\' as the escape character (MySQL default)
+			escaper = strings.NewReplacer("\\", "\\\\", "%", "\\%", "_", "\\_")
+			escapeClause = ` AND NAME LIKE ? ESCAPE '\\'`
+		}
 		escapedName := escaper.Replace(name)
 		// Add wildcards for partial match (collation determines case sensitivity)
 		namePattern := "%" + escapedName + "%"
 
-		baseQuery += ` AND NAME LIKE ? ESCAPE '\\'`
-		countQuery += ` AND NAME LIKE ? ESCAPE '\\'`
+		baseQuery += escapeClause
+		countQuery += escapeClause
 		args = append(args, namePattern)
 		countArgs = append(countArgs, namePattern)
 	}
@@ -250,7 +251,7 @@ func (s *store) ListPurposes(ctx context.Context, orgID, name string, clientIDs 
 	}
 
 	// Build dynamic query with filters
-	query, countQuery, args, countArgs := s.buildListPurposesQuery(orgID, name, clientIDs, elementNames)
+	query, countQuery, args, countArgs := s.buildListPurposesQuery(dbClient.GetDBType(), orgID, name, clientIDs, elementNames)
 
 	// Get total count
 	var total int
@@ -374,12 +375,8 @@ func (s *store) GetPurposeElements(ctx context.Context, purposeID, orgID string)
 	var purposes []model.PurposeElement
 	for _, row := range rows {
 		var p model.PurposeElement
-		if elementID, ok := row["element_id"].([]uint8); ok {
-			p.ElementID = string(elementID)
-		}
-		if elementName, ok := row["element_name"].([]uint8); ok {
-			p.ElementName = string(elementName)
-		}
+		p.ElementID = getString(row, "element_id")
+		p.ElementName = getString(row, "element_name")
 		if isMandatory, ok := row["is_mandatory"].(int64); ok {
 			p.IsMandatory = isMandatory != 0
 		}
@@ -413,4 +410,29 @@ func (s *store) IsElementUsedInPurposes(ctx context.Context, elementID, orgID st
 	}
 
 	return false, nil
+}
+
+// getString extracts a string value from a database row, handling both string and []byte
+// types returned by different database drivers (e.g. MySQL returns []byte, SQLite returns string).
+func getString(row map[string]interface{}, key string) string {
+	if val, ok := row[key].(string); ok {
+		return val
+	}
+	if val, ok := row[key].([]byte); ok {
+		return string(val)
+	}
+	return ""
+}
+
+// getStringPtr extracts a string pointer from a database row, handling both string and []byte types.
+// Returns nil when the column is absent or NULL.
+func getStringPtr(row map[string]interface{}, key string) *string {
+	if val, ok := row[key].(string); ok {
+		return &val
+	}
+	if val, ok := row[key].([]byte); ok {
+		str := string(val)
+		return &str
+	}
+	return nil
 }
