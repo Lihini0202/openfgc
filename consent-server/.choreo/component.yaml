@@ -26,19 +26,3 @@ endpoints:
       - Project
       - Public
     schemaFilePath: ../api/consent-management-API.yaml
-
-dependencies:
-    serviceReferences:
-    - name: database:openfgc_db
-      connectionConfig: 01f10c8a-01c6-1770-b39b-9c203dacb167
-      env:
-      - from: HostName
-        to: OPENFGC_DB_HOSTNAME
-      - from: Port
-        to: OPENFGC_DB_PORT
-      - from: Username
-        to: OPENFGC_DB_USER
-      - from: Password
-        to: OPENFGC_DB_PASSWORD
-      - from: DatabaseName
-        to: OPENFGC_DB_NAME
