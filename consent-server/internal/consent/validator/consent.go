@@ -258,9 +258,17 @@ func ValidateDelegationAttributes(
 			"delegation.principal_id is required when delegation.type is set")
 	}
 
+	// Without it we cannot enforce the self-delegation check below, so we must
+	// reject the request rather than silently skip the guard.
+	callerID = strings.TrimSpace(callerID)
+	if callerID == "" {
+		return fmt.Errorf(
+			"caller identity (X-User-ID) is required when delegation.type is set")
+	}
+
 	// The person giving consent must not be the same as the data subject.
 	// Applies to all delegation types: parental, carer, power-of-attorney, etc.
-	if callerID != "" && callerID == principalID {
+	if callerID == principalID {
 		return fmt.Errorf(
 			"caller '%s' cannot be both the delegator and the data principal", callerID)
 	}
@@ -275,6 +283,15 @@ func ValidateDelegationAttributes(
 		if err != nil || validUntil <= 0 {
 			return fmt.Errorf(
 				"guardian.valid_until must be a valid positive Unix timestamp in seconds")
+		}
+
+		// Unix seconds will not exceed 1e11 until the year 5138, so any value
+		// larger than that is almost certainly a millisecond value by mistake,
+		// which would create a delegation ~1000x longer than intended.
+		const maxUnixSeconds = int64(100_000_000_000)
+		if validUntil > maxUnixSeconds {
+			return fmt.Errorf(
+				"guardian.valid_until appears to be in milliseconds; provide a Unix timestamp in seconds")
 		}
 		if time.Now().Unix() >= validUntil {
 			return fmt.Errorf(

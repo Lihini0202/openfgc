@@ -1085,38 +1085,61 @@ func (consentService *consentService) RevokeConsent(ctx context.Context, consent
 	//   if delegation active   → delegate must have canRevoke=true AND policy≠SUBJECT_ONLY
 	{
 		attributes, attErr := store.GetAttributesByConsentID(ctx, consentID, orgID)
-		if attErr == nil {
-			attMap := make(map[string]string)
-			for _, a := range attributes {
-				attMap[a.AttKey] = a.AttValue
-			}
-			delegCfg := parseDelegationConfig(attMap)
+		if attErr != nil {
+			logger.Error("Failed to load delegation attributes for revocation",
+				log.Error(attErr),
+				log.String("consent_id", consentID))
+			return nil, serviceerror.CustomServiceError(ErrorInternalServerError, attErr.Error())
+		}
+		attMap := make(map[string]string)
+		for _, a := range attributes {
+			attMap[a.AttKey] = a.AttValue
+		}
+		delegCfg := parseDelegationConfig(attMap)
 
-			if delegCfg.IsGuardianConsent() {
-				principalID := delegCfg.PrincipalID
-				callerID := req.ActionBy
-				isPrincipal := callerID == principalID
+		if delegCfg.IsGuardianConsent() {
+			principalID := delegCfg.PrincipalID
+			callerID := req.ActionBy
+			isPrincipal := callerID == principalID
 
-				if delegCfg.IsExpired() {
-					// delegation ended (e.g., child is now an adult).
-					// Only the principal has authority; delegates are locked out.
+			if delegCfg.IsExpired() {
+				// delegation ended (e.g., child is now an adult).
+				// Only the principal has authority; delegates are locked out.
+				if !isPrincipal {
+					logger.Warn("Revocation denied: delegation expired, caller is not principal",
+						log.String("caller_id", callerID),
+						log.String("principal_id", principalID))
+					return nil, serviceerror.CustomServiceError(
+						ErrorDelegationExpired,
+						fmt.Sprintf("delegation for principal '%s' has expired; "+
+							"only the principal may revoke this consent", principalID),
+					)
+				}
+				// Principal is now an adult — allow revocation to continue.
+				logger.Debug("Delegation expired; principal revoking their own consent",
+					log.String("principal_id", principalID))
+
+			} else {
+
+				// SUBJECT_ONLY means only the principal may revoke; delegates are blocked.
+				// ANY means both the principal and permitted delegates may revoke.
+				if delegCfg.RevocationPolicy == model.RevocationPolicySubjectOnly {
 					if !isPrincipal {
-						logger.Warn("Revocation denied: delegation expired, caller is not principal",
-							log.String("caller_id", callerID),
-							log.String("principal_id", principalID))
+						// Delegate blocked by policy.
+						logger.Warn("Revocation denied: policy is SUBJECT_ONLY",
+							log.String("caller_id", callerID))
 						return nil, serviceerror.CustomServiceError(
-							ErrorDelegationExpired,
-							fmt.Sprintf("delegation for principal '%s' has expired; "+
-								"only the principal may revoke this consent", principalID),
+							ErrorRevocationNotPermitted,
+							"revocation policy is SUBJECT_ONLY; only the data principal may revoke",
 						)
 					}
-					// Principal is now an adult — allow revocation to continue.
-					logger.Debug("Delegation expired; principal revoking their own consent",
+					// Principal is explicitly allowed under SUBJECT_ONLY — fall through.
+					logger.Debug("SUBJECT_ONLY policy: principal revoking their own consent",
 						log.String("principal_id", principalID))
 
 				} else if isPrincipal {
-					// active guardianship: block the principal from revoking directly.
-					// The guardian (parent/carer) controls this consent while it is active.
+					// Active guardianship with ANY policy: block the principal from
+					// revoking directly — the guardian controls this consent while active.
 					logger.Warn("Revocation denied: principal cannot revoke under active guardianship",
 						log.String("principal_id", principalID))
 					return nil, serviceerror.CustomServiceError(
@@ -1126,17 +1149,8 @@ func (consentService *consentService) RevokeConsent(ctx context.Context, consent
 					)
 
 				} else {
-					// a delegate is attempting revocation while delegation is active.
-					// Check 1: revocation policy.
-					if delegCfg.RevocationPolicy == model.RevocationPolicySubjectOnly {
-						logger.Warn("Revocation denied: policy is SUBJECT_ONLY",
-							log.String("caller_id", callerID))
-						return nil, serviceerror.CustomServiceError(
-							ErrorRevocationNotPermitted,
-							"revocation policy is SUBJECT_ONLY; only the data principal may revoke",
-						)
-					}
-					// Check 2: delegate must have canRevoke=true in their auth resource.
+					// Delegate attempting revocation under ANY policy.
+					// Check: delegate must have canRevoke=true on the delegation row for principalID.
 					approvedStatus := string(config.Get().Consent.AuthStatusMappings.ApprovedState)
 					authResources, _ := consentService.stores.AuthResource.GetByConsentID(ctx, consentID, orgID)
 					callerCanRevoke := false
@@ -1154,7 +1168,10 @@ func (consentService *consentService) RevokeConsent(ctx context.Context, consent
 						if json.Unmarshal([]byte(*ar.Resources), &res) != nil {
 							continue
 						}
-						if canRevoke, _ := res["canRevoke"].(bool); canRevoke {
+						// principalID — prevents an unrelated canRevoke=true row from
+						// accidentally granting revoke rights over a different principal.
+						onBehalfOf, _ := res["onBehalfOf"].(string)
+						if canRevoke, _ := res["canRevoke"].(bool); canRevoke && onBehalfOf == principalID {
 							callerCanRevoke = true
 							break
 						}

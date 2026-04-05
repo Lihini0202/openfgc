@@ -267,6 +267,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ConsentErrorCommon"
+        "500":
+          description: Internal Server Error. An unexpected error occurred on the server.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConsentErrorCommon"
       security:
         - basicAuth: []
   /consents/attributes:

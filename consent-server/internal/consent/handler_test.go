@@ -246,6 +246,9 @@ func TestRevokeConsent_Success(t *testing.T) {
 	req.Header.Set(constants.HeaderOrgID, testOrgID)
 	req.Header.Set(constants.HeaderContentType, constants.ContentTypeJSON)
 
+	// Set the header so the handler overwrites ActionBy correctly.
+	req.Header.Set("X-User-ID", "user-123")
+
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
 	defer resp.Body.Close()
@@ -845,13 +848,24 @@ func TestGetDelegates_InvalidConsentID(t *testing.T) {
 	mockService := NewMockConsentService(t)
 	handler := newConsentHandler(mockService)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/consents/not-a-valid-uuid!!/delegates", nil)
+	// Calling handler.getDelegates directly bypasses the router, meaning
+	// PathValue always returns "" and the test passes for the wrong reason
+	// (missing field) instead of exercising the malformed-UUID validation path.
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET "+constants.APIBasePath+"/consents/{consentId}/delegates", handler.getDelegates)
+
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	req, err := http.NewRequest(http.MethodGet, server.URL+"/api/v1/consents/not-a-valid-uuid!!/delegates", nil)
+	require.NoError(t, err)
 	req.Header.Set(constants.HeaderOrgID, testOrgID)
-	rr := httptest.NewRecorder()
 
-	handler.getDelegates(rr, req)
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
 
-	require.Equal(t, http.StatusBadRequest, rr.Code)
+	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
 }
 
 func TestGetDelegates_NotFound(t *testing.T) {
@@ -962,15 +976,19 @@ func TestListConsents_WithDataPrincipalID(t *testing.T) {
 		},
 	}
 
-	// Verify that dataPrincipalId query param flows into ConsentSearchFilters.DataPrincipalID
+	// to ConsentSearchFilters.CallerID so the delegation authorization path
+	// is exercised (X-User-ID is required for dataPrincipalId queries).
 	mockService.On("SearchConsentsDetailed", mock.Anything,
 		mock.MatchedBy(func(f model.ConsentSearchFilters) bool {
-			return f.DataPrincipalID == "child_user_123" && f.OrgID == testOrgID
+			return f.DataPrincipalID == "child_user_123" &&
+				f.OrgID == testOrgID &&
+				f.CallerID == "parent_user_456"
 		}),
 	).Return(expectedResponse, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/consents?dataPrincipalId=child_user_123", nil)
 	req.Header.Set(constants.HeaderOrgID, testOrgID)
+	req.Header.Set("X-User-ID", "parent_user_456")
 	rr := httptest.NewRecorder()
 
 	handler.listConsents(rr, req)
@@ -986,9 +1004,12 @@ func TestListConsents_UnauthorizedForPrincipal(t *testing.T) {
 	handler := newConsentHandler(mockService)
 
 	// Simulate unauthorized access error from service layer
+	// service-layer authorization check is properly exercised.
 	mockService.On("SearchConsentsDetailed", mock.Anything,
 		mock.MatchedBy(func(f model.ConsentSearchFilters) bool {
-			return f.DataPrincipalID == "unauthorized_user" && f.OrgID == testOrgID
+			return f.DataPrincipalID == "unauthorized_user" &&
+				f.OrgID == testOrgID &&
+				f.CallerID == "some_caller_999"
 		}),
 	).Return(nil, serviceerror.CustomServiceError(
 		ErrorUnauthorized,
@@ -997,6 +1018,7 @@ func TestListConsents_UnauthorizedForPrincipal(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet, "/consents?dataPrincipalId=unauthorized_user", nil)
 	req.Header.Set(constants.HeaderOrgID, testOrgID)
+	req.Header.Set("X-User-ID", "some_caller_999")
 	rr := httptest.NewRecorder()
 
 	handler.listConsents(rr, req)

@@ -285,6 +285,49 @@ type DelegationAPIRequest struct {
 	CanModify bool `json:"canModify,omitempty"`
 }
 
+// mergeDelegationIntoResources merges the Delegation fields into the Resources map
+// so they are persisted in the RESOURCES JSON blob of CONSENT_AUTH_RESOURCE.
+// When Delegation is nil or Resources already contains onBehalfOf, the input is
+// returned unchanged. This is the single place where delegation metadata is
+// serialized — no DB schema change required.
+func mergeDelegationIntoResources(resources interface{}, delegation *DelegationAPIRequest) interface{} {
+	if delegation == nil {
+		return resources
+	}
+
+	// Start with an empty map or a copy of the existing resources map.
+	merged := make(map[string]interface{})
+	if resources != nil {
+		// resources may already be a map (from JSON decode) or a raw JSON []byte.
+		switch v := resources.(type) {
+		case map[string]interface{}:
+			for k, val := range v {
+				merged[k] = val
+			}
+		default:
+			// Fallback: round-trip through JSON to get a generic map.
+			b, err := json.Marshal(resources)
+			if err == nil {
+				_ = json.Unmarshal(b, &merged)
+			}
+		}
+	}
+
+	// Write delegation fields into the map.
+	// onBehalfOf is the key the service layer reads to identify delegate rows.
+	if delegation.PrincipalID != "" {
+		merged["onBehalfOf"] = delegation.PrincipalID
+	}
+	if delegation.Type != "" {
+		merged["delegationType"] = delegation.Type
+	}
+	// Always write bool flags so false is explicit (not missing).
+	merged["canRevoke"] = delegation.CanRevoke
+	merged["canModify"] = delegation.CanModify
+
+	return merged
+}
+
 // DelegateInfo represents a single registered delegate on a consent.
 // Assembled at read time from a CONSENT_AUTH_RESOURCE row and its RESOURCES blob.
 type DelegateInfo struct {
@@ -613,11 +656,14 @@ func (req *ConsentAPIRequest) ToConsentCreateRequest() (*ConsentCreateRequest, e
 				status = string(AuthStatusMappings.ApprovedState)
 			}
 
+			// persisting, so onBehalfOf/canRevoke/canModify/delegationType are
+			// stored in the RESOURCES blob and readable by the delegates endpoint.
+			resources := mergeDelegationIntoResources(auth.Resources, auth.Delegation)
 			createReq.AuthResources[i] = authmodel.ConsentAuthResourceCreateRequest{
 				AuthType:   auth.Type,
 				UserID:     userID,
 				AuthStatus: status,
-				Resources:  auth.Resources,
+				Resources:  resources,
 			}
 		}
 	}
@@ -695,11 +741,13 @@ func (req *ConsentAPIUpdateRequest) ToConsentUpdateRequest() (*ConsentUpdateRequ
 				status = string(AuthStatusMappings.ApprovedState)
 			}
 
+			// fields must be written into the RESOURCES blob on update too.
+			resources := mergeDelegationIntoResources(auth.Resources, auth.Delegation)
 			updateReq.AuthResources[i] = authmodel.ConsentAuthResourceCreateRequest{
 				AuthType:   auth.Type,
 				UserID:     userID,
 				AuthStatus: status, // Store the status value
-				Resources:  auth.Resources,
+				Resources:  resources,
 			}
 		}
 	}

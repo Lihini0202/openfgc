@@ -284,14 +284,16 @@ func (h *consentHandler) revokeConsent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Trusting ActionBy from the request body would allow any caller to put any
-	// userId in the body and bypass the delegation revocation check in the service.
-	// The header is set by the gateway/IdP and cannot be spoofed by the client.
-	// If X-User-ID is absent (non-delegated flows), the body value is kept as-is
-	// so backward compatibility with existing non-delegation revoke flows is preserved.
-	if userID := r.Header.Get("X-User-ID"); userID != "" {
-		req.ActionBy = userID
-	}
+	// The header is injected by the gateway/IdP and cannot be spoofed by the
+	// client. Falling back to the JSON body value when the header is absent
+	// would let any caller put an arbitrary userId in the body and bypass the
+	// delegation revocation checks in the service layer.
+	//
+	// If X-User-ID is absent the request has no trusted caller identity.
+	// Clear ActionBy so the service treats this as an anonymous/unauthenticated
+	// call and applies the appropriate default behaviour (non-delegated path).
+	userID := r.Header.Get("X-User-ID")
+	req.ActionBy = userID
 
 	revokeResponse, serviceErr := h.service.RevokeConsent(ctx, consentID, orgID, req)
 	if serviceErr != nil {
