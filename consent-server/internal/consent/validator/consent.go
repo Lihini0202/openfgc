@@ -236,9 +236,10 @@ func IsConsentExpired(validityTime int64) bool {
 // Rules enforced:
 //  1. delegation.principal_id must be provided
 //  2. The caller (X-User-ID) must NOT equal the principal_id — cannot self-delegate
-//  3. guardian.valid_until — OPTIONAL. When provided it must be a future Unix timestamp.
-//     Omit for permanent delegations (power of attorney, permanent disability carer, etc.)
-//     where there is no natural expiry date.
+//  3. guardian.valid_until — OPTIONAL. When provided it must be a future Unix timestamp
+//     in seconds. Millisecond values are rejected to avoid delegations ~1000x longer
+//     than intended. Omit for permanent delegations (power of attorney, permanent
+//     disability carer, etc.) where there is no natural expiry date.
 //  4. guardian.revocation_policy must be set to a valid value
 //  5. At least one authorization must have onBehalfOf = principal_id
 func ValidateDelegationAttributes(
@@ -273,10 +274,10 @@ func ValidateDelegationAttributes(
 			"caller '%s' cannot be both the delegator and the data principal", callerID)
 	}
 
-	// When does this delegation expire
 	// guardian.valid_until is OPTIONAL — permanent delegations (e.g., power of attorney
 	// for a permanently disabled adult, court-ordered guardianship with no end date)
-	// may legitimately omit this field. When provided it must be a valid future timestamp.
+	// may legitimately omit this field. When provided it must be a valid future timestamp
+	// in seconds.
 	validUntilStr := strings.TrimSpace(attributes[model.AttrGuardianValidUntil])
 	if validUntilStr != "" {
 		validUntil, err := strconv.ParseInt(validUntilStr, 10, 64)
@@ -301,18 +302,26 @@ func ValidateDelegationAttributes(
 	}
 
 	// Who is allowed to revoke this consent?
+	// Use model constants in error messages so they stay in sync if the constants are renamed.
 	policy := strings.TrimSpace(attributes[model.AttrGuardianRevocationPolicy])
 	if policy == "" {
 		return fmt.Errorf(
-			"guardian.revocation_policy is required for delegated consents; " +
-				"valid values: ANY, SUBJECT_ONLY")
+			"guardian.revocation_policy is required for delegated consents; "+
+				"valid values: %s, %s",
+			model.RevocationPolicyAny,
+			model.RevocationPolicySubjectOnly,
+		)
 	}
 	switch model.RevocationPolicy(policy) {
 	case model.RevocationPolicyAny, model.RevocationPolicySubjectOnly:
-		// valid — continue
+
 	default:
 		return fmt.Errorf(
-			"guardian.revocation_policy must be ANY or SUBJECT_ONLY, got: %s", policy)
+			"guardian.revocation_policy must be %s or %s, got: %s",
+			model.RevocationPolicyAny,
+			model.RevocationPolicySubjectOnly,
+			policy,
+		)
 	}
 
 	// At least one authorization must register a delegate for the principal.

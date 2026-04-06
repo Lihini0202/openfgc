@@ -117,6 +117,10 @@ paths:
       description: |
         Provides a powerful search capability to find consents based on various filter criteria like consent type, status, client ID , user ID and time range. Supports pagination.
 
+        When `dataPrincipalId` is provided, the caller must supply the `X-User-ID` header so the
+        server can verify the caller is a registered delegate for the specified principal. Omitting
+        `X-User-ID` while setting `dataPrincipalId` will result in a 403 Forbidden response.
+
       operationId: consents-search-GET
       tags:
         - Consents
@@ -128,6 +132,17 @@ paths:
           schema:
             type: string
             example: "ORG-001"
+        - in: header
+          name: X-User-ID
+          required: false
+          description: |
+            The authenticated user's identifier, set by the API gateway / IdP.
+            **Required when `dataPrincipalId` is provided.** The server uses this value to
+            verify that the caller is an authorised delegate for the specified principal.
+            Omitting this header while supplying `dataPrincipalId` will result in a 403 response.
+          schema:
+            type: string
+            example: "parent-user-id-456"
         - name: consentTypes
           in: query
           description: A comma-separated list of consent types to filter by (e.g., 'accounts,payments').
@@ -206,6 +221,16 @@ paths:
                 $ref: "#/components/schemas/ConsentSearchResponse"
         "400":
           description: Bad Request. The search parameters provided are invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConsentErrorCommon"
+        "403":
+          description: |
+            Forbidden. The caller is not authorised to access the specified principal's consents.
+            This occurs when:
+            - `dataPrincipalId` is set but the `X-User-ID` header is missing.
+            - The caller identified by `X-User-ID` is not a registered delegate for the specified `dataPrincipalId`.
           content:
             application/json:
               schema:
@@ -2727,7 +2752,6 @@ components:
           type: integer
           format: int64
           example: 86400
-
         attributes:
           description: A key-value map of additional, non-standard attributes associated with the consent.
           type: object

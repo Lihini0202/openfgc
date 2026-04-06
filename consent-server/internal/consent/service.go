@@ -81,42 +81,48 @@ func parseDelegationConfig(attMap map[string]string) model.DelegationConfig {
 	}
 }
 
-// isCallerAuthorizedForPrincipal returns true when callerID is allowed to read or
-// act on consents where principalID is the data subject
+// isCallerAuthorizedForPrincipal returns the list of consent IDs the caller is
+// authorized to access for the given principal.
 //
-// Access is granted when:
-//   - callerID == principalID  (people can always access their own data), OR
-//   - callerID has an APPROVED auth resource row on any consent whose
-//     delegation.principal_id == principalID, with onBehalfOf == principalID
-//     in the RESOURCES JSON blob, AND the delegation has not yet expired.
+//   - A nil return means callerID == principalID (the principal sees all their own
+//     consents — unrestricted). The caller MUST treat nil as "no filter needed".
+//   - An empty slice means the caller has no delegate binding and is not authorized.
+//   - A non-empty slice lists the specific consent IDs the delegate may access.
 //
-// Uses FindConsentIDsByAttribute (queries CONSENT_ATTRIBUTE)
+// Authorization for a delegate is granted per-consent when:
+//   - The consent's delegation.principal_id attribute equals principalID.
+//   - The delegation has not yet expired (guardian.valid_until is in the future or unset).
+//   - The caller has an APPROVED auth resource row on that consent with
+//     onBehalfOf == principalID in the RESOURCES JSON blob.
+//
+// This per-consent check prevents a delegate binding on one consent from granting
+// visibility into all consents of the same principal.
 func (consentService *consentService) isCallerAuthorizedForPrincipal(
 	ctx context.Context,
 	callerID, principalID, orgID string,
-) (bool, error) {
-	// Principals can always access their own data.
+) ([]string, error) {
+	// Principals can always access all of their own consents — no per-consent check needed.
 	if callerID == principalID {
-		return true, nil
+		return nil, nil // nil signals "unrestricted / self-access"
 	}
 
-	// Find all consents where this person is the data subject.
-	// FindConsentIDsByAttribute queries CONSENT_ATTRIBUTE directly.
+	// Find every consent that lists principalID as the delegation subject.
 	consentStore := consentService.stores.Consent
 	consentIDs, err := consentStore.FindConsentIDsByAttribute(
 		ctx, model.AttrDelegationPrincipalID, principalID, orgID,
 	)
 	if err != nil {
-		return false, fmt.Errorf("failed to look up delegated consents: %w", err)
+		return nil, fmt.Errorf("failed to look up delegated consents: %w", err)
 	}
 	if len(consentIDs) == 0 {
-		return false, nil
+		return []string{}, nil
 	}
 
 	approvedStatus := string(config.Get().Consent.AuthStatusMappings.ApprovedState)
+	authorizedIDs := make([]string, 0)
 
 	for _, consentID := range consentIDs {
-		// Load attributes to check whether delegation has expired
+		// Load attributes to check whether the delegation period is still active.
 		attributes, err := consentStore.GetAttributesByConsentID(ctx, consentID, orgID)
 		if err != nil {
 			continue
@@ -127,11 +133,14 @@ func (consentService *consentService) isCallerAuthorizedForPrincipal(
 		}
 		cfg := parseDelegationConfig(attMap)
 		if cfg.IsExpired() {
-			// Delegation period ended — this delegate's rights have lapsed.
+			// Delegation period ended — this delegate's access rights have lapsed.
 			continue
 		}
 
-		// Check whether callerID has an active auth resource with onBehalfOf = principalID.
+		// Check whether callerID has an approved auth resource row for this consent
+		// where onBehalfOf matches principalID.  Checking onBehalfOf prevents an
+		// unrelated canRevoke=true row from accidentally granting access to a
+		// different principal's data.
 		authResources, err := consentService.stores.AuthResource.GetByConsentID(ctx, consentID, orgID)
 		if err != nil {
 			continue
@@ -151,11 +160,13 @@ func (consentService *consentService) isCallerAuthorizedForPrincipal(
 				continue
 			}
 			if onBehalfOf, _ := res["onBehalfOf"].(string); onBehalfOf == principalID {
-				return true, nil
+				// Caller is an authorized delegate for this specific consent.
+				authorizedIDs = append(authorizedIDs, consentID)
+				break // No need to check other auth rows for the same consent.
 			}
 		}
 	}
-	return false, nil
+	return authorizedIDs, nil
 }
 
 // ── end delegation helpers ────────────────────────────────────────────────────
@@ -502,11 +513,29 @@ func (consentService *consentService) SearchConsentsDetailed(ctx context.Context
 		filters.Offset = 0
 	}
 
-	// When a caller requests another person's consents via dataPrincipalId,
-	// verify they are a registered delegate for that principal before proceeding with the search.
-	// Skipped when CallerID is empty (internal/admin calls without a user header).
-	if filters.DataPrincipalID != "" && filters.CallerID != "" {
-		authorized, authErr := consentService.isCallerAuthorizedForPrincipal(
+	// ── Delegate authorization check ─────────────────────────────────────────
+	// When dataPrincipalId is set, the caller must prove they are either the
+	// principal themselves or an active delegate for that principal.
+	//
+	// Failing open (skipping this check when CallerID is empty) would allow any
+	// caller to read another person's consents simply by omitting X-User-ID.
+	//
+	// authorizedConsentIDSet:
+	//   nil  → caller is the principal; no per-consent filter needed.
+	//   non-nil → caller is a delegate; restrict results to these consent IDs.
+	var authorizedConsentIDSet map[string]bool
+	if filters.DataPrincipalID != "" {
+		// Require an explicit caller identity — no anonymous access to another
+		// principal's consents.
+		if filters.CallerID == "" {
+			logger.Warn("dataPrincipalId set but caller identity is missing")
+			return nil, serviceerror.CustomServiceError(
+				ErrorNotAuthorizedForPrincipal,
+				"caller identity is required when dataPrincipalId is set",
+			)
+		}
+
+		authorizedIDs, authErr := consentService.isCallerAuthorizedForPrincipal(
 			ctx, filters.CallerID, filters.DataPrincipalID, filters.OrgID,
 		)
 		if authErr != nil {
@@ -516,7 +545,11 @@ func (consentService *consentService) SearchConsentsDetailed(ctx context.Context
 				log.String("principal_id", filters.DataPrincipalID))
 			return nil, serviceerror.CustomServiceError(ErrorInternalServerError, authErr.Error())
 		}
-		if !authorized {
+
+		// authorizedIDs == nil  → callerID == principalID (self-access, unrestricted).
+		// authorizedIDs == []   → no valid delegate binding found; deny.
+		// authorizedIDs non-empty → restrict to those specific consent IDs.
+		if authorizedIDs != nil && len(authorizedIDs) == 0 {
 			logger.Warn("Caller not authorized for principal",
 				log.String("caller_id", filters.CallerID),
 				log.String("principal_id", filters.DataPrincipalID))
@@ -526,7 +559,16 @@ func (consentService *consentService) SearchConsentsDetailed(ctx context.Context
 					filters.CallerID, filters.DataPrincipalID),
 			)
 		}
+		if authorizedIDs != nil {
+			// Build a set for O(1) lookup during post-filter.
+			authorizedConsentIDSet = make(map[string]bool, len(authorizedIDs))
+			for _, id := range authorizedIDs {
+				authorizedConsentIDSet[id] = true
+			}
+		}
+		// authorizedIDs == nil: principal self-access; authorizedConsentIDSet stays nil.
 	}
+	// ── end delegate authorization check ─────────────────────────────────────
 
 	// Step 1: Search consents
 	consentStore := consentService.stores.Consent
@@ -534,6 +576,20 @@ func (consentService *consentService) SearchConsentsDetailed(ctx context.Context
 	if err != nil {
 		logger.Error("Failed to search consents", log.Error(err))
 		return nil, serviceerror.CustomServiceError(ErrorInternalServerError, err.Error())
+	}
+
+	// Post-filter to the specific consents the delegate is authorized for.
+	// This prevents a delegate binding on one consent from granting visibility
+	// into all consents of the same principal.
+	if authorizedConsentIDSet != nil {
+		filtered := make([]model.Consent, 0, len(consents))
+		for _, c := range consents {
+			if authorizedConsentIDSet[c.ConsentID] {
+				filtered = append(filtered, c)
+			}
+		}
+		total = len(filtered)
+		consents = filtered
 	}
 
 	if len(consents) == 0 {
@@ -1960,7 +2016,6 @@ func (s *consentService) validatePurposes(
 			}
 		}
 
-		// Resolve ALL elements in the purpose (merge requested + missing)
 		// For elements in request: use their approval status and values
 		// For elements not in request: add with isUserApproved=false (user didn't approve)
 		allElements := make([]model.ConsentElementApprovalCreateRequest, 0, len(purposeElementsFromDB))

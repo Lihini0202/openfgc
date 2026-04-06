@@ -322,17 +322,20 @@ func (s *store) Search(ctx context.Context, filters model.ConsentSearchFilters) 
 		countArgs = append(countArgs, *filters.ToTime)
 	}
 
-	// Add dataPrincipalId filter (via JOIN with CONSENT_ATTRIBUTE)
+	// Add dataPrincipalId filter via INNER JOIN on CONSENT_ATTRIBUTE.
+	// The ATT_KEY predicate is pushed into the JOIN ON clause (not WHERE) so the
+	// join is narrowed before the WHERE filter runs, which reduces the number of
+	// rows the database needs to evaluate for both the count and select queries.
+	// model.AttrDelegationPrincipalID is used instead of a hardcoded literal so
+	// any future rename of the constant is automatically reflected here.
 	if filters.DataPrincipalID != "" {
 		joinClause += " INNER JOIN CONSENT_ATTRIBUTE ca_dp" +
 			" ON CONSENT.CONSENT_ID = ca_dp.CONSENT_ID" +
-			" AND CONSENT.ORG_ID = ca_dp.ORG_ID"
-		whereConditions = append(whereConditions,
-			"ca_dp.ATT_KEY = 'delegation.principal_id'")
-		whereConditions = append(whereConditions,
-			"ca_dp.ATT_VALUE = ?")
-		args = append(args, filters.DataPrincipalID)
-		countArgs = append(countArgs, filters.DataPrincipalID)
+			" AND CONSENT.ORG_ID = ca_dp.ORG_ID" +
+			" AND ca_dp.ATT_KEY = ?"
+		whereConditions = append(whereConditions, "ca_dp.ATT_VALUE = ?")
+		args = append(args, model.AttrDelegationPrincipalID, filters.DataPrincipalID)
+		countArgs = append(countArgs, model.AttrDelegationPrincipalID, filters.DataPrincipalID)
 	}
 
 	whereClause := strings.Join(whereConditions, " AND ")
