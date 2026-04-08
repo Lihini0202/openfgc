@@ -241,7 +241,8 @@ func IsConsentExpired(validityTime int64) bool {
 //     than intended. Omit for permanent delegations (power of attorney, permanent
 //     disability carer, etc.) where there is no natural expiry date.
 //  4. guardian.revocation_policy must be set to a valid value
-//  5. At least one authorization must have onBehalfOf = principal_id
+//  5. At least one authorization must have onBehalfOf = principal_id, sourced from
+//     either auth.Resources["onBehalfOf"] or auth.Delegation.PrincipalID
 func ValidateDelegationAttributes(
 	attributes map[string]string,
 	authorizations []model.AuthorizationAPIRequest,
@@ -325,18 +326,45 @@ func ValidateDelegationAttributes(
 	}
 
 	// At least one authorization must register a delegate for the principal.
+	//
+	// The principal can be identified via two paths:
+	//   1. auth.Resources["onBehalfOf"]  — legacy / direct JSON field
+	//   2. auth.Delegation.PrincipalID   — new typed delegation struct
+	//
+	// When both are present they must agree; a mismatch means the caller is
+	// trying to validate one principal and persist another.
 	found := false
 	for _, auth := range authorizations {
+		// Resolve the effective principal from the Delegation struct (new path).
+		effectivePrincipal := ""
+		if auth.Delegation != nil {
+			effectivePrincipal = strings.TrimSpace(auth.Delegation.PrincipalID)
+		}
+
+		// Resolve from Resources map (legacy path).
 		if resources, ok := auth.Resources.(map[string]interface{}); ok {
-			if onBehalfOf, _ := resources["onBehalfOf"].(string); onBehalfOf == principalID {
-				found = true
-				break
+			if onBehalfOf, _ := resources["onBehalfOf"].(string); onBehalfOf != "" {
+				// If Delegation was also set, the two values must agree.
+				if effectivePrincipal != "" && effectivePrincipal != onBehalfOf {
+					return fmt.Errorf(
+						"authorization delegation principal mismatch: delegation.principalId %q "+
+							"does not match resources.onBehalfOf %q",
+						effectivePrincipal, onBehalfOf,
+					)
+				}
+				effectivePrincipal = onBehalfOf
 			}
+		}
+
+		if effectivePrincipal == principalID {
+			found = true
+			break
 		}
 	}
 	if !found {
 		return fmt.Errorf(
-			"at least one authorization must include {\"onBehalfOf\": \"%s\"} "+
+			"at least one authorization must include onBehalfOf = %q "+
+				"(via resources or delegation.principalId) "+
 				"to register a delegate for the data principal", principalID)
 	}
 

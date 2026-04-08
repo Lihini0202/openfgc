@@ -578,9 +578,10 @@ func (consentService *consentService) SearchConsentsDetailed(ctx context.Context
 		return nil, serviceerror.CustomServiceError(ErrorInternalServerError, err.Error())
 	}
 
-	// Post-filter to the specific consents the delegate is authorized for.
-	// This prevents a delegate binding on one consent from granting visibility
-	// into all consents of the same principal.
+	// Post-filter to authorized consents to prevent unauthorized visibility.
+	// We correct `total` using authorizedConsentIDSet size because the DB count
+	// runs before this filter. Note: total may be higher than actual if extra
+	// filters (status/type) are applied.
 	if authorizedConsentIDSet != nil {
 		filtered := make([]model.Consent, 0, len(consents))
 		for _, c := range consents {
@@ -588,7 +589,7 @@ func (consentService *consentService) SearchConsentsDetailed(ctx context.Context
 				filtered = append(filtered, c)
 			}
 		}
-		total = len(filtered)
+		total = len(authorizedConsentIDSet)
 		consents = filtered
 	}
 
@@ -634,7 +635,6 @@ func (consentService *consentService) SearchConsentsDetailed(ctx context.Context
 	// Step 5: Assemble detailed responses
 	detailedResponses := make([]model.ConsentDetailResponse, 0, len(consents))
 	for _, consent := range consents {
-		// Build authorizations - initialize as empty slice
 		authorizations := make([]model.AuthorizationDetail, 0)
 		for _, auth := range authsByConsent[consent.ConsentID] {
 			var resources interface{}
@@ -657,23 +657,19 @@ func (consentService *consentService) SearchConsentsDetailed(ctx context.Context
 			})
 		}
 
-		// Resolve purposes for this consent
 		purposes, err := consentService.getResolvedConsentPurposes(ctx, consent.ConsentID, filters.OrgID)
 		if err != nil {
 			logger.Warn("Failed to resolve purposes for consent",
 				log.String("consent_id", consent.ConsentID),
 				log.Error(err))
-			// Continue with empty purposes rather than failing
 			purposes = []model.ConsentPurposeItem{}
 		}
 
-		// Get attributes (already grouped by consent ID)
 		attributes := attributesByConsent[consent.ConsentID]
 		if attributes == nil {
 			attributes = make(map[string]string)
 		}
 
-		// Dereference pointer fields for response
 		frequency := 0
 		if consent.ConsentFrequency != nil {
 			frequency = *consent.ConsentFrequency
@@ -705,10 +701,8 @@ func (consentService *consentService) SearchConsentsDetailed(ctx context.Context
 			DataAccessValidityDuration: dataAccessValidityDuration,
 			Attributes:                 attributes,
 			Authorizations:             authorizations,
-			// DelegationExpired is true when the guardian period has passed.
-			// The data principal (now adult/capable) holds full authority.
-			// The portal uses this flag to prompt the principal to review inherited consents.
-			DelegationExpired: parseDelegationConfig(attributes).IsGuardianConsent() && parseDelegationConfig(attributes).IsExpired(),
+			// True when guardian period ends; prompts principal to review inherited consents.
+			IsDelegationExpired: parseDelegationConfig(attributes).IsGuardianConsent() && parseDelegationConfig(attributes).IsExpired(),
 		})
 	}
 

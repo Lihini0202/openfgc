@@ -579,10 +579,12 @@ type ConsentDetailResponse struct {
 	DataAccessValidityDuration int64                 `json:"dataAccessValidityDuration"`
 	Attributes                 map[string]string     `json:"attributes"`
 	Authorizations             []AuthorizationDetail `json:"authorizations"`
-	// DelegationExpired is true when guardian.valid_until has passed.
+	// IsDelegationExpired is true when guardian.valid_until has passed.
 	// The principal is now an adult or has regained capacity. The portal should
 	// prompt them to review and re-confirm or revoke inherited consents.
-	DelegationExpired bool `json:"delegationExpired,omitempty"`
+	// Uses the same wire name as DelegateListResponse so clients see one
+	// canonical field name for this concept across all consent endpoints.
+	IsDelegationExpired bool `json:"isDelegationExpired,omitempty"`
 }
 
 // AuthorizationDetail represents authorization resource details

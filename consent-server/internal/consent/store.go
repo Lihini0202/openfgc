@@ -321,21 +321,24 @@ func (s *store) Search(ctx context.Context, filters model.ConsentSearchFilters) 
 		args = append(args, *filters.ToTime)
 		countArgs = append(countArgs, *filters.ToTime)
 	}
+	// Filter by dataPrincipalId via INNER JOIN on CONSENT_ATTRIBUTE.
+	// The attribute key predicate is pushed into the JOIN ON clause to optimize
+	// query performance by narrowing the join before the WHERE filter runs.
+	//
+	// CRITICAL: joinArgs must be prepended (not appended) to the final argument
+	// list. Since the JOIN clause appears before the WHERE clause in the SQL,
+	// its placeholder must be position #1 to prevent parameter shifting.
 
-	// Add dataPrincipalId filter via INNER JOIN on CONSENT_ATTRIBUTE.
-	// The ATT_KEY predicate is pushed into the JOIN ON clause (not WHERE) so the
-	// join is narrowed before the WHERE filter runs, which reduces the number of
-	// rows the database needs to evaluate for both the count and select queries.
-	// model.AttrDelegationPrincipalID is used instead of a hardcoded literal so
-	// any future rename of the constant is automatically reflected here.
+	joinArgs := make([]interface{}, 0, 1)
 	if filters.DataPrincipalID != "" {
 		joinClause += " INNER JOIN CONSENT_ATTRIBUTE ca_dp" +
 			" ON CONSENT.CONSENT_ID = ca_dp.CONSENT_ID" +
 			" AND CONSENT.ORG_ID = ca_dp.ORG_ID" +
 			" AND ca_dp.ATT_KEY = ?"
 		whereConditions = append(whereConditions, "ca_dp.ATT_VALUE = ?")
-		args = append(args, model.AttrDelegationPrincipalID, filters.DataPrincipalID)
-		countArgs = append(countArgs, model.AttrDelegationPrincipalID, filters.DataPrincipalID)
+		joinArgs = append(joinArgs, model.AttrDelegationPrincipalID)
+		args = append(args, filters.DataPrincipalID)
+		countArgs = append(countArgs, filters.DataPrincipalID)
 	}
 
 	whereClause := strings.Join(whereConditions, " AND ")
@@ -344,12 +347,14 @@ func (s *store) Search(ctx context.Context, filters model.ConsentSearchFilters) 
 	countQuery := fmt.Sprintf("SELECT COUNT(DISTINCT CONSENT.CONSENT_ID) as count FROM CONSENT%s WHERE %s",
 		joinClause, whereClause)
 
-	// Execute count query
+	// Execute count query.
+	// joinArgs must come first: their placeholder(s) appear in the JOIN ON clause
+	// which is rendered before the WHERE clause in the SQL string.
 	countRows, err := dbClient.Query(dbmodel.DBQuery{
 		ID:            "COUNT_SEARCH_RESULTS",
 		Query:         countQuery,
 		PostgresQuery: dbutils.ConvertToPostgresParams(countQuery),
-	}, countArgs...)
+	}, append(joinArgs, countArgs...)...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -376,12 +381,13 @@ func (s *store) Search(ctx context.Context, filters model.ConsentSearchFilters) 
 	// Add pagination parameters
 	args = append(args, filters.Limit, filters.Offset)
 
-	// Execute search query
+	// Execute search query.
+	// joinArgs must come first for the same reason as the count query above.
 	rows, err := dbClient.Query(dbmodel.DBQuery{
 		ID:            "SEARCH_CONSENTS",
 		Query:         selectQuery,
 		PostgresQuery: dbutils.ConvertToPostgresParams(selectQuery),
-	}, args...)
+	}, append(joinArgs, args...)...)
 	if err != nil {
 		return nil, 0, err
 	}
