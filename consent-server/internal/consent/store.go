@@ -249,6 +249,17 @@ func (s *store) Search(ctx context.Context, filters model.ConsentSearchFilters) 
 	args := []interface{}{filters.OrgID}
 	countArgs := []interface{}{filters.OrgID}
 
+	// Add AuthorizedConsentIDs filter (IN clause) - OPTION 1 PAGINATION FIX
+	if len(filters.AuthorizedConsentIDs) > 0 {
+		placeholders := make([]string, len(filters.AuthorizedConsentIDs))
+		for i, id := range filters.AuthorizedConsentIDs {
+			placeholders[i] = "?"
+			args = append(args, id)
+			countArgs = append(countArgs, id)
+		}
+		whereConditions = append(whereConditions, fmt.Sprintf("CONSENT.CONSENT_ID IN (%s)", strings.Join(placeholders, ",")))
+	}
+
 	// Add consentTypes filter (IN clause)
 	if len(filters.ConsentTypes) > 0 {
 		placeholders := make([]string, len(filters.ConsentTypes))
@@ -321,6 +332,7 @@ func (s *store) Search(ctx context.Context, filters model.ConsentSearchFilters) 
 		args = append(args, *filters.ToTime)
 		countArgs = append(countArgs, *filters.ToTime)
 	}
+
 	// Filter by dataPrincipalId via INNER JOIN on CONSENT_ATTRIBUTE.
 	// The attribute key predicate is pushed into the JOIN ON clause to optimize
 	// query performance by narrowing the join before the WHERE filter runs.

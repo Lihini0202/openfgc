@@ -562,6 +562,10 @@ type ConsentSearchFilters struct {
 	// Required when DataPrincipalID is set so the service can verify
 	// the caller is an authorised delegate before returning results.
 	CallerID string
+	// AuthorizedConsentIDs is a list of consent IDs that the caller is explicitly
+	// authorized to see. If non-nil, the DB search will be restricted to ONLY these IDs.
+	// This ensures pagination limits and offsets are applied accurately by the database.
+	AuthorizedConsentIDs []string
 }
 
 // ConsentDetailResponse represents a detailed consent with related data

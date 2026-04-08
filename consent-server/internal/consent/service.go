@@ -525,11 +525,6 @@ func (consentService *consentService) SearchConsentsDetailed(ctx context.Context
 	//
 	// Failing open (skipping this check when CallerID is empty) would allow any
 	// caller to read another person's consents simply by omitting X-User-ID.
-	//
-	// authorizedConsentIDSet:
-	//   nil  → caller is the principal; no per-consent filter needed.
-	//   non-nil → caller is a delegate; restrict results to these consent IDs.
-	var authorizedConsentIDSet map[string]bool
 	if filters.DataPrincipalID != "" {
 		// Require an explicit caller identity — no anonymous access to another
 		// principal's consents.
@@ -552,9 +547,7 @@ func (consentService *consentService) SearchConsentsDetailed(ctx context.Context
 			return nil, serviceerror.CustomServiceError(ErrorInternalServerError, authErr.Error())
 		}
 
-		// authorizedIDs == nil  → callerID == principalID (self-access, unrestricted).
 		// authorizedIDs == []   → no valid delegate binding found; deny.
-		// authorizedIDs non-empty → restrict to those specific consent IDs.
 		if authorizedIDs != nil && len(authorizedIDs) == 0 {
 			logger.Warn("Caller not authorized for principal",
 				log.String("caller_id", filters.CallerID),
@@ -565,14 +558,11 @@ func (consentService *consentService) SearchConsentsDetailed(ctx context.Context
 					filters.CallerID, filters.DataPrincipalID),
 			)
 		}
+
+		// Pass the authorized IDs directly to the DB filters so pagination works natively
 		if authorizedIDs != nil {
-			// Build a set for O(1) lookup during post-filter.
-			authorizedConsentIDSet = make(map[string]bool, len(authorizedIDs))
-			for _, id := range authorizedIDs {
-				authorizedConsentIDSet[id] = true
-			}
+			filters.AuthorizedConsentIDs = authorizedIDs
 		}
-		// authorizedIDs == nil: principal self-access; authorizedConsentIDSet stays nil.
 	}
 	// ── end delegate authorization check ─────────────────────────────────────
 
@@ -584,26 +574,11 @@ func (consentService *consentService) SearchConsentsDetailed(ctx context.Context
 		return nil, serviceerror.CustomServiceError(ErrorInternalServerError, err.Error())
 	}
 
-	// Post-filter to authorized consents to prevent unauthorized visibility.
-	// We correct `total` using authorizedConsentIDSet size because the DB count
-	// runs before this filter. Note: total may be higher than actual if extra
-	// filters (status/type) are applied.
-	if authorizedConsentIDSet != nil {
-		filtered := make([]model.Consent, 0, len(consents))
-		for _, c := range consents {
-			if authorizedConsentIDSet[c.ConsentID] {
-				filtered = append(filtered, c)
-			}
-		}
-		total = len(authorizedConsentIDSet)
-		consents = filtered
-	}
-
 	if len(consents) == 0 {
 		return &model.ConsentDetailSearchResponse{
 			Data: []model.ConsentDetailResponse{},
 			Metadata: model.ConsentSearchMetadata{
-				Total:  0,
+				Total:  0, // Will be 0 because result set is empty
 				Limit:  filters.Limit,
 				Offset: filters.Offset,
 				Count:  0,
