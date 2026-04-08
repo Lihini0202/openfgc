@@ -125,6 +125,9 @@ func (consentService *consentService) isCallerAuthorizedForPrincipal(
 		// Load attributes to check whether the delegation period is still active.
 		attributes, err := consentStore.GetAttributesByConsentID(ctx, consentID, orgID)
 		if err != nil {
+			log.GetLogger().WithContext(ctx).Warn("Skipping consent in delegate check due to attribute read error",
+				log.Error(err),
+				log.String("consent_id", consentID))
 			continue
 		}
 		attMap := make(map[string]string)
@@ -143,6 +146,9 @@ func (consentService *consentService) isCallerAuthorizedForPrincipal(
 		// different principal's data.
 		authResources, err := consentService.stores.AuthResource.GetByConsentID(ctx, consentID, orgID)
 		if err != nil {
+			log.GetLogger().WithContext(ctx).Warn("Skipping consent in delegate check due to auth resource read error",
+				log.Error(err),
+				log.String("consent_id", consentID))
 			continue
 		}
 		for _, ar := range authResources {
@@ -687,6 +693,8 @@ func (consentService *consentService) SearchConsentsDetailed(ctx context.Context
 			dataAccessValidityDuration = *consent.DataAccessValidityDuration
 		}
 
+		delegCfg := parseDelegationConfig(attributes)
+
 		detailedResponses = append(detailedResponses, model.ConsentDetailResponse{
 			ID:                         consent.ConsentID,
 			Purposes:                   purposes,
@@ -702,7 +710,7 @@ func (consentService *consentService) SearchConsentsDetailed(ctx context.Context
 			Attributes:                 attributes,
 			Authorizations:             authorizations,
 			// True when guardian period ends; prompts principal to review inherited consents.
-			IsDelegationExpired: parseDelegationConfig(attributes).IsGuardianConsent() && parseDelegationConfig(attributes).IsExpired(),
+			IsDelegationExpired: delegCfg.IsGuardianConsent() && delegCfg.IsExpired(),
 		})
 	}
 
@@ -1202,7 +1210,13 @@ func (consentService *consentService) RevokeConsent(ctx context.Context, consent
 					// Delegate attempting revocation under ANY policy.
 					// Check: delegate must have canRevoke=true on the delegation row for principalID.
 					approvedStatus := string(config.Get().Consent.AuthStatusMappings.ApprovedState)
-					authResources, _ := consentService.stores.AuthResource.GetByConsentID(ctx, consentID, orgID)
+					authResources, arErr := consentService.stores.AuthResource.GetByConsentID(ctx, consentID, orgID)
+					if arErr != nil {
+						logger.Error("Failed to load auth resources for delegate revocation check",
+							log.Error(arErr),
+							log.String("consent_id", consentID))
+						return nil, serviceerror.CustomServiceError(ErrorInternalServerError, arErr.Error())
+					}
 					callerCanRevoke := false
 					for _, ar := range authResources {
 						if ar.UserID == nil || *ar.UserID != callerID {

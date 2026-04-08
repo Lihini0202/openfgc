@@ -63,6 +63,17 @@ func (h *consentHandler) createConsent(w http.ResponseWriter, r *http.Request) {
 	// This field is NOT read from JSON (tagged json:"-")
 	req.CallerID = r.Header.Get("X-User-ID")
 
+	// Propagate the explicitly provided PrincipalID into the attributes map
+	// so that delegation validation and downstream processing can safely use it.
+	if req.PrincipalID != "" {
+		if req.Attributes == nil {
+			req.Attributes = make(map[string]string)
+		}
+		// Uses the canonical constant (e.g. "delegation.principal_id") to ensure the
+		// validator and storage layers interpret the field properly.
+		req.Attributes[model.AttrDelegationPrincipalID] = req.PrincipalID
+	}
+
 	// Validate delegation attributes here in the handler so the check runs even
 	// when the service is mocked in tests. ValidateDelegationAttributes is a no-op
 	// when delegation.type is not present in Attributes.
