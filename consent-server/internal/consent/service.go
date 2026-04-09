@@ -23,6 +23,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"strings"
 
 	authmodel "github.com/wso2/openfgc/internal/authresource/model"
 	"github.com/wso2/openfgc/internal/consent/model"
@@ -67,17 +68,24 @@ func newConsentService(registry *stores.StoreRegistry) ConsentService {
 // and returns a DelegationConfig. Returns an empty DelegationConfig (IsGuardianConsent=false)
 // when no delegation.type attribute is present.
 func parseDelegationConfig(attMap map[string]string) model.DelegationConfig {
+	delegationType := strings.TrimSpace(attMap[model.AttrDelegationType])
+	principalID := strings.TrimSpace(attMap[model.AttrDelegationPrincipalID])
+	revocationPolicy := model.RevocationPolicy(strings.TrimSpace(attMap[model.AttrGuardianRevocationPolicy]))
+
 	validUntil := int64(0)
-	if s := attMap[model.AttrGuardianValidUntil]; s != "" {
+	if s := strings.TrimSpace(attMap[model.AttrGuardianValidUntil]); s != "" {
 		if ts, err := strconv.ParseInt(s, 10, 64); err == nil {
 			validUntil = ts
+		} else {
+			validUntil = 0
 		}
 	}
+
 	return model.DelegationConfig{
-		Type:             attMap[model.AttrDelegationType],
-		PrincipalID:      attMap[model.AttrDelegationPrincipalID],
+		Type:             delegationType,
+		PrincipalID:      principalID,
 		ValidUntil:       validUntil,
-		RevocationPolicy: model.RevocationPolicy(attMap[model.AttrGuardianRevocationPolicy]),
+		RevocationPolicy: revocationPolicy,
 	}
 }
 
@@ -547,8 +555,11 @@ func (consentService *consentService) SearchConsentsDetailed(ctx context.Context
 			return nil, serviceerror.CustomServiceError(ErrorInternalServerError, authErr.Error())
 		}
 
-		// authorizedIDs == []   → no valid delegate binding found; deny.
-		if authorizedIDs != nil && len(authorizedIDs) == 0 {
+		if authorizedIDs == nil {
+			// callerID == principalID — unrestricted self-access.
+			// Clear DataPrincipalID so the store does not filter by delegation attribute.
+			filters.DataPrincipalID = ""
+		} else if len(authorizedIDs) == 0 {
 			logger.Warn("Caller not authorized for principal",
 				log.String("caller_id", filters.CallerID),
 				log.String("principal_id", filters.DataPrincipalID))
@@ -557,10 +568,8 @@ func (consentService *consentService) SearchConsentsDetailed(ctx context.Context
 				fmt.Sprintf("caller '%s' is not a registered delegate for principal '%s'",
 					filters.CallerID, filters.DataPrincipalID),
 			)
-		}
-
-		// Pass the authorized IDs directly to the DB filters so pagination works natively
-		if authorizedIDs != nil {
+		} else {
+			// Pass the authorized IDs directly to the DB filters so pagination works natively
 			filters.AuthorizedConsentIDs = authorizedIDs
 		}
 	}
