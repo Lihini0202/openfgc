@@ -1012,7 +1012,7 @@ func TestListConsents_UnauthorizedForPrincipal(t *testing.T) {
 				f.CallerID == "some_caller_999"
 		}),
 	).Return(nil, serviceerror.CustomServiceError(
-		ErrorUnauthorized,
+		ErrorNotAuthorizedForPrincipal,
 		"not allowed to access this principal",
 	))
 

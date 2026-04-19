@@ -203,7 +203,7 @@ func EvaluateConsentStatusFromAuthStatuses(authStatuses []string) string {
 	}
 }
 
-// IsExpired checks if a given validity time has expired
+// IsConsentExpired checks if a given validity time has expired
 func IsConsentExpired(validityTime int64) bool {
 	if validityTime == 0 {
 		return false // No expiry set
@@ -235,7 +235,9 @@ func IsConsentExpired(validityTime int64) bool {
 //
 // Rules enforced:
 //  1. delegation.principal_id must be provided
-//  2. The caller (X-User-ID) must NOT equal the principal_id — cannot self-delegate
+//  2. No delegate (auth.UserID) may equal the principal_id — that is circular.
+//     The caller may legitimately be the principal when proactively setting up
+//     delegation over their own data (e.g. capable adult initiating power of attorney).
 //  3. guardian.valid_until — OPTIONAL. When provided it must be a future Unix timestamp
 //     in seconds. Millisecond values are rejected to avoid delegations ~1000x longer
 //     than intended. Omit for permanent delegations (power of attorney, permanent
@@ -268,11 +270,37 @@ func ValidateDelegationAttributes(
 			"caller identity (X-User-ID) is required when delegation.type is set")
 	}
 
-	// The person giving consent must not be the same as the data subject.
-	// Applies to all delegation types: parental, carer, power-of-attorney, etc.
+	// The delegate being granted authority must not be the same as the data principal.
+	// That would be circular — a person cannot be delegated authority over their own consent.
+	// The caller MAY be the principal: a capable adult proactively setting up power of
+	// attorney for someone else over their own data is a valid real-world scenario.
+	for _, auth := range authorizations {
+		delegateUserID := strings.TrimSpace(auth.UserID)
+		if delegateUserID != "" && delegateUserID == principalID {
+			return fmt.Errorf(
+				"delegate userId '%s' cannot be the same as the data principal; "+
+					"a person cannot be delegated authority over their own consent",
+				delegateUserID)
+		}
+	}
+
+	// If the caller IS the principal, at least one real delegate with a different
+	// userId must be registered — otherwise there is no actual delegation happening.
 	if callerID == principalID {
-		return fmt.Errorf(
-			"caller '%s' cannot be both the delegator and the data principal", callerID)
+		hasRealDelegate := false
+		for _, auth := range authorizations {
+			delegateUserID := strings.TrimSpace(auth.UserID)
+			if delegateUserID != "" && delegateUserID != principalID {
+				hasRealDelegate = true
+				break
+			}
+		}
+		if !hasRealDelegate {
+			return fmt.Errorf(
+				"when caller is the data principal, at least one authorization must "+
+					"register a delegate with a different userId for principal '%s'",
+				principalID)
+		}
 	}
 
 	// guardian.valid_until is OPTIONAL — permanent delegations (e.g., power of attorney
@@ -308,19 +336,23 @@ func ValidateDelegationAttributes(
 	if policy == "" {
 		return fmt.Errorf(
 			"guardian.revocation_policy is required for delegated consents; "+
-				"valid values: %s, %s",
+				"valid values: %s, %s or %s",
 			model.RevocationPolicyAny,
 			model.RevocationPolicySubjectOnly,
+			model.RevocationPolicyBoth,
 		)
 	}
 	switch model.RevocationPolicy(policy) {
-	case model.RevocationPolicyAny, model.RevocationPolicySubjectOnly:
+	case model.RevocationPolicyAny,
+		model.RevocationPolicySubjectOnly,
+		model.RevocationPolicyBoth:
 
 	default:
 		return fmt.Errorf(
-			"guardian.revocation_policy must be %s or %s, got: %s",
+			"guardian.revocation_policy must be %s, %s or %s, got: %s",
 			model.RevocationPolicyAny,
 			model.RevocationPolicySubjectOnly,
+			model.RevocationPolicyBoth,
 			policy,
 		)
 	}

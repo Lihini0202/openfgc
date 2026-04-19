@@ -518,12 +518,15 @@ func TestValidateDelegation_CallerIsPrincipal(t *testing.T) {
 	}
 
 	auths := []model.AuthorizationAPIRequest{
-		{Type: "delegate", Resources: map[string]interface{}{"onBehalfOf": "user-123"}},
+		{
+			Type:      "delegate",
+			UserID:    "user-123",
+			Resources: map[string]interface{}{"onBehalfOf": "user-123"},
+		},
 	}
-
 	err := validator.ValidateDelegationAttributes(attrs, auths, "user-123")
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "cannot be both the delegator and the data principal")
+	require.Contains(t, err.Error(), "cannot be the same as the data principal")
 }
 
 // valid delegation → expect no error

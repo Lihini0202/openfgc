@@ -59,6 +59,8 @@ const (
 	RevocationPolicyAny RevocationPolicy = "ANY"
 	// RevocationPolicySubjectOnly allows only the data principal to revoke.
 	RevocationPolicySubjectOnly RevocationPolicy = "SUBJECT_ONLY"
+	// RevocationPolicyBoth allows both the data principal and authorized delegates to revoke.
+	RevocationPolicyBoth RevocationPolicy = "BOTH"
 )
 
 // DelegationConfig is a parsed view of the delegation CONSENT_ATTRIBUTE rows.

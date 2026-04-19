@@ -58,8 +58,9 @@ func (h *consentHandler) createConsent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Set CallerID from X-User-ID header so delegation validation in the service
-	// can enforce that a person cannot create a delegated consent for themselves.
+	// Set CallerID from X-User-ID header so delegation validation can detect
+	// circular self-delegation (where the delegate being registered is the
+	// same person as the data principal).
 	// This field is NOT read from JSON (tagged json:"-")
 	req.CallerID = r.Header.Get("X-User-ID")
 

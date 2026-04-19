@@ -1122,9 +1122,10 @@ func (consentService *consentService) RevokeConsent(ctx context.Context, consent
 	// parseDelegationConfig returns IsGuardianConsent()=false.
 	//
 	// For delegated consents the rules are:
-	//   if delegation expired  → only the principal (now adult) may revoke
-	//   if delegation active   → principal cannot revoke directly (guardian controls)
-	//   if delegation active   → delegate must have canRevoke=true AND policy≠SUBJECT_ONLY
+	//   if delegation expired       → only the principal (now adult) may revoke
+	//   if policy = SUBJECT_ONLY    → only the principal may revoke; delegates blocked
+	//   if policy = ANY             → only delegates with canRevoke=true may revoke; principal blocked
+	//   if policy = BOTH            → both principal and delegates with canRevoke=true may revoke
 	{
 		attributes, attErr := store.GetAttributesByConsentID(ctx, consentID, orgID)
 		if attErr != nil {
@@ -1164,7 +1165,8 @@ func (consentService *consentService) RevokeConsent(ctx context.Context, consent
 			} else {
 
 				// SUBJECT_ONLY means only the principal may revoke; delegates are blocked.
-				// ANY means both the principal and permitted delegates may revoke.
+				// ANY means only delegates with canRevoke=true may revoke; principal is blocked.
+				// BOTH means both the principal and delegates with canRevoke=true may revoke.
 				if delegCfg.RevocationPolicy == model.RevocationPolicySubjectOnly {
 					if !isPrincipal {
 						// Delegate blocked by policy.
@@ -1180,18 +1182,28 @@ func (consentService *consentService) RevokeConsent(ctx context.Context, consent
 						log.String("principal_id", principalID))
 
 				} else if isPrincipal {
-					// Active guardianship with ANY policy: block the principal from
-					// revoking directly — the guardian controls this consent while active.
-					logger.Warn("Revocation denied: principal cannot revoke under active guardianship",
-						log.String("principal_id", principalID))
-					return nil, serviceerror.CustomServiceError(
-						ErrorRevocationNotPermitted,
-						"the data principal cannot revoke a guardian-controlled consent directly; "+
-							"contact your guardian",
-					)
+					// BOTH policy: both the principal and delegate may revoke.
+					// Used for capable adults — power of attorney, voluntary
+					// assisted delegation, any scenario where the data subject
+					// retains full authority alongside their delegate.
+					if delegCfg.RevocationPolicy == model.RevocationPolicyBoth {
+						logger.Debug("BOTH policy: principal revoking their own consent",
+							log.String("principal_id", principalID))
+						// Fall through — allow revocation to continue.
+					} else {
+						// ANY policy: guardian controls this consent while active.
+						// Principal (e.g. minor child) cannot override the guardian.
+						logger.Warn("Revocation denied: principal cannot revoke under active guardianship",
+							log.String("principal_id", principalID))
+						return nil, serviceerror.CustomServiceError(
+							ErrorRevocationNotPermitted,
+							"the data principal cannot revoke a guardian-controlled consent directly; "+
+								"contact your guardian",
+						)
+					}
 
 				} else {
-					// Delegate attempting revocation under ANY policy.
+					// Delegate attempting revocation under ANY or BOTH policy.
 					// Check: delegate must have canRevoke=true on the delegation row for principalID.
 					approvedStatus := string(config.Get().Consent.AuthStatusMappings.ApprovedState)
 					authResources, arErr := consentService.stores.AuthResource.GetByConsentID(ctx, consentID, orgID)
