@@ -235,7 +235,7 @@ func IsConsentExpired(validityTime int64) bool {
 
 	// Detect if timestamp is in seconds or milliseconds
 	// A reasonable cutoff: timestamps > 10^11 are likely in milliseconds
-	// This works until year 5138 in seconds
+	// This works until year 5138 in seconds (safely covers our use case)
 	const timestampCutoff = 100000000000 // 10^11
 
 	var validityTimeMillis int64
@@ -275,8 +275,8 @@ func ValidateDelegationAttributes(
 	callerID string,
 ) error {
 	// Not a delegated consent — skip all delegation checks.
-	delegationType := attributes[model.AttrDelegationType]
-	if strings.TrimSpace(delegationType) == "" {
+	delegationType := strings.TrimSpace(attributes[model.AttrDelegationType])
+	if delegationType == "" {
 		return nil
 	}
 
@@ -316,7 +316,7 @@ func ValidateDelegationAttributes(
 		// DPDP Section 9 and the stated design requirement.
 		// Non-parental delegation types (guardian, carer, power_of_attorney) are still
 		// allowed because a capable adult may legitimately initiate those over their own data.
-		if delegationType == "parental_biological" || delegationType == "parental_legal" {
+		if delegationType == "parental" || delegationType == "parental_biological" || delegationType == "parental_legal" {
 			return fmt.Errorf(
 				"parental delegation must be initiated by the parent, not the data principal; "+
 					"caller '%s' cannot be the principal for delegation.type '%s'",
@@ -408,6 +408,7 @@ func ValidateDelegationAttributes(
 			effectivePrincipal = strings.TrimSpace(auth.Delegation.PrincipalID)
 		}
 
+		// Resolve from Resources map (legacy path).
 		if resources, ok := auth.Resources.(map[string]interface{}); ok {
 			if onBehalfOf, _ := resources["onBehalfOf"].(string); onBehalfOf != "" {
 				// If Delegation was also set, the two values must agree.

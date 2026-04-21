@@ -83,7 +83,7 @@ func (d DelegationConfig) IsExpired() bool {
 	if d.ValidUntil == 0 {
 		return false
 	}
-	return time.Now().Unix() > d.ValidUntil
+	return time.Now().Unix() >= d.ValidUntil
 }
 
 // ─── end delegation support ───────────────────────────────────────────────────
@@ -553,18 +553,28 @@ type ConsentSearchMetadata struct {
 
 // ConsentSearchFilters represents search criteria for consents
 type ConsentSearchFilters struct {
-	ConsentTypes         []string // e.g., ["accounts", "payments"]
-	ConsentStatuses      []string // e.g., ["active", "revoked"]
-	ClientIDs            []string // TPP client IDs
-	UserIDs              []string // End-user IDs
-	PurposeNames         []string // Purpose names - returns consents containing ANY of these purposes
-	FromTime             *int64   // Unix timestamp - start of time window
-	ToTime               *int64   // Unix timestamp - end of time window
-	Limit                int
-	Offset               int
-	OrgID                string
-	DataPrincipalID      string
-	CallerID             string
+	ConsentTypes    []string // e.g., ["accounts", "payments"]
+	ConsentStatuses []string // e.g., ["active", "revoked"]
+	ClientIDs       []string // TPP client IDs
+	UserIDs         []string // End-user IDs
+	PurposeNames    []string // Purpose names - returns consents containing ANY of these purposes
+	FromTime        *int64   // Unix timestamp - start of time window
+	ToTime          *int64   // Unix timestamp - end of time window
+	Limit           int
+	Offset          int
+	OrgID           string
+	// DataPrincipalID filters consents by the data subject stored in
+	// CONSENT_ATTRIBUTE (key = delegation.principal_id).
+	// Use this when a parent/guardian wants to see consents for their child.
+	// The service will verify CallerID is an authorised delegate.
+	DataPrincipalID string
+	// CallerID is the authenticated user making the list request.
+	// Required when DataPrincipalID is set so the service can verify
+	// the caller is an authorised delegate before returning results.
+	CallerID string
+	// AuthorizedConsentIDs is a list of consent IDs that the caller is explicitly
+	// authorized to see. If non-nil, the DB search will be restricted to ONLY these IDs.
+	// This ensures pagination limits and offsets are applied accurately by the database.
 	AuthorizedConsentIDs []string
 }
 
@@ -588,7 +598,7 @@ type ConsentDetailResponse struct {
 	// prompt them to review and re-confirm or revoke inherited consents.
 	// Uses the same wire name as DelegateListResponse so clients see one
 	// canonical field name for this concept across all consent endpoints.
-	IsDelegationExpired bool `json:"isDelegationExpired,omitempty"`
+	IsDelegationExpired bool `json:"isDelegationExpired"`
 }
 
 // AuthorizationDetail represents authorization resource details

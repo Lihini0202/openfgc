@@ -70,9 +70,19 @@ func (h *consentHandler) createConsent(w http.ResponseWriter, r *http.Request) {
 		if req.Attributes == nil {
 			req.Attributes = make(map[string]string)
 		}
+		principalID := strings.TrimSpace(req.PrincipalID)
+		// If the caller also set delegation.principal_id directly in attributes,
+		// the two values must agree — reject mismatches rather than silently overwriting.
+		if existing := strings.TrimSpace(req.Attributes[model.AttrDelegationPrincipalID]); existing != "" && existing != principalID {
+			utils.SendError(w, r, serviceerror.CustomServiceError(
+				ErrorInvalidDelegation,
+				"principalId must match attributes.delegation.principal_id",
+			))
+			return
+		}
 		// Uses the canonical constant (e.g. "delegation.principal_id") to ensure the
 		// validator and storage layers interpret the field properly.
-		req.Attributes[model.AttrDelegationPrincipalID] = req.PrincipalID
+		req.Attributes[model.AttrDelegationPrincipalID] = principalID
 	}
 
 	// Validate delegation attributes here in the handler so the check runs even

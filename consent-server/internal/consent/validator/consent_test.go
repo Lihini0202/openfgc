@@ -249,6 +249,7 @@ func TestValidateConsentUpdateRequest_NonDelegationAttr_Allowed(t *testing.T) {
 
 // TestValidateDelegation_MinorCannotSelfInitiateParental ensures a minor (caller == principal)
 // cannot self-initiate a parental delegation. Only the parent can initiate parental consent.
+// This enforces Feedback 1 from the DPDP scenario.
 func TestValidateDelegation_MinorCannotSelfInitiateParental(t *testing.T) {
 	attrs := map[string]string{
 		model.AttrDelegationType:           "parental_biological",
@@ -311,8 +312,12 @@ func TestValidateConsentUpdateRequest_ConvertToSelfConsent_BypassesImmutability(
 
 	// With convertToSelfConsent=true, the SAME request must PASS the validator
 	// (service layer does the real checks: expired? principal? delegated?)
+	// Include protected delegation attributes to explicitly verify the bypass.
 	reqAllowed := model.ConsentAPIUpdateRequest{
 		ConvertToSelfConsent: true,
+		Attributes: map[string]string{
+			model.AttrDelegationType: "parental_biological",
+		},
 	}
 	err = ValidateConsentUpdateRequest(reqAllowed)
 	require.NoError(t, err)

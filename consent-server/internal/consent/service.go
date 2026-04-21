@@ -587,7 +587,7 @@ func (consentService *consentService) SearchConsentsDetailed(ctx context.Context
 		return &model.ConsentDetailSearchResponse{
 			Data: []model.ConsentDetailResponse{},
 			Metadata: model.ConsentSearchMetadata{
-				Total:  0, // Will be 0 because result set is empty
+				Total:  total, // Preserve store-reported total so pagination metadata is correct
 				Limit:  filters.Limit,
 				Offset: filters.Offset,
 				Count:  0,
@@ -768,84 +768,90 @@ func (consentService *consentService) UpdateConsent(ctx context.Context, req mod
 	//                            where the guardian controls modifications)
 	//   if caller == delegate  → the delegate row must have canModify=true AND
 	//                            onBehalfOf == principalID
-	if req.CallerID != "" {
+	{
 		attributes, attErr := consentStore.GetAttributesByConsentID(ctx, consentID, orgID)
-		if attErr == nil {
-			attMap := make(map[string]string)
-			for _, a := range attributes {
-				attMap[a.AttKey] = a.AttValue
+		if attErr != nil {
+			logger.Error("Failed to load delegation attributes for modify check",
+				log.Error(attErr), log.String("consent_id", consentID))
+			return nil, serviceerror.CustomServiceError(ErrorInternalServerError, attErr.Error())
+		}
+		attMap := make(map[string]string)
+		for _, a := range attributes {
+			attMap[a.AttKey] = a.AttValue
+		}
+		delegCfg := parseDelegationConfig(attMap)
+
+		if delegCfg.IsGuardianConsent() {
+			principalID := delegCfg.PrincipalID
+			callerID := strings.TrimSpace(req.CallerID)
+			if callerID == "" {
+				return nil, serviceerror.CustomServiceError(
+					ErrorNotAuthorizedForPrincipal,
+					"caller identity is required to update a delegated consent",
+				)
 			}
-			delegCfg := parseDelegationConfig(attMap)
+			isPrincipal := callerID == principalID
 
-			if delegCfg.IsGuardianConsent() {
-				principalID := delegCfg.PrincipalID
-				callerID := req.CallerID
-				isPrincipal := callerID == principalID
-
-				if delegCfg.IsExpired() {
-					if !isPrincipal {
-						logger.Warn("Update denied: delegation expired, caller is not principal",
-							log.String("caller_id", callerID),
-							log.String("principal_id", principalID))
-						return nil, serviceerror.CustomServiceError(
-							ErrorDelegationExpired,
-							fmt.Sprintf("delegation for principal '%s' has expired; "+
-								"only the principal may modify this consent", principalID),
-						)
-					}
-				} else if isPrincipal && delegCfg.RevocationPolicy == model.RevocationPolicyAny {
-					// Active ANY-policy delegation: guardian controls modifications too.
-					logger.Warn("Update denied: principal cannot modify under active ANY-policy guardianship",
+			if delegCfg.IsExpired() {
+				if !isPrincipal {
+					logger.Warn("Update denied: delegation expired, caller is not principal",
+						log.String("caller_id", callerID),
 						log.String("principal_id", principalID))
 					return nil, serviceerror.CustomServiceError(
-						ErrorRevocationNotPermitted,
-						"the data principal cannot modify a guardian-controlled consent directly; "+
-							"contact your guardian",
+						ErrorDelegationExpired,
+						fmt.Sprintf("delegation for principal '%s' has expired; "+
+							"only the principal may modify this consent", principalID),
 					)
-				} else if !isPrincipal {
-					// Caller is a (claimed) delegate — must have canModify=true for this principal.
-					approvedStatus := string(config.Get().Consent.AuthStatusMappings.ApprovedState)
-					authResources, arErr := authResourceStore.GetByConsentID(ctx, consentID, orgID)
-					if arErr != nil {
-						logger.Error("Failed to load auth resources for delegate modify check",
-							log.Error(arErr), log.String("consent_id", consentID))
-						return nil, serviceerror.CustomServiceError(ErrorInternalServerError, arErr.Error())
-					}
-					callerCanModify := false
-					for _, ar := range authResources {
-						if ar.UserID == nil || *ar.UserID != callerID {
-							continue
-						}
-						if ar.AuthStatus != approvedStatus {
-							continue
-						}
-						if ar.Resources == nil || *ar.Resources == "" {
-							continue
-						}
-						var res map[string]interface{}
-						if json.Unmarshal([]byte(*ar.Resources), &res) != nil {
-							continue
-						}
-						onBehalfOf, _ := res["onBehalfOf"].(string)
-						if canModify, _ := res["canModify"].(bool); canModify && onBehalfOf == principalID {
-							callerCanModify = true
-							break
-						}
-					}
-					if !callerCanModify {
-						logger.Warn("Update denied: caller lacks canModify permission",
-							log.String("caller_id", callerID))
-						return nil, serviceerror.CustomServiceError(
-							ErrorRevocationNotPermitted,
-							fmt.Sprintf("caller '%s' does not have canModify permission on this consent", callerID),
-						)
-					}
-					logger.Debug("Delegate canModify check passed", log.String("caller_id", callerID))
 				}
+			} else if isPrincipal && delegCfg.RevocationPolicy == model.RevocationPolicyAny {
+				// Active ANY-policy delegation: guardian controls modifications too.
+				logger.Warn("Update denied: principal cannot modify under active ANY-policy guardianship",
+					log.String("principal_id", principalID))
+				return nil, serviceerror.CustomServiceError(
+					ErrorRevocationNotPermitted,
+					"the data principal cannot modify a guardian-controlled consent directly; "+
+						"contact your guardian",
+				)
+			} else if !isPrincipal {
+				// Caller is a (claimed) delegate — must have canModify=true for this principal.
+				approvedStatus := string(config.Get().Consent.AuthStatusMappings.ApprovedState)
+				authResources, arErr := authResourceStore.GetByConsentID(ctx, consentID, orgID)
+				if arErr != nil {
+					logger.Error("Failed to load auth resources for delegate modify check",
+						log.Error(arErr), log.String("consent_id", consentID))
+					return nil, serviceerror.CustomServiceError(ErrorInternalServerError, arErr.Error())
+				}
+				callerCanModify := false
+				for _, ar := range authResources {
+					if ar.UserID == nil || *ar.UserID != callerID {
+						continue
+					}
+					if ar.AuthStatus != approvedStatus {
+						continue
+					}
+					if ar.Resources == nil || *ar.Resources == "" {
+						continue
+					}
+					var res map[string]interface{}
+					if json.Unmarshal([]byte(*ar.Resources), &res) != nil {
+						continue
+					}
+					onBehalfOf, _ := res["onBehalfOf"].(string)
+					if canModify, _ := res["canModify"].(bool); canModify && onBehalfOf == principalID {
+						callerCanModify = true
+						break
+					}
+				}
+				if !callerCanModify {
+					logger.Warn("Update denied: caller lacks canModify permission",
+						log.String("caller_id", callerID))
+					return nil, serviceerror.CustomServiceError(
+						ErrorRevocationNotPermitted,
+						fmt.Sprintf("caller '%s' does not have canModify permission on this consent", callerID),
+					)
+				}
+				logger.Debug("Delegate canModify check passed", log.String("caller_id", callerID))
 			}
-		} else {
-			logger.Warn("Skipped delegation modify check due to attribute read error",
-				log.Error(attErr), log.String("consent_id", consentID))
 		}
 	}
 	// ── end delegation modify check ─────────────────────────────────────────
@@ -1422,7 +1428,8 @@ func (consentService *consentService) RevokeConsent(ctx context.Context, consent
 	// ── Delegation-aware audit enrichment ───────────────────────────────────
 	// When the revoker is acting as a delegate for another person, prepend a
 	// structured marker to the Reason field so the audit log answers
-	// "who revoked on whose behalf?" without a schema change.
+	// "who revoked on whose behalf?" without a schema change. The marker is
+	// machine-parseable (delegateAction=...) and human-readable.
 	{
 		attributes, attErr := store.GetAttributesByConsentID(ctx, consentID, orgID)
 		if attErr == nil {
