@@ -760,6 +760,96 @@ func (consentService *consentService) UpdateConsent(ctx context.Context, req mod
 			fmt.Sprintf("Client '%s' is not authorized to update consent '%s'", clientID, consentID))
 	}
 
+	// ── Delegation-aware modify check ────────────────────────────────────────
+	// For self-consented records this is a no-op (IsGuardianConsent==false).
+	// For delegated consents the rules mirror revocation:
+	//   if delegation expired  → only the principal (now adult) may modify
+	//   if caller == principal → allowed (except under active ANY-policy delegation,
+	//                            where the guardian controls modifications)
+	//   if caller == delegate  → the delegate row must have canModify=true AND
+	//                            onBehalfOf == principalID
+	if req.CallerID != "" {
+		attributes, attErr := consentStore.GetAttributesByConsentID(ctx, consentID, orgID)
+		if attErr == nil {
+			attMap := make(map[string]string)
+			for _, a := range attributes {
+				attMap[a.AttKey] = a.AttValue
+			}
+			delegCfg := parseDelegationConfig(attMap)
+
+			if delegCfg.IsGuardianConsent() {
+				principalID := delegCfg.PrincipalID
+				callerID := req.CallerID
+				isPrincipal := callerID == principalID
+
+				if delegCfg.IsExpired() {
+					if !isPrincipal {
+						logger.Warn("Update denied: delegation expired, caller is not principal",
+							log.String("caller_id", callerID),
+							log.String("principal_id", principalID))
+						return nil, serviceerror.CustomServiceError(
+							ErrorDelegationExpired,
+							fmt.Sprintf("delegation for principal '%s' has expired; "+
+								"only the principal may modify this consent", principalID),
+						)
+					}
+				} else if isPrincipal && delegCfg.RevocationPolicy == model.RevocationPolicyAny {
+					// Active ANY-policy delegation: guardian controls modifications too.
+					logger.Warn("Update denied: principal cannot modify under active ANY-policy guardianship",
+						log.String("principal_id", principalID))
+					return nil, serviceerror.CustomServiceError(
+						ErrorRevocationNotPermitted,
+						"the data principal cannot modify a guardian-controlled consent directly; "+
+							"contact your guardian",
+					)
+				} else if !isPrincipal {
+					// Caller is a (claimed) delegate — must have canModify=true for this principal.
+					approvedStatus := string(config.Get().Consent.AuthStatusMappings.ApprovedState)
+					authResources, arErr := authResourceStore.GetByConsentID(ctx, consentID, orgID)
+					if arErr != nil {
+						logger.Error("Failed to load auth resources for delegate modify check",
+							log.Error(arErr), log.String("consent_id", consentID))
+						return nil, serviceerror.CustomServiceError(ErrorInternalServerError, arErr.Error())
+					}
+					callerCanModify := false
+					for _, ar := range authResources {
+						if ar.UserID == nil || *ar.UserID != callerID {
+							continue
+						}
+						if ar.AuthStatus != approvedStatus {
+							continue
+						}
+						if ar.Resources == nil || *ar.Resources == "" {
+							continue
+						}
+						var res map[string]interface{}
+						if json.Unmarshal([]byte(*ar.Resources), &res) != nil {
+							continue
+						}
+						onBehalfOf, _ := res["onBehalfOf"].(string)
+						if canModify, _ := res["canModify"].(bool); canModify && onBehalfOf == principalID {
+							callerCanModify = true
+							break
+						}
+					}
+					if !callerCanModify {
+						logger.Warn("Update denied: caller lacks canModify permission",
+							log.String("caller_id", callerID))
+						return nil, serviceerror.CustomServiceError(
+							ErrorRevocationNotPermitted,
+							fmt.Sprintf("caller '%s' does not have canModify permission on this consent", callerID),
+						)
+					}
+					logger.Debug("Delegate canModify check passed", log.String("caller_id", callerID))
+				}
+			}
+		} else {
+			logger.Warn("Skipped delegation modify check due to attribute read error",
+				log.Error(attErr), log.String("consent_id", consentID))
+		}
+	}
+	// ── end delegation modify check ─────────────────────────────────────────
+
 	currentTime := utils.GetCurrentTimeMillis()
 	previousStatus := existing.CurrentStatus
 
@@ -868,6 +958,78 @@ func (consentService *consentService) UpdateConsent(ctx context.Context, req mod
 			})
 		}
 	}
+
+	// ── Convert-to-self-consent ─────────────────────────────────────────
+	// When a delegated consent's guardian period has expired, the principal
+	// can convert it to a self-consent by stripping all delegation metadata.
+	// This lets the now-adult child (or recovered patient, etc.) take
+	// ownership of the existing consent record without creating a duplicate.
+	if req.ConvertToSelfConsent {
+		convAttrs, convErr := consentStore.GetAttributesByConsentID(ctx, consentID, orgID)
+		if convErr != nil {
+			logger.Error("Failed to load attributes for conversion check",
+				log.Error(convErr), log.String("consent_id", consentID))
+			return nil, serviceerror.CustomServiceError(ErrorInternalServerError, convErr.Error())
+		}
+		convMap := make(map[string]string)
+		for _, a := range convAttrs {
+			convMap[a.AttKey] = a.AttValue
+		}
+		convDelegCfg := parseDelegationConfig(convMap)
+
+		if !convDelegCfg.IsGuardianConsent() {
+			return nil, serviceerror.CustomServiceError(ErrorValidationFailed,
+				"convertToSelfConsent is only valid on delegated consents")
+		}
+		if !convDelegCfg.IsExpired() {
+			return nil, serviceerror.CustomServiceError(ErrorValidationFailed,
+				"delegation must be expired before the principal can convert to self-consent")
+		}
+		if req.CallerID != convDelegCfg.PrincipalID {
+			return nil, serviceerror.CustomServiceError(ErrorRevocationNotPermitted,
+				fmt.Sprintf("only the principal '%s' can convert this consent to self-consent",
+					convDelegCfg.PrincipalID))
+		}
+
+		// Strip all 4 delegation attributes in the transaction
+		delegationKeys := []string{
+			model.AttrDelegationType,
+			model.AttrDelegationPrincipalID,
+			model.AttrGuardianValidUntil,
+			model.AttrGuardianRevocationPolicy,
+		}
+		for _, key := range delegationKeys {
+			k := key // capture for closure
+			queries = append(queries, func(tx dbmodel.TxInterface) error {
+				return consentStore.DeleteAttributeByKey(tx, consentID, k, orgID)
+			})
+		}
+
+		// Audit the conversion
+		convAuditID := utils.GenerateUUID()
+		convReason := fmt.Sprintf(
+			"[conversionToSelfConsent=true; actor=%s; fromDelegationType=%s; delegationExpired=true]",
+			req.CallerID, convDelegCfg.Type)
+		convAudit := &model.ConsentStatusAudit{
+			StatusAuditID:  convAuditID,
+			ConsentID:      consentID,
+			CurrentStatus:  existing.CurrentStatus,
+			ActionTime:     utils.GetCurrentTimeMillis(),
+			Reason:         &convReason,
+			ActionBy:       &req.CallerID,
+			PreviousStatus: &existing.CurrentStatus,
+			OrgID:          orgID,
+		}
+		queries = append(queries, func(tx dbmodel.TxInterface) error {
+			return consentStore.CreateStatusAudit(tx, convAudit)
+		})
+
+		logger.Info("Converting delegated consent to self-consent",
+			log.String("consent_id", consentID),
+			log.String("principal_id", convDelegCfg.PrincipalID),
+			log.String("former_delegation_type", convDelegCfg.Type))
+	}
+	// ── end convert-to-self-consent ─────────────────────────────────────
 
 	// Update authorization resources if provided
 	if updateReq.AuthResources != nil {
@@ -1256,6 +1418,47 @@ func (consentService *consentService) RevokeConsent(ctx context.Context, consent
 	// Create audit entry
 	auditID := utils.GenerateUUID()
 	reason := req.RevocationReason
+
+	// ── Delegation-aware audit enrichment ───────────────────────────────────
+	// When the revoker is acting as a delegate for another person, prepend a
+	// structured marker to the Reason field so the audit log answers
+	// "who revoked on whose behalf?" without a schema change.
+	{
+		attributes, attErr := store.GetAttributesByConsentID(ctx, consentID, orgID)
+		if attErr == nil {
+			attMap := make(map[string]string)
+			for _, a := range attributes {
+				attMap[a.AttKey] = a.AttValue
+			}
+			delegCfg := parseDelegationConfig(attMap)
+			if delegCfg.IsGuardianConsent() && req.ActionBy != delegCfg.PrincipalID {
+				// Delegate is acting — record the relationship.
+				marker := fmt.Sprintf(
+					"[delegateAction=true; actor=%s; onBehalfOf=%s; delegationType=%s]",
+					req.ActionBy, delegCfg.PrincipalID, delegCfg.Type,
+				)
+				if reason == "" {
+					reason = marker
+				} else {
+					reason = marker + " " + reason
+				}
+			} else if delegCfg.IsGuardianConsent() && req.ActionBy == delegCfg.PrincipalID {
+				// Principal acting on their own consent under a delegation record
+				// (e.g., now-adult child revoking after guardian.valid_until).
+				marker := fmt.Sprintf(
+					"[principalAction=true; actor=%s; delegationExpired=%t]",
+					req.ActionBy, delegCfg.IsExpired(),
+				)
+				if reason == "" {
+					reason = marker
+				} else {
+					reason = marker + " " + reason
+				}
+			}
+		}
+	}
+	// ── end delegation audit enrichment ─────────────────────────────────────
+
 	audit := &model.ConsentStatusAudit{
 		StatusAuditID:  auditID,
 		ConsentID:      consentID,

@@ -82,7 +82,7 @@ func ValidateConsentUpdateRequest(req model.ConsentAPIUpdateRequest) error {
 	if req.Type == "" && req.Frequency == nil &&
 		req.ValidityTime == nil && req.RecurringIndicator == nil &&
 		req.Attributes == nil && req.Authorizations == nil && req.Purposes == nil &&
-		req.DataAccessValidityDuration == nil {
+		req.DataAccessValidityDuration == nil && !req.ConvertToSelfConsent {
 		return fmt.Errorf("at least one field must be provided for update")
 	}
 
@@ -99,6 +99,30 @@ func ValidateConsentUpdateRequest(req model.ConsentAPIUpdateRequest) error {
 	// Validate frequency if provided
 	if req.Frequency != nil && *req.Frequency < 0 {
 		return fmt.Errorf("frequency must be non-negative")
+	}
+
+	// Delegation attributes are immutable after consent creation.
+	// Blocking overwrite prevents a caller from extending guardian.valid_until
+	// indefinitely or changing the revocation policy after the fact.
+	// Exception: convertToSelfConsent bypasses this guard because the attrs
+	// are being DELETED entirely (not modified). The service layer validates
+	// that the caller is the principal and the delegation has expired.
+	if !req.ConvertToSelfConsent {
+		protectedKeys := []string{
+			model.AttrDelegationType,
+			model.AttrDelegationPrincipalID,
+			model.AttrGuardianValidUntil,
+			model.AttrGuardianRevocationPolicy,
+		}
+		if req.Attributes != nil {
+			for _, key := range protectedKeys {
+				if _, exists := req.Attributes[key]; exists {
+					return fmt.Errorf(
+						"delegation attribute '%s' is immutable after consent creation "+
+							"and cannot be modified via update", key)
+				}
+			}
+		}
 	}
 
 	// Validate auth resources if provided
@@ -211,7 +235,7 @@ func IsConsentExpired(validityTime int64) bool {
 
 	// Detect if timestamp is in seconds or milliseconds
 	// A reasonable cutoff: timestamps > 10^11 are likely in milliseconds
-	// This works until year 5138 in seconds (safely covers our use case)
+	// This works until year 5138 in seconds
 	const timestampCutoff = 100000000000 // 10^11
 
 	var validityTimeMillis int64
@@ -287,6 +311,18 @@ func ValidateDelegationAttributes(
 	// If the caller IS the principal, at least one real delegate with a different
 	// userId must be registered — otherwise there is no actual delegation happening.
 	if callerID == principalID {
+		// Guard against a minor self-initiating parental consent.
+		// Parental delegation must be initiated by the parent, not the child, per
+		// DPDP Section 9 and the stated design requirement.
+		// Non-parental delegation types (guardian, carer, power_of_attorney) are still
+		// allowed because a capable adult may legitimately initiate those over their own data.
+		if delegationType == "parental_biological" || delegationType == "parental_legal" {
+			return fmt.Errorf(
+				"parental delegation must be initiated by the parent, not the data principal; "+
+					"caller '%s' cannot be the principal for delegation.type '%s'",
+				callerID, delegationType)
+		}
+
 		hasRealDelegate := false
 		for _, auth := range authorizations {
 			delegateUserID := strings.TrimSpace(auth.UserID)
@@ -367,13 +403,11 @@ func ValidateDelegationAttributes(
 	// trying to validate one principal and persist another.
 	found := false
 	for _, auth := range authorizations {
-		// Resolve the effective principal from the Delegation struct (new path).
 		effectivePrincipal := ""
 		if auth.Delegation != nil {
 			effectivePrincipal = strings.TrimSpace(auth.Delegation.PrincipalID)
 		}
 
-		// Resolve from Resources map (legacy path).
 		if resources, ok := auth.Resources.(map[string]interface{}); ok {
 			if onBehalfOf, _ := resources["onBehalfOf"].(string); onBehalfOf != "" {
 				// If Delegation was also set, the two values must agree.

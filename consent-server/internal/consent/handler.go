@@ -262,6 +262,11 @@ func (h *consentHandler) updateConsent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Set CallerID from X-User-ID so UpdateConsent can enforce canModify on
+	// delegated consents. The header is injected by the gateway/IdP and cannot
+	// be spoofed by the client.
+	req.CallerID = r.Header.Get("X-User-ID")
+
 	consent, serviceErr := h.service.UpdateConsent(ctx, req, clientID, orgID, consentID)
 	if serviceErr != nil {
 		utils.SendError(w, r, serviceErr)

@@ -469,6 +469,14 @@ type ConsentAPIUpdateRequest struct {
 	Purposes                   []ConsentPurposeItem      `json:"purposes"`
 	Attributes                 map[string]string         `json:"attributes"`
 	Authorizations             []AuthorizationAPIRequest `json:"authorizations"`
+	// CallerID is set by the handler from the X-User-ID request header.
+	// It is NOT read from the JSON body (json:"-").
+	// Used by UpdateConsent to enforce canModify on delegated consents.
+	CallerID string `json:"-"`
+	// ConvertToSelfConsent, when true, strips all delegation attributes from an
+	// expired delegated consent so the principal takes direct ownership.
+	// Only allowed when: caller == principal AND delegation has expired.
+	ConvertToSelfConsent bool `json:"convertToSelfConsent,omitempty"`
 }
 
 // ConsentCreateRequest represents the internal request payload for creating a consent
@@ -545,28 +553,18 @@ type ConsentSearchMetadata struct {
 
 // ConsentSearchFilters represents search criteria for consents
 type ConsentSearchFilters struct {
-	ConsentTypes    []string // e.g., ["accounts", "payments"]
-	ConsentStatuses []string // e.g., ["active", "revoked"]
-	ClientIDs       []string // TPP client IDs
-	UserIDs         []string // End-user IDs
-	PurposeNames    []string // Purpose names - returns consents containing ANY of these purposes
-	FromTime        *int64   // Unix timestamp - start of time window
-	ToTime          *int64   // Unix timestamp - end of time window
-	Limit           int
-	Offset          int
-	OrgID           string
-	// DataPrincipalID filters consents by the data subject stored in
-	// CONSENT_ATTRIBUTE (key = delegation.principal_id).
-	// Use this when a parent/guardian wants to see consents for their child.
-	// The service will verify CallerID is an authorised delegate.
-	DataPrincipalID string
-	// CallerID is the authenticated user making the list request.
-	// Required when DataPrincipalID is set so the service can verify
-	// the caller is an authorised delegate before returning results.
-	CallerID string
-	// AuthorizedConsentIDs is a list of consent IDs that the caller is explicitly
-	// authorized to see. If non-nil, the DB search will be restricted to ONLY these IDs.
-	// This ensures pagination limits and offsets are applied accurately by the database.
+	ConsentTypes         []string // e.g., ["accounts", "payments"]
+	ConsentStatuses      []string // e.g., ["active", "revoked"]
+	ClientIDs            []string // TPP client IDs
+	UserIDs              []string // End-user IDs
+	PurposeNames         []string // Purpose names - returns consents containing ANY of these purposes
+	FromTime             *int64   // Unix timestamp - start of time window
+	ToTime               *int64   // Unix timestamp - end of time window
+	Limit                int
+	Offset               int
+	OrgID                string
+	DataPrincipalID      string
+	CallerID             string
 	AuthorizedConsentIDs []string
 }
 
