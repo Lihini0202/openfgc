@@ -121,8 +121,8 @@ func mapErrorToStatusCode(err *serviceerror.ServiceError) int {
 	// Forbidden — delegation and authorization errors
 	// CS-4051 (NotAuthorizedForPrincipal), CS-4052 (RevocationNotPermitted),
 	// CS-4053 (DelegationExpired), CS-4054 (Unauthorized)
-	if strings.HasSuffix(err.Code, "4051") || strings.HasSuffix(err.Code, "4052") ||
-		strings.HasSuffix(err.Code, "4053") || strings.HasSuffix(err.Code, "4054") {
+	if err.Code == "CS-4051" || err.Code == "CS-4052" ||
+		err.Code == "CS-4053" || err.Code == "CS-4054" {
 		return http.StatusForbidden
 	}
 

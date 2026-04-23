@@ -255,7 +255,7 @@ func (s *store) Search(ctx context.Context, filters model.ConsentSearchFilters) 
 	args := []interface{}{filters.OrgID}
 	countArgs := []interface{}{filters.OrgID}
 
-	// Add AuthorizedConsentIDs filter (IN clause)
+	// Add AuthorizedConsentIDs filter (IN clause) - OPTION 1 PAGINATION FIX
 	if len(filters.AuthorizedConsentIDs) > 0 {
 		placeholders := make([]string, len(filters.AuthorizedConsentIDs))
 		for i, id := range filters.AuthorizedConsentIDs {

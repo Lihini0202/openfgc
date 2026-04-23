@@ -104,8 +104,7 @@ var (
 	}
 
 	// ErrorUnauthorized is returned when the caller is not permitted to perform
-	// the requested operation (e.g., accessing another principal's consents without
-	// being a registered delegate). Used by handler_test.go .
+	// the requested operation.
 	ErrorUnauthorized = serviceerror.ServiceError{
 		Type:        serviceerror.ClientErrorType,
 		Code:        "CS-4054",

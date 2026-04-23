@@ -2518,7 +2518,7 @@ components:
         Request body for updating a consent.
 
         **Status Derivation:**
-        The consent status is NOT provided in the request. Instead, it is automatically derived by the API based on the API based on the authorization states:
+        The consent status is NOT provided in the request. Instead, it is automatically derived by the API based on the authorization states:
         - If any authorization has status "rejected" → consent status = "rejected"
         - If any authorization has status "created" → consent status = "created"
         - If all authorizations have status "approved" (or empty/default) → consent status = "active"
@@ -3612,7 +3612,7 @@ components:
           example: "child-user-id-123"
         revocationPolicy:
           type: string
-          enum: [ANY, SUBJECT_ONLY]
+          enum: [ANY, SUBJECT_ONLY, BOTH]
           example: "ANY"
         validUntil:
           type: integer

@@ -179,8 +179,13 @@ func (h *consentHandler) listConsents(w http.ResponseWriter, r *http.Request) {
 	// Example: parent logs in → GET /consents?dataPrincipalId=child-user-id
 	// The service checks the caller is a registered delegate before returning results.
 
-	if dpID := r.URL.Query().Get("dataPrincipalId"); dpID != "" {
-		filters.DataPrincipalID = strings.TrimSpace(dpID)
+	if values, ok := r.URL.Query()["dataPrincipalId"]; ok {
+		dpID := strings.TrimSpace(values[0])
+		if dpID == "" {
+			utils.SendError(w, r, serviceerror.CustomServiceError(ErrorValidationFailed, "dataPrincipalId cannot be blank"))
+			return
+		}
+		filters.DataPrincipalID = dpID
 	}
 
 	// Parse consentTypes (comma-separated)

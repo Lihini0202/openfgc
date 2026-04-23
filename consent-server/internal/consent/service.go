@@ -991,7 +991,8 @@ func (consentService *consentService) UpdateConsent(ctx context.Context, req mod
 			return nil, serviceerror.CustomServiceError(ErrorValidationFailed,
 				"delegation must be expired before the principal can convert to self-consent")
 		}
-		if req.CallerID != convDelegCfg.PrincipalID {
+		callerID := strings.TrimSpace(req.CallerID)
+		if callerID != convDelegCfg.PrincipalID {
 			return nil, serviceerror.CustomServiceError(ErrorRevocationNotPermitted,
 				fmt.Sprintf("only the principal '%s' can convert this consent to self-consent",
 					convDelegCfg.PrincipalID))
@@ -1015,14 +1016,14 @@ func (consentService *consentService) UpdateConsent(ctx context.Context, req mod
 		convAuditID := utils.GenerateUUID()
 		convReason := fmt.Sprintf(
 			"[conversionToSelfConsent=true; actor=%s; fromDelegationType=%s; delegationExpired=true]",
-			req.CallerID, convDelegCfg.Type)
+			callerID, convDelegCfg.Type)
 		convAudit := &model.ConsentStatusAudit{
 			StatusAuditID:  convAuditID,
 			ConsentID:      consentID,
 			CurrentStatus:  existing.CurrentStatus,
 			ActionTime:     utils.GetCurrentTimeMillis(),
 			Reason:         &convReason,
-			ActionBy:       &req.CallerID,
+			ActionBy:       &callerID,
 			PreviousStatus: &existing.CurrentStatus,
 			OrgID:          orgID,
 		}
@@ -1310,7 +1311,7 @@ func (consentService *consentService) RevokeConsent(ctx context.Context, consent
 
 		if delegCfg.IsGuardianConsent() {
 			principalID := delegCfg.PrincipalID
-			callerID := req.ActionBy
+			callerID := strings.TrimSpace(req.ActionBy)
 			isPrincipal := callerID == principalID
 
 			if delegCfg.IsExpired() {
@@ -2267,8 +2268,6 @@ func (s *consentService) validatePurposes(
 	}
 
 	// Validate no duplicate elements across ALL resolved purposes
-	// This check happens AFTER resolution because we now have the complete picture
-	// of all elements across all purposes (including auto-filled ones)
 	if err := s.validateNoDuplicateElementsAcrossPurposes(resolvedPurposes); err != nil {
 		logger.Warn("Duplicate element validation failed", log.Error(err))
 		return nil, err

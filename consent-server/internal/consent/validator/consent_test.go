@@ -249,7 +249,6 @@ func TestValidateConsentUpdateRequest_NonDelegationAttr_Allowed(t *testing.T) {
 
 // TestValidateDelegation_MinorCannotSelfInitiateParental ensures a minor (caller == principal)
 // cannot self-initiate a parental delegation. Only the parent can initiate parental consent.
-// This enforces Feedback 1 from the DPDP scenario.
 func TestValidateDelegation_MinorCannotSelfInitiateParental(t *testing.T) {
 	attrs := map[string]string{
 		model.AttrDelegationType:           "parental_biological",
@@ -310,15 +309,23 @@ func TestValidateConsentUpdateRequest_ConvertToSelfConsent_BypassesImmutability(
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "immutable after consent creation")
 
-	// With convertToSelfConsent=true, the SAME request must PASS the validator
+	// With convertToSelfConsent=true and NO other fields, the validator must PASS
 	// (service layer does the real checks: expired? principal? delegated?)
-	// Include protected delegation attributes to explicitly verify the bypass.
 	reqAllowed := model.ConsentAPIUpdateRequest{
+		ConvertToSelfConsent: true,
+	}
+	err = ValidateConsentUpdateRequest(reqAllowed)
+	require.NoError(t, err)
+
+	// convertToSelfConsent=true combined with other fields must FAIL
+	// (conversion is an exclusive operation)
+	reqMixed := model.ConsentAPIUpdateRequest{
 		ConvertToSelfConsent: true,
 		Attributes: map[string]string{
 			model.AttrDelegationType: "parental_biological",
 		},
 	}
-	err = ValidateConsentUpdateRequest(reqAllowed)
-	require.NoError(t, err)
+	err = ValidateConsentUpdateRequest(reqMixed)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "convertToSelfConsent cannot be combined")
 }

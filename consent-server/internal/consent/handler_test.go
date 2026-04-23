@@ -217,7 +217,15 @@ func TestListConsents_Success(t *testing.T) {
 func TestRevokeConsent_Success(t *testing.T) {
 	mockService := NewMockConsentService(t)
 
-	revokeRequest := model.ConsentRevokeRequest{
+	// Body sends a DIFFERENT ActionBy than the header to prove the handler
+	// overwrites the JSON body value with the trusted X-User-ID header.
+	bodyRequest := model.ConsentRevokeRequest{
+		ActionBy:         "body-user-should-be-overwritten",
+		RevocationReason: "User requested revocation",
+	}
+
+	// The service must receive the header value, not the body value.
+	expectedServiceRequest := model.ConsentRevokeRequest{
 		ActionBy:         "user-123",
 		RevocationReason: "User requested revocation",
 	}
@@ -228,7 +236,7 @@ func TestRevokeConsent_Success(t *testing.T) {
 		RevocationReason: "User requested revocation",
 	}
 
-	mockService.On("RevokeConsent", mock.Anything, "550e8400-e29b-41d4-a716-446655440000", testOrgID, revokeRequest).
+	mockService.On("RevokeConsent", mock.Anything, "550e8400-e29b-41d4-a716-446655440000", testOrgID, expectedServiceRequest).
 		Return(expectedResponse, nil)
 
 	handler := newConsentHandler(mockService)
@@ -238,7 +246,7 @@ func TestRevokeConsent_Success(t *testing.T) {
 	server := httptest.NewServer(mux)
 	defer server.Close()
 
-	body, err := json.Marshal(revokeRequest)
+	body, err := json.Marshal(bodyRequest)
 	require.NoError(t, err)
 
 	req, err := http.NewRequest(http.MethodPut, server.URL+"/api/v1/consents/550e8400-e29b-41d4-a716-446655440000/revoke", bytes.NewBuffer(body))

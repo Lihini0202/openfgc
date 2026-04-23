@@ -86,6 +86,18 @@ func ValidateConsentUpdateRequest(req model.ConsentAPIUpdateRequest) error {
 		return fmt.Errorf("at least one field must be provided for update")
 	}
 
+	// convertToSelfConsent is an exclusive operation — it cannot be combined
+	// with other consent field updates. The conversion only deletes delegation
+	// metadata; any other changes must be made in a separate update call.
+	if req.ConvertToSelfConsent &&
+		(req.Type != "" || req.Frequency != nil ||
+			req.ValidityTime != nil || req.RecurringIndicator != nil ||
+			req.Attributes != nil || req.Authorizations != nil || req.Purposes != nil ||
+			req.DataAccessValidityDuration != nil) {
+		return fmt.Errorf("convertToSelfConsent cannot be combined with other consent updates; " +
+			"perform the conversion first, then update other fields separately")
+	}
+
 	// Validate Type length if provided (match create constraint)
 	if req.Type != "" && len(req.Type) > 64 {
 		return fmt.Errorf("type must be at most 64 characters")
@@ -279,6 +291,9 @@ func ValidateDelegationAttributes(
 	if delegationType == "" {
 		return nil
 	}
+	// Lowercase copy for case-insensitive comparisons; the original
+	// delegationType is preserved for storage and error messages.
+	delegationTypeLower := strings.ToLower(delegationType)
 
 	principalID := strings.TrimSpace(attributes[model.AttrDelegationPrincipalID])
 	if principalID == "" {
@@ -316,7 +331,7 @@ func ValidateDelegationAttributes(
 		// DPDP Section 9 and the stated design requirement.
 		// Non-parental delegation types (guardian, carer, power_of_attorney) are still
 		// allowed because a capable adult may legitimately initiate those over their own data.
-		if delegationType == "parental" || delegationType == "parental_biological" || delegationType == "parental_legal" {
+		if delegationTypeLower == "parental" || delegationTypeLower == "parental_biological" || delegationTypeLower == "parental_legal" {
 			return fmt.Errorf(
 				"parental delegation must be initiated by the parent, not the data principal; "+
 					"caller '%s' cannot be the principal for delegation.type '%s'",
@@ -403,6 +418,7 @@ func ValidateDelegationAttributes(
 	// trying to validate one principal and persist another.
 	found := false
 	for _, auth := range authorizations {
+		// Resolve the effective principal from the Delegation struct (new path).
 		effectivePrincipal := ""
 		if auth.Delegation != nil {
 			effectivePrincipal = strings.TrimSpace(auth.Delegation.PrincipalID)
