@@ -762,12 +762,14 @@ func (consentService *consentService) UpdateConsent(ctx context.Context, req mod
 
 	// ── Delegation-aware modify check ────────────────────────────────────────
 	// For self-consented records this is a no-op (IsGuardianConsent==false).
-	// For delegated consents the rules mirror revocation:
-	//   if delegation expired  → only the principal (now adult) may modify
-	//   if caller == principal → allowed (except under active ANY-policy delegation,
-	//                            where the guardian controls modifications)
-	//   if caller == delegate  → the delegate row must have canModify=true AND
-	//                            onBehalfOf == principalID
+	// For delegated consents the rules are:
+	//   if delegation expired    → only the principal (now adult) may modify
+	//   if caller == principal   → allowed, EXCEPT under active ANY-policy
+	//                              delegation where the guardian controls modifications
+	//   if caller == delegate    → the delegate row must have canModify=true AND
+	//                              onBehalfOf == principalID
+	// Note: Unlike revocation, SUBJECT_ONLY policy does NOT block delegates
+	// from modifying — it only restricts who can revoke.
 	{
 		attributes, attErr := consentStore.GetAttributesByConsentID(ctx, consentID, orgID)
 		if attErr != nil {
@@ -1897,6 +1899,19 @@ func (consentService *consentService) GetConsentDelegates(ctx context.Context, c
 		attMap[a.AttKey] = a.AttValue
 	}
 	delegCfg := parseDelegationConfig(attMap)
+
+	// If this consent has no delegation metadata, return an empty delegate list
+	// rather than scanning auth resources for orphaned onBehalfOf entries.
+	if !delegCfg.IsGuardianConsent() {
+		logger.Info("Consent is not a guardian consent, returning empty delegate list",
+			log.String("consent_id", consentID),
+			log.String("caller_id", callerID))
+		return &model.DelegateListResponse{
+			ConsentID:     consentID,
+			DelegateCount: 0,
+			Delegates:     []model.DelegateInfo{},
+		}, nil
+	}
 
 	// ── Caller authorization check ───────────────────────────────────────
 	// The caller must be the data principal or an active, non-expired delegate.

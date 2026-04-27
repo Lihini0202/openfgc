@@ -260,6 +260,16 @@ paths:
           schema:
             type: string
           example: "ORG-001"
+        - in: header
+          name: X-User-ID
+          required: true
+          description: |
+            The authenticated user's identifier, set by the API gateway / IdP.
+            Used to verify that the caller is the data principal or an active delegate
+            before returning delegate metadata. Returns 403 if missing or unauthorized.
+          schema:
+            type: string
+          example: "parent-user-id-456"
         - name: consentId
           in: path
           required: true

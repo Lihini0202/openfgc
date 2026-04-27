@@ -62,7 +62,7 @@ func (h *consentHandler) createConsent(w http.ResponseWriter, r *http.Request) {
 	// circular self-delegation (where the delegate being registered is the
 	// same person as the data principal).
 	// This field is NOT read from JSON (tagged json:"-")
-	req.CallerID = r.Header.Get("X-User-ID")
+	req.CallerID = strings.TrimSpace(r.Header.Get("X-User-ID"))
 
 	// Propagate the explicitly provided PrincipalID into the attributes map
 	// so that delegation validation and downstream processing can safely use it.
@@ -172,7 +172,7 @@ func (h *consentHandler) listConsents(w http.ResponseWriter, r *http.Request) {
 
 	// CallerID from X-User-ID header — used to verify the caller is an authorised
 	// delegate when dataPrincipalId is also provided
-	filters.CallerID = r.Header.Get("X-User-ID")
+	filters.CallerID = strings.TrimSpace(r.Header.Get("X-User-ID"))
 
 	// dataPrincipalId filters consents by data subject (the person whose data was
 	// consented to), not by who gave the consent.
@@ -280,7 +280,7 @@ func (h *consentHandler) updateConsent(w http.ResponseWriter, r *http.Request) {
 	// Set CallerID from X-User-ID so UpdateConsent can enforce canModify on
 	// delegated consents. The header is injected by the gateway/IdP and cannot
 	// be spoofed by the client.
-	req.CallerID = r.Header.Get("X-User-ID")
+	req.CallerID = strings.TrimSpace(r.Header.Get("X-User-ID"))
 
 	consent, serviceErr := h.service.UpdateConsent(ctx, req, clientID, orgID, consentID)
 	if serviceErr != nil {
@@ -317,15 +317,11 @@ func (h *consentHandler) revokeConsent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// The header is injected by the gateway/IdP and cannot be spoofed by the
-	// client. Falling back to the JSON body value when the header is absent
-	// would let any caller put an arbitrary userId in the body and bypass the
-	// delegation revocation checks in the service layer.
-	//
-	// If X-User-ID is absent the request has no trusted caller identity.
-	// Clear ActionBy so the service treats this as an anonymous/unauthenticated
-	// call and applies the appropriate default behaviour (non-delegated path).
-	userID := r.Header.Get("X-User-ID")
-	req.ActionBy = userID
+	// client. Always overwrite req.ActionBy with the header value (even if
+	// empty) so the JSON body cannot be used to impersonate a user. When the
+	// header is missing the service will reject the request because ActionBy
+	// is required for delegation policy enforcement.
+	req.ActionBy = strings.TrimSpace(r.Header.Get("X-User-ID"))
 
 	revokeResponse, serviceErr := h.service.RevokeConsent(ctx, consentID, orgID, req)
 	if serviceErr != nil {

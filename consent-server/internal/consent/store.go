@@ -256,14 +256,19 @@ func (s *store) Search(ctx context.Context, filters model.ConsentSearchFilters) 
 	countArgs := []interface{}{filters.OrgID}
 
 	// Add AuthorizedConsentIDs filter (IN clause) - OPTION 1 PAGINATION FIX
-	if len(filters.AuthorizedConsentIDs) > 0 {
-		placeholders := make([]string, len(filters.AuthorizedConsentIDs))
-		for i, id := range filters.AuthorizedConsentIDs {
-			placeholders[i] = "?"
-			args = append(args, id)
-			countArgs = append(countArgs, id)
+	if filters.AuthorizedConsentIDs != nil {
+		if len(filters.AuthorizedConsentIDs) == 0 {
+			// Non-nil but empty means "caller is authorized for zero consents" — return nothing.
+			whereConditions = append(whereConditions, "1 = 0")
+		} else {
+			placeholders := make([]string, len(filters.AuthorizedConsentIDs))
+			for i, id := range filters.AuthorizedConsentIDs {
+				placeholders[i] = "?"
+				args = append(args, id)
+				countArgs = append(countArgs, id)
+			}
+			whereConditions = append(whereConditions, fmt.Sprintf("CONSENT.CONSENT_ID IN (%s)", strings.Join(placeholders, ",")))
 		}
-		whereConditions = append(whereConditions, fmt.Sprintf("CONSENT.CONSENT_ID IN (%s)", strings.Join(placeholders, ",")))
 	}
 
 	// Add consentTypes filter (IN clause)
