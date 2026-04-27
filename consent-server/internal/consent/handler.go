@@ -402,10 +402,12 @@ func (h *consentHandler) searchConsentsByAttribute(w http.ResponseWriter, r *htt
 // getDelegates handles GET /consents/{consentId}/delegates
 // Returns all registered delegates for the given consent, along with delegation
 // metadata (principal_id, revocation policy, expiry).
+// Requires X-User-ID header — only the principal or an active delegate may view.
 func (h *consentHandler) getDelegates(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	consentID := r.PathValue("consentId")
 	orgID := r.Header.Get(constants.HeaderOrgID)
+	callerID := strings.TrimSpace(r.Header.Get("X-User-ID"))
 
 	if err := utils.ValidateOrgID(orgID); err != nil {
 		utils.SendError(w, r, serviceerror.CustomServiceError(ErrorValidationFailed, err.Error()))
@@ -417,7 +419,13 @@ func (h *consentHandler) getDelegates(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response, serviceErr := h.service.GetConsentDelegates(ctx, consentID, orgID)
+	if callerID == "" {
+		utils.SendError(w, r, serviceerror.CustomServiceError(ErrorNotAuthorizedForPrincipal,
+			"X-User-ID header is required to view consent delegates"))
+		return
+	}
+
+	response, serviceErr := h.service.GetConsentDelegates(ctx, consentID, orgID, callerID)
 	if serviceErr != nil {
 		utils.SendError(w, r, serviceErr)
 		return

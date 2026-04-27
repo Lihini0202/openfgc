@@ -46,8 +46,8 @@ type ConsentService interface {
 	ValidateConsent(ctx context.Context, req model.ValidateRequest, orgID string) (*model.ValidateResponse, *serviceerror.ServiceError)
 	SearchConsentsByAttribute(ctx context.Context, key, value, orgID string) (*model.ConsentAttributeSearchResponse, *serviceerror.ServiceError)
 	// GetConsentDelegates returns all registered delegates for a single consent.
-	// Reads from CONSENT_AUTH_RESOURCE rows (RESOURCES JSON blob) and CONSENT_ATTRIBUTE rows.
-	GetConsentDelegates(ctx context.Context, consentID, orgID string) (*model.DelegateListResponse, *serviceerror.ServiceError)
+	// The caller must be the data principal or an active delegate to access this data.
+	GetConsentDelegates(ctx context.Context, consentID, orgID, callerID string) (*model.DelegateListResponse, *serviceerror.ServiceError)
 }
 
 // consentService implements the ConsentService interface
@@ -1870,7 +1870,7 @@ func buildConsentResponse(
 // It reads CONSENT_AUTH_RESOURCE rows (RESOURCES JSON blob for per-delegate flags)
 // and CONSENT_ATTRIBUTE rows (for delegation.principal_id, guardian.valid_until, etc.).
 
-func (consentService *consentService) GetConsentDelegates(ctx context.Context, consentID, orgID string) (*model.DelegateListResponse, *serviceerror.ServiceError) {
+func (consentService *consentService) GetConsentDelegates(ctx context.Context, consentID, orgID, callerID string) (*model.DelegateListResponse, *serviceerror.ServiceError) {
 	logger := log.GetLogger().WithContext(ctx)
 	logger.Info("Getting consent delegates",
 		log.String("consent_id", consentID),
@@ -1897,6 +1897,50 @@ func (consentService *consentService) GetConsentDelegates(ctx context.Context, c
 		attMap[a.AttKey] = a.AttValue
 	}
 	delegCfg := parseDelegationConfig(attMap)
+
+	// ── Caller authorization check ───────────────────────────────────────
+	// The caller must be the data principal or an active, non-expired delegate.
+	// This prevents any authenticated user from enumerating delegate relationships
+	// by guessing consent IDs.
+	if delegCfg.IsGuardianConsent() {
+		callerID = strings.TrimSpace(callerID)
+		principalID := delegCfg.PrincipalID
+		if callerID != principalID {
+			// Caller is not the principal — check if they are an active delegate.
+			authResources, arErr := consentService.stores.AuthResource.GetByConsentID(ctx, consentID, orgID)
+			if arErr != nil {
+				return nil, serviceerror.CustomServiceError(ErrorInternalServerError, arErr.Error())
+			}
+			approvedStatus := string(config.Get().Consent.AuthStatusMappings.ApprovedState)
+			isAuthorized := false
+			for _, ar := range authResources {
+				if ar.UserID == nil || *ar.UserID != callerID {
+					continue
+				}
+				if ar.AuthStatus != approvedStatus {
+					continue
+				}
+				if ar.Resources == nil || *ar.Resources == "" {
+					continue
+				}
+				var res map[string]interface{}
+				if json.Unmarshal([]byte(*ar.Resources), &res) != nil {
+					continue
+				}
+				if onBehalfOf, _ := res["onBehalfOf"].(string); onBehalfOf == principalID {
+					isAuthorized = true
+					break
+				}
+			}
+			if !isAuthorized {
+				logger.Warn("GetConsentDelegates denied: caller is not principal or delegate",
+					log.String("caller_id", callerID),
+					log.String("principal_id", principalID))
+				return nil, serviceerror.CustomServiceError(ErrorNotAuthorizedForPrincipal,
+					fmt.Sprintf("caller '%s' is not authorized to view delegates for this consent", callerID))
+			}
+		}
+	}
 
 	// Load all auth resource rows for this consent.
 	authResources, err := consentService.stores.AuthResource.GetByConsentID(ctx, consentID, orgID)
@@ -2268,6 +2312,8 @@ func (s *consentService) validatePurposes(
 	}
 
 	// Validate no duplicate elements across ALL resolved purposes
+	// This check happens AFTER resolution because we now have the complete picture
+	// of all elements across all purposes (including auto-filled ones)
 	if err := s.validateNoDuplicateElementsAcrossPurposes(resolvedPurposes); err != nil {
 		logger.Warn("Duplicate element validation failed", log.Error(err))
 		return nil, err

@@ -810,7 +810,7 @@ func TestGetDelegates_Success(t *testing.T) {
 		},
 	}
 
-	mockService.On("GetConsentDelegates", mock.Anything, consentID, testOrgID).
+	mockService.On("GetConsentDelegates", mock.Anything, consentID, testOrgID, "parent_mom_456").
 		Return(expectedResponse, nil)
 
 	mux := http.NewServeMux()
@@ -822,6 +822,7 @@ func TestGetDelegates_Success(t *testing.T) {
 	req, err := http.NewRequest(http.MethodGet, server.URL+"/api/v1/consents/"+consentID+"/delegates", nil)
 	require.NoError(t, err)
 	req.Header.Set(constants.HeaderOrgID, testOrgID)
+	req.Header.Set("X-User-ID", "parent_mom_456")
 
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
@@ -882,7 +883,7 @@ func TestGetDelegates_NotFound(t *testing.T) {
 
 	consentID := "550e8400-e29b-41d4-a716-446655440001"
 
-	mockService.On("GetConsentDelegates", mock.Anything, consentID, testOrgID).
+	mockService.On("GetConsentDelegates", mock.Anything, consentID, testOrgID, "caller-user-001").
 		Return(nil, serviceerror.CustomServiceError(ErrorConsentNotFound, "Consent not found"))
 
 	mux := http.NewServeMux()
@@ -894,6 +895,7 @@ func TestGetDelegates_NotFound(t *testing.T) {
 	req, err := http.NewRequest(http.MethodGet, server.URL+"/api/v1/consents/"+consentID+"/delegates", nil)
 	require.NoError(t, err)
 	req.Header.Set(constants.HeaderOrgID, testOrgID)
+	req.Header.Set("X-User-ID", "caller-user-001")
 
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
@@ -909,7 +911,7 @@ func TestGetDelegates_ServiceError(t *testing.T) {
 
 	consentID := "550e8400-e29b-41d4-a716-446655440002"
 
-	mockService.On("GetConsentDelegates", mock.Anything, consentID, testOrgID).
+	mockService.On("GetConsentDelegates", mock.Anything, consentID, testOrgID, "caller-user-001").
 		Return(nil, serviceerror.CustomServiceError(ErrorInternalServerError, "database error"))
 
 	mux := http.NewServeMux()
@@ -921,6 +923,7 @@ func TestGetDelegates_ServiceError(t *testing.T) {
 	req, err := http.NewRequest(http.MethodGet, server.URL+"/api/v1/consents/"+consentID+"/delegates", nil)
 	require.NoError(t, err)
 	req.Header.Set(constants.HeaderOrgID, testOrgID)
+	req.Header.Set("X-User-ID", "caller-user-001")
 
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
@@ -941,7 +944,7 @@ func TestGetDelegates_NoDelegates(t *testing.T) {
 		Delegates:     []model.DelegateInfo{},
 	}
 
-	mockService.On("GetConsentDelegates", mock.Anything, consentID, testOrgID).
+	mockService.On("GetConsentDelegates", mock.Anything, consentID, testOrgID, "caller-user-001").
 		Return(expectedResponse, nil)
 
 	mux := http.NewServeMux()
@@ -953,6 +956,7 @@ func TestGetDelegates_NoDelegates(t *testing.T) {
 	req, err := http.NewRequest(http.MethodGet, server.URL+"/api/v1/consents/"+consentID+"/delegates", nil)
 	require.NoError(t, err)
 	req.Header.Set(constants.HeaderOrgID, testOrgID)
+	req.Header.Set("X-User-ID", "caller-user-001")
 
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
@@ -966,6 +970,30 @@ func TestGetDelegates_NoDelegates(t *testing.T) {
 	require.Equal(t, 0, response.DelegateCount)
 	require.Empty(t, response.Delegates)
 	mockService.AssertExpectations(t)
+}
+
+func TestGetDelegates_MissingUserID(t *testing.T) {
+	mockService := NewMockConsentService(t)
+	handler := newConsentHandler(mockService)
+
+	consentID := "550e8400-e29b-41d4-a716-446655440000"
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET "+constants.APIBasePath+"/consents/{consentId}/delegates", handler.getDelegates)
+
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	// No X-User-ID header — must be rejected before reaching the service
+	req, err := http.NewRequest(http.MethodGet, server.URL+"/api/v1/consents/"+consentID+"/delegates", nil)
+	require.NoError(t, err)
+	req.Header.Set(constants.HeaderOrgID, testOrgID)
+
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	require.Equal(t, http.StatusForbidden, resp.StatusCode)
 }
 
 // ── GET /consents?dataPrincipalId= ───────────────────────────────────────────

@@ -240,9 +240,9 @@ func (_m *MockConsentService) ValidateConsent(ctx context.Context, req model.Val
 	return r0, r1
 }
 
-// GetConsentDelegates provides a mock function with given fields: ctx, consentID, orgID
-func (_m *MockConsentService) GetConsentDelegates(ctx context.Context, consentID string, orgID string) (*model.DelegateListResponse, *serviceerror.ServiceError) {
-	ret := _m.Called(ctx, consentID, orgID)
+// GetConsentDelegates provides a mock function with given fields: ctx, consentID, orgID, callerID
+func (_m *MockConsentService) GetConsentDelegates(ctx context.Context, consentID string, orgID string, callerID string) (*model.DelegateListResponse, *serviceerror.ServiceError) {
+	ret := _m.Called(ctx, consentID, orgID, callerID)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetConsentDelegates")
@@ -250,19 +250,19 @@ func (_m *MockConsentService) GetConsentDelegates(ctx context.Context, consentID
 
 	var r0 *model.DelegateListResponse
 	var r1 *serviceerror.ServiceError
-	if rf, ok := ret.Get(0).(func(context.Context, string, string) (*model.DelegateListResponse, *serviceerror.ServiceError)); ok {
-		return rf(ctx, consentID, orgID)
+	if rf, ok := ret.Get(0).(func(context.Context, string, string, string) (*model.DelegateListResponse, *serviceerror.ServiceError)); ok {
+		return rf(ctx, consentID, orgID, callerID)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, string, string) *model.DelegateListResponse); ok {
-		r0 = rf(ctx, consentID, orgID)
+	if rf, ok := ret.Get(0).(func(context.Context, string, string, string) *model.DelegateListResponse); ok {
+		r0 = rf(ctx, consentID, orgID, callerID)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*model.DelegateListResponse)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, string, string) *serviceerror.ServiceError); ok {
-		r1 = rf(ctx, consentID, orgID)
+	if rf, ok := ret.Get(1).(func(context.Context, string, string, string) *serviceerror.ServiceError); ok {
+		r1 = rf(ctx, consentID, orgID, callerID)
 	} else {
 		if ret.Get(1) != nil {
 			r1 = ret.Get(1).(*serviceerror.ServiceError)
