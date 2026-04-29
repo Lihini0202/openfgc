@@ -293,39 +293,3 @@ func TestValidateDelegation_NonParentalDelegation_CallerCanBePrincipal(t *testin
 	err := ValidateDelegationAttributes(attrs, auths, "adult-123")
 	require.NoError(t, err)
 }
-
-// TestValidateConsentUpdateRequest_ConvertToSelfConsent_BypassesImmutability verifies
-// that convertToSelfConsent=true skips the delegation attribute immutability guard,
-// because the service layer will handle the actual deletion and validation.
-func TestValidateConsentUpdateRequest_ConvertToSelfConsent_BypassesImmutability(t *testing.T) {
-	// With convertToSelfConsent=false, sending delegation attrs in an update must FAIL
-	reqBlocked := model.ConsentAPIUpdateRequest{
-		Attributes: map[string]string{
-			model.AttrDelegationType: "parental_biological",
-		},
-	}
-	reqBlocked.ConvertToSelfConsent = false
-	err := ValidateConsentUpdateRequest(reqBlocked)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "immutable after consent creation")
-
-	// With convertToSelfConsent=true and NO other fields, the validator must PASS
-	// (service layer does the real checks: expired? principal? delegated?)
-	reqAllowed := model.ConsentAPIUpdateRequest{
-		ConvertToSelfConsent: true,
-	}
-	err = ValidateConsentUpdateRequest(reqAllowed)
-	require.NoError(t, err)
-
-	// convertToSelfConsent=true combined with other fields must FAIL
-	// (conversion is an exclusive operation)
-	reqMixed := model.ConsentAPIUpdateRequest{
-		ConvertToSelfConsent: true,
-		Attributes: map[string]string{
-			model.AttrDelegationType: "parental_biological",
-		},
-	}
-	err = ValidateConsentUpdateRequest(reqMixed)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "convertToSelfConsent cannot be combined")
-}

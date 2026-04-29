@@ -28,26 +28,11 @@ import (
 	"github.com/wso2/openfgc/internal/system/config"
 )
 
-// ─── Delegation support ───────────────────────────────────────────────────────
-// All delegation data is stored in the existing CONSENT_ATTRIBUTE table as
-
-// Attribute key constants for delegation metadata stored in CONSENT_ATTRIBUTE.
+// Delegation attribute keys stored in CONSENT_ATTRIBUTE table.
 const (
-	// AttrDelegationType is the kind of delegation.
-	// Examples: "parental_biological", "parental_legal", "guardian", "carer", "power_of_attorney"
-	AttrDelegationType = "delegation.type"
-
-	// AttrDelegationPrincipalID is the userId of the actual data subject
-	// (the person WHOSE data is being processed, not the person giving consent).
-	AttrDelegationPrincipalID = "delegation.principal_id"
-
-	// AttrGuardianValidUntil is the Unix timestamp (seconds) after which the
-	// delegation expires. For minors, set this to the child's 18th birthday.
-	// After this point only the principal may act on the consent.
-	AttrGuardianValidUntil = "guardian.valid_until"
-
-	// AttrGuardianRevocationPolicy controls who may revoke a delegated consent.
-	// Use RevocationPolicyAny or RevocationPolicySubjectOnly below.
+	AttrDelegationType           = "delegation.type"
+	AttrDelegationPrincipalID    = "delegation.principal_id"
+	AttrGuardianValidUntil       = "guardian.valid_until"
 	AttrGuardianRevocationPolicy = "guardian.revocation_policy"
 )
 
@@ -55,16 +40,12 @@ const (
 type RevocationPolicy string
 
 const (
-	// RevocationPolicyAny allows any registered delegate with canRevoke=true to revoke.
-	RevocationPolicyAny RevocationPolicy = "ANY"
-	// RevocationPolicySubjectOnly allows only the data principal to revoke.
-	RevocationPolicySubjectOnly RevocationPolicy = "SUBJECT_ONLY"
-	// RevocationPolicyBoth allows both the data principal and authorized delegates to revoke.
-	RevocationPolicyBoth RevocationPolicy = "BOTH"
+	RevocationPolicyAny         RevocationPolicy = "ANY"          // Only delegates with canRevoke=true
+	RevocationPolicySubjectOnly RevocationPolicy = "SUBJECT_ONLY" // Only the data principal
+	RevocationPolicyBoth        RevocationPolicy = "BOTH"         // Both principal and delegates
 )
 
-// DelegationConfig is a parsed view of the delegation CONSENT_ATTRIBUTE rows.
-// Built at runtime from the attribute map — not stored as a separate struct.
+// DelegationConfig is parsed from CONSENT_ATTRIBUTE rows at runtime.
 type DelegationConfig struct {
 	Type             string
 	PrincipalID      string
@@ -72,21 +53,18 @@ type DelegationConfig struct {
 	RevocationPolicy RevocationPolicy
 }
 
-// IsGuardianConsent returns true when this consent was given on behalf of someone else.
+// IsGuardianConsent returns true when delegation.type is set.
 func (d DelegationConfig) IsGuardianConsent() bool {
 	return d.Type != ""
 }
 
-// IsExpired returns true when the delegation period has ended.
-// When true, only the data principal may act on the consent.
+// IsExpired returns true when the current time is past guardian.valid_until.
 func (d DelegationConfig) IsExpired() bool {
 	if d.ValidUntil == 0 {
 		return false
 	}
 	return time.Now().Unix() >= d.ValidUntil
 }
-
-// ─── end delegation support ───────────────────────────────────────────────────
 
 // Consent represents the CONSENT table
 type Consent struct {
@@ -254,52 +232,27 @@ type ConsentAPIRequest struct {
 	DataAccessValidityDuration *int64                    `json:"dataAccessValidityDuration,omitempty"`
 	Purposes                   []ConsentPurposeItem      `json:"purposes" binding:"required,min=1"`
 	Attributes                 map[string]string         `json:"attributes,omitempty"`
-	Authorizations             []AuthorizationAPIRequest `json:"authorizations"` // Remove omitempty to allow explicit empty array in updates
-	// CallerID is set by the handler from the X-User-ID request header.
-	// It is NOT read from the JSON body (json:"-").
-	// Used by delegation validation to ensure the consent initiator is not
-	// also the data principal — cannot self-delegate
-	CallerID string `json:"-"`
-	// PrincipalID is the userId of the data subject when this consent is being
-	// given on behalf of another person (e.g., parent creating consent for child).
-	// It mirrors the delegation.principal_id attribute stored in CONSENT_ATTRIBUTE.
-	// Provided as a convenience field on the request for validation.
-	PrincipalID string `json:"principalId,omitempty"`
+	Authorizations             []AuthorizationAPIRequest `json:"authorizations"`        // Remove omitempty to allow explicit empty array in updates
+	CallerID                   string                    `json:"-"`                     // Set from X-User-ID header, not from JSON body
+	PrincipalID                string                    `json:"principalId,omitempty"` // Convenience field — copied to attributes["delegation.principal_id"] by handler
 }
 
-// ─── Delegation response types ────────────────────────────────────────────────
-// These types support the GET /consents/{consentId}/delegates endpoint and
-// the delegate-related test assertions.
-
-// DelegationAPIRequest carries optional delegation metadata on an authorization
-// resource at consent creation time. It is used when the consent is being given
-// on behalf of another person (e.g., parent for child). Stored in the RESOURCES
-// JSON blob of CONSENT_AUTH_RESOURCE — no schema change needed.
+// DelegationAPIRequest carries delegation metadata on an authorization resource.
+// Merged into the RESOURCES JSON blob of CONSENT_AUTH_RESOURCE.
 type DelegationAPIRequest struct {
-	// Type is the delegation relationship, e.g. "parental_biological", "carer".
-	Type string `json:"type,omitempty"`
-	// PrincipalID is the userId of the actual data subject (the person whose data
-	// is being processed). Must match delegation.principal_id in CONSENT_ATTRIBUTE.
+	Type        string `json:"type,omitempty"`
 	PrincipalID string `json:"principalId,omitempty"`
-	// CanRevoke indicates whether this delegate may revoke the consent.
-	CanRevoke bool `json:"canRevoke,omitempty"`
-	// CanModify indicates whether this delegate may modify the consent.
-	CanModify bool `json:"canModify,omitempty"`
+	CanRevoke   bool   `json:"canRevoke,omitempty"`
+	CanModify   bool   `json:"canModify,omitempty"`
 }
 
-// mergeDelegationIntoResources merges the Delegation fields into the Resources map
-// so they are persisted in the RESOURCES JSON blob of CONSENT_AUTH_RESOURCE.
-// When Delegation is nil the input is returned unchanged.
-//
-// Returns an error when resources is a non-object type (array, string, scalar)
-// so the caller knows the payload is incompatible and the original data is not
-// silently lost.
+// mergeDelegationIntoResources merges Delegation fields into the Resources map.
+// Returns an error when resources is a non-object type.
 func mergeDelegationIntoResources(resources interface{}, delegation *DelegationAPIRequest) (interface{}, error) {
 	if delegation == nil {
 		return resources, nil
 	}
 
-	// Start with an empty map or a copy of the existing resources map.
 	merged := make(map[string]interface{})
 	if resources != nil {
 		switch v := resources.(type) {
@@ -308,9 +261,6 @@ func mergeDelegationIntoResources(resources interface{}, delegation *DelegationA
 				merged[k] = val
 			}
 		default:
-			// Fallback: round-trip through JSON.
-			// If the value is not a JSON object (e.g. array, string, number) we
-			// return an explicit error instead of silently dropping data.
 			b, err := json.Marshal(resources)
 			if err != nil {
 				return nil, fmt.Errorf("failed to marshal resources for delegation merge: %w", err)
@@ -330,79 +280,52 @@ func mergeDelegationIntoResources(resources interface{}, delegation *DelegationA
 		}
 	}
 
-	// Write delegation fields into the map.
-	// onBehalfOf is the key the service layer reads to identify delegate rows.
 	if delegation.PrincipalID != "" {
 		merged["onBehalfOf"] = delegation.PrincipalID
 	}
 	if delegation.Type != "" {
 		merged["delegationType"] = delegation.Type
 	}
-	// Always write bool flags so false is explicit (not missing).
 	merged["canRevoke"] = delegation.CanRevoke
 	merged["canModify"] = delegation.CanModify
 
 	return merged, nil
 }
 
-// DelegateInfo represents a single registered delegate on a consent.
-// Assembled at read time from a CONSENT_AUTH_RESOURCE row and its RESOURCES blob.
+// DelegateInfo represents a single delegate from CONSENT_AUTH_RESOURCE.
 type DelegateInfo struct {
-	// AuthID is the CONSENT_AUTH_RESOURCE.AUTH_ID for this delegate row.
-	AuthID string `json:"authId"`
-	// UserID is the delegate's userId (e.g., the parent's account ID).
-	UserID string `json:"userId"`
-	// DelegationType mirrors the delegation.type value (e.g., "parental_biological").
+	AuthID         string `json:"authId"`
+	UserID         string `json:"userId"`
 	DelegationType string `json:"delegationType,omitempty"`
-	// Status is the CONSENT_AUTH_RESOURCE.AUTH_STATUS (e.g., "approved").
-	Status string `json:"status"`
-	// CanRevoke is true when this delegate may revoke the consent.
-	CanRevoke bool `json:"canRevoke"`
-	// CanModify is true when this delegate may modify the consent.
-	CanModify bool `json:"canModify"`
-	// OnBehalfOf is the principalID this delegate is acting for.
-	OnBehalfOf string `json:"onBehalfOf,omitempty"`
-	// UpdatedTime is the CONSENT_AUTH_RESOURCE.UPDATED_TIME in milliseconds.
-	UpdatedTime int64 `json:"updatedTime"`
+	Status         string `json:"status"`
+	CanRevoke      bool   `json:"canRevoke"`
+	CanModify      bool   `json:"canModify"`
+	OnBehalfOf     string `json:"onBehalfOf,omitempty"`
+	UpdatedTime    int64  `json:"updatedTime"`
 }
 
-// DelegateListResponse is the response body for GET /consents/{consentId}/delegates.
-// It aggregates all delegate auth resources for a single consent.
+// DelegateListResponse is the response for GET /consents/{consentId}/delegates.
 type DelegateListResponse struct {
-	// ConsentID is the consent this response belongs to.
-	ConsentID string `json:"consentId"`
-	// DataPrincipalID is the userId of the data subject (from delegation.principal_id).
-	DataPrincipalID string `json:"dataPrincipalId,omitempty"`
-	// RevocationPolicy mirrors guardian.revocation_policy (e.g., "ANY").
-	RevocationPolicy string `json:"revocationPolicy,omitempty"`
-	// ValidUntil is the delegation expiry Unix timestamp (from guardian.valid_until).
-	ValidUntil int64 `json:"validUntil,omitempty"`
-	// IsDelegationExpired is true when the current time is past ValidUntil.
-	IsDelegationExpired bool `json:"isDelegationExpired"`
-	// DelegateCount is the total number of delegates registered on this consent.
-	DelegateCount int `json:"delegateCount"`
-	// Delegates is the list of individual delegate records.
-	Delegates []DelegateInfo `json:"delegates"`
+	ConsentID           string         `json:"consentId"`
+	DataPrincipalID     string         `json:"dataPrincipalId,omitempty"`
+	RevocationPolicy    string         `json:"revocationPolicy,omitempty"`
+	ValidUntil          int64          `json:"validUntil,omitempty"`
+	IsDelegationExpired bool           `json:"isDelegationExpired"`
+	DelegateCount       int            `json:"delegateCount"`
+	Delegates           []DelegateInfo `json:"delegates"`
 }
-
-// ─── end delegation response types ───────────────────────────────────────────
 
 // AuthorizationAPIRequest represents the API payload for authorization resource (external format)
 // Status field represents the authorization status/state (created, approved, rejected, or custom)
 type AuthorizationAPIRequest struct {
-	UserID    string      `json:"userId,omitempty"`
-	Type      string      `json:"type" binding:"required"`
-	Status    string      `json:"status,omitempty"` // Optional: defaults to "approved" if not provided
-	Resources interface{} `json:"resources,omitempty"`
-	// Delegation carries optional delegation metadata when this authorization represents
-	// a delegate acting on behalf of a data principal. Stored inside the RESOURCES JSON blob.
-	// Not a separate DB column — no schema change required.
-	Delegation *DelegationAPIRequest `json:"delegation,omitempty"`
+	UserID     string                `json:"userId,omitempty"`
+	Type       string                `json:"type" binding:"required"`
+	Status     string                `json:"status,omitempty"` // Optional: defaults to "approved" if not provided
+	Resources  interface{}           `json:"resources,omitempty"`
+	Delegation *DelegationAPIRequest `json:"delegation,omitempty"` // Merged into RESOURCES JSON blob
 }
 
 // ToAuthResourceCreateRequest converts API request format to internal format.
-// Returns an error when delegation fields cannot be merged into resources
-// (e.g. when resources is a non-object JSON value such as an array or string).
 func (req *AuthorizationAPIRequest) ToAuthResourceCreateRequest() (*authmodel.ConsentAuthResourceCreateRequest, error) {
 
 	AuthStatusMappings := config.Get().Consent.AuthStatusMappings
@@ -469,14 +392,8 @@ type ConsentAPIUpdateRequest struct {
 	Purposes                   []ConsentPurposeItem      `json:"purposes"`
 	Attributes                 map[string]string         `json:"attributes"`
 	Authorizations             []AuthorizationAPIRequest `json:"authorizations"`
-	// CallerID is set by the handler from the X-User-ID request header.
-	// It is NOT read from the JSON body (json:"-").
-	// Used by UpdateConsent to enforce canModify on delegated consents.
+	// CallerID is set from X-User-ID header. Used to enforce canModify on delegated consents.
 	CallerID string `json:"-"`
-	// ConvertToSelfConsent, when true, strips all delegation attributes from an
-	// expired delegated consent so the principal takes direct ownership.
-	// Only allowed when: caller == principal AND delegation has expired.
-	ConvertToSelfConsent bool `json:"convertToSelfConsent,omitempty"`
 }
 
 // ConsentCreateRequest represents the internal request payload for creating a consent

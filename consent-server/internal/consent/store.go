@@ -76,12 +76,6 @@ var (
 		PostgresQuery: "DELETE FROM CONSENT_ATTRIBUTE WHERE CONSENT_ID = $1 AND ORG_ID = $2",
 	}
 
-	QueryDeleteAttributeByKey = dbmodel.DBQuery{
-		ID:            "DELETE_ATTRIBUTE_BY_KEY",
-		Query:         "DELETE FROM CONSENT_ATTRIBUTE WHERE CONSENT_ID = ? AND ATT_KEY = ? AND ORG_ID = ?",
-		PostgresQuery: "DELETE FROM CONSENT_ATTRIBUTE WHERE CONSENT_ID = $1 AND ATT_KEY = $2 AND ORG_ID = $3",
-	}
-
 	QueryFindConsentIDsByAttributeKey = dbmodel.DBQuery{
 		ID:            "FIND_CONSENT_IDS_BY_ATTRIBUTE_KEY",
 		Query:         "SELECT DISTINCT CONSENT_ID FROM CONSENT_ATTRIBUTE WHERE ATT_KEY = ? AND ORG_ID = ? ORDER BY CONSENT_ID",
@@ -543,14 +537,6 @@ func (s *store) GetAttributesByConsentIDs(ctx context.Context, consentIDs []stri
 // DeleteAttributesByConsentID deletes all attributes for a consent within a transaction
 func (s *store) DeleteAttributesByConsentID(tx dbmodel.TxInterface, consentID, orgID string) error {
 	_, err := tx.Exec(QueryDeleteAttributesByConsentID, consentID, orgID)
-	return err
-}
-
-// DeleteAttributeByKey deletes a single attribute by key from a consent.
-// Used by the convert-to-self-consent flow to strip delegation metadata
-// while preserving all other attributes.
-func (s *store) DeleteAttributeByKey(tx dbmodel.TxInterface, consentID, attKey, orgID string) error {
-	_, err := tx.Exec(QueryDeleteAttributeByKey, consentID, attKey, orgID)
 	return err
 }
 

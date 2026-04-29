@@ -78,24 +78,11 @@ func ValidateConsentCreateRequest(req model.ConsentAPIRequest, clientID, orgID s
 // ValidateConsentUpdateRequest validates consent update request (keeping for future use)
 func ValidateConsentUpdateRequest(req model.ConsentAPIUpdateRequest) error {
 	// At least one field must be provided (check if nil, not if empty)
-	// Empty arrays are valid - they indicate removal of all items
 	if req.Type == "" && req.Frequency == nil &&
 		req.ValidityTime == nil && req.RecurringIndicator == nil &&
 		req.Attributes == nil && req.Authorizations == nil && req.Purposes == nil &&
-		req.DataAccessValidityDuration == nil && !req.ConvertToSelfConsent {
+		req.DataAccessValidityDuration == nil {
 		return fmt.Errorf("at least one field must be provided for update")
-	}
-
-	// convertToSelfConsent is an exclusive operation — it cannot be combined
-	// with other consent field updates. The conversion only deletes delegation
-	// metadata; any other changes must be made in a separate update call.
-	if req.ConvertToSelfConsent &&
-		(req.Type != "" || req.Frequency != nil ||
-			req.ValidityTime != nil || req.RecurringIndicator != nil ||
-			req.Attributes != nil || req.Authorizations != nil || req.Purposes != nil ||
-			req.DataAccessValidityDuration != nil) {
-		return fmt.Errorf("convertToSelfConsent cannot be combined with other consent updates; " +
-			"perform the conversion first, then update other fields separately")
 	}
 
 	// Validate Type length if provided (match create constraint)
@@ -114,25 +101,18 @@ func ValidateConsentUpdateRequest(req model.ConsentAPIUpdateRequest) error {
 	}
 
 	// Delegation attributes are immutable after consent creation.
-	// Blocking overwrite prevents a caller from extending guardian.valid_until
-	// indefinitely or changing the revocation policy after the fact.
-	// Exception: convertToSelfConsent bypasses this guard because the attrs
-	// are being DELETED entirely (not modified). The service layer validates
-	// that the caller is the principal and the delegation has expired.
-	if !req.ConvertToSelfConsent {
-		protectedKeys := []string{
-			model.AttrDelegationType,
-			model.AttrDelegationPrincipalID,
-			model.AttrGuardianValidUntil,
-			model.AttrGuardianRevocationPolicy,
-		}
-		if req.Attributes != nil {
-			for _, key := range protectedKeys {
-				if _, exists := req.Attributes[key]; exists {
-					return fmt.Errorf(
-						"delegation attribute '%s' is immutable after consent creation "+
-							"and cannot be modified via update", key)
-				}
+	protectedKeys := []string{
+		model.AttrDelegationType,
+		model.AttrDelegationPrincipalID,
+		model.AttrGuardianValidUntil,
+		model.AttrGuardianRevocationPolicy,
+	}
+	if req.Attributes != nil {
+		for _, key := range protectedKeys {
+			if _, exists := req.Attributes[key]; exists {
+				return fmt.Errorf(
+					"delegation attribute '%s' is immutable after consent creation "+
+						"and cannot be modified via update", key)
 			}
 		}
 	}
@@ -263,24 +243,8 @@ func IsConsentExpired(validityTime int64) bool {
 	return currentTimeMillis > validityTimeMillis
 }
 
-// ValidateDelegationAttributes validates the delegation-specific attributes on a
-// consent creation request when delegation.type is present in the request attributes.
-//
-// This is called from CreateConsent in service.go. It is a no-op when no
-// delegation.type attribute is set (normal self-consented request).
-//
-// Rules enforced:
-//  1. delegation.principal_id must be provided
-//  2. No delegate (auth.UserID) may equal the principal_id — that is circular.
-//     The caller may legitimately be the principal when proactively setting up
-//     delegation over their own data (e.g. capable adult initiating power of attorney).
-//  3. guardian.valid_until — OPTIONAL. When provided it must be a future Unix timestamp
-//     in seconds. Millisecond values are rejected to avoid delegations ~1000x longer
-//     than intended. Omit for permanent delegations (power of attorney, permanent
-//     disability carer, etc.) where there is no natural expiry date.
-//  4. guardian.revocation_policy must be set to a valid value
-//  5. At least one authorization must have onBehalfOf = principal_id, sourced from
-//     either auth.Resources["onBehalfOf"] or auth.Delegation.PrincipalID
+// ValidateDelegationAttributes validates delegation attributes when delegation.type is present.
+// No-op for normal self-consented requests.
 func ValidateDelegationAttributes(
 	attributes map[string]string,
 	authorizations []model.AuthorizationAPIRequest,
@@ -291,8 +255,7 @@ func ValidateDelegationAttributes(
 	if delegationType == "" {
 		return nil
 	}
-	// Lowercase copy for case-insensitive comparisons; the original
-	// delegationType is preserved for storage and error messages.
+	// Case-insensitive copy for comparisons.
 	delegationTypeLower := strings.ToLower(delegationType)
 
 	principalID := strings.TrimSpace(attributes[model.AttrDelegationPrincipalID])
@@ -301,18 +264,14 @@ func ValidateDelegationAttributes(
 			"delegation.principal_id is required when delegation.type is set")
 	}
 
-	// Without it we cannot enforce the self-delegation check below, so we must
-	// reject the request rather than silently skip the guard.
+	// Required for self-delegation check.
 	callerID = strings.TrimSpace(callerID)
 	if callerID == "" {
 		return fmt.Errorf(
 			"caller identity (X-User-ID) is required when delegation.type is set")
 	}
 
-	// The delegate being granted authority must not be the same as the data principal.
-	// That would be circular — a person cannot be delegated authority over their own consent.
-	// The caller MAY be the principal: a capable adult proactively setting up power of
-	// attorney for someone else over their own data is a valid real-world scenario.
+	// Delegate userId must not equal the principal (circular self-delegation).
 	for _, auth := range authorizations {
 		delegateUserID := strings.TrimSpace(auth.UserID)
 		if delegateUserID != "" && delegateUserID == principalID {
@@ -323,8 +282,7 @@ func ValidateDelegationAttributes(
 		}
 	}
 
-	// If the caller IS the principal, at least one real delegate with a different
-	// userId must be registered — otherwise there is no actual delegation happening.
+	// If caller is the principal, at least one other delegate must exist.
 	if callerID == principalID {
 		// Guard against a minor self-initiating parental consent.
 		// Parental delegation must be initiated by the parent, not the child, per
@@ -354,10 +312,6 @@ func ValidateDelegationAttributes(
 		}
 	}
 
-	// guardian.valid_until is OPTIONAL — permanent delegations (e.g., power of attorney
-	// for a permanently disabled adult, court-ordered guardianship with no end date)
-	// may legitimately omit this field. When provided it must be a valid future timestamp
-	// in seconds.
 	validUntilStr := strings.TrimSpace(attributes[model.AttrGuardianValidUntil])
 	if validUntilStr != "" {
 		validUntil, err := strconv.ParseInt(validUntilStr, 10, 64)
@@ -381,8 +335,7 @@ func ValidateDelegationAttributes(
 		}
 	}
 
-	// Who is allowed to revoke this consent?
-	// Use model constants in error messages so they stay in sync if the constants are renamed.
+	// Validate revocation policy.
 	policy := strings.TrimSpace(attributes[model.AttrGuardianRevocationPolicy])
 	if policy == "" {
 		return fmt.Errorf(
@@ -408,14 +361,9 @@ func ValidateDelegationAttributes(
 		)
 	}
 
-	// At least one authorization must register a delegate for the principal.
+	// At least one authorization must have onBehalfOf matching the principal.
 	//
-	// The principal can be identified via two paths:
-	//   1. auth.Resources["onBehalfOf"]  — legacy / direct JSON field
-	//   2. auth.Delegation.PrincipalID   — new typed delegation struct
 	//
-	// When both are present they must agree; a mismatch means the caller is
-	// trying to validate one principal and persist another.
 	found := false
 	for _, auth := range authorizations {
 		// Resolve the effective principal from the Delegation struct (new path).

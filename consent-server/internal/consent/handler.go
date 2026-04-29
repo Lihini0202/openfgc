@@ -58,14 +58,11 @@ func (h *consentHandler) createConsent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Set CallerID from X-User-ID header so delegation validation can detect
-	// circular self-delegation (where the delegate being registered is the
-	// same person as the data principal).
-	// This field is NOT read from JSON (tagged json:"-")
+	// Set CallerID from X-User-ID header for delegation validation.
+
 	req.CallerID = strings.TrimSpace(r.Header.Get("X-User-ID"))
 
-	// Propagate the explicitly provided PrincipalID into the attributes map
-	// so that delegation validation and downstream processing can safely use it.
+	// Copy PrincipalID into attributes map for delegation processing.
 	if req.PrincipalID != "" {
 		if req.Attributes == nil {
 			req.Attributes = make(map[string]string)
@@ -85,9 +82,7 @@ func (h *consentHandler) createConsent(w http.ResponseWriter, r *http.Request) {
 		req.Attributes[model.AttrDelegationPrincipalID] = principalID
 	}
 
-	// Validate delegation attributes here in the handler so the check runs even
-	// when the service is mocked in tests. ValidateDelegationAttributes is a no-op
-	// when delegation.type is not present in Attributes.
+	// Validate delegation attributes (no-op when delegation.type is absent).
 	if err := validator.ValidateDelegationAttributes(req.Attributes, req.Authorizations, req.CallerID); err != nil {
 		utils.SendError(w, r, serviceerror.CustomServiceError(ErrorInvalidDelegation, err.Error()))
 		return
@@ -170,14 +165,10 @@ func (h *consentHandler) listConsents(w http.ResponseWriter, r *http.Request) {
 		Offset: offset,
 	}
 
-	// CallerID from X-User-ID header — used to verify the caller is an authorised
-	// delegate when dataPrincipalId is also provided
+	// CallerID from X-User-ID header for delegate authorization.
 	filters.CallerID = strings.TrimSpace(r.Header.Get("X-User-ID"))
 
-	// dataPrincipalId filters consents by data subject (the person whose data was
-	// consented to), not by who gave the consent.
-	// Example: parent logs in → GET /consents?dataPrincipalId=child-user-id
-	// The service checks the caller is a registered delegate before returning results.
+	// dataPrincipalId filters consents by data subject.
 
 	if values, ok := r.URL.Query()["dataPrincipalId"]; ok {
 		dpID := strings.TrimSpace(values[0])

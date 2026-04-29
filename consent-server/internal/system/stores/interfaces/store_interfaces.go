@@ -42,7 +42,6 @@ type ConsentStore interface {
 	UpdateStatus(tx dbmodel.TxInterface, consentID, orgID, status string, updatedTime int64) error
 	CreateAttributes(tx dbmodel.TxInterface, attributes []consentModel.ConsentAttribute) error
 	DeleteAttributesByConsentID(tx dbmodel.TxInterface, consentID, orgID string) error
-	DeleteAttributeByKey(tx dbmodel.TxInterface, consentID, attKey, orgID string) error
 	CreateStatusAudit(tx dbmodel.TxInterface, audit *consentModel.ConsentStatusAudit) error
 
 	CreateConsentPurposeMapping(tx dbmodel.TxInterface, consentID, purposeID, orgID string) error

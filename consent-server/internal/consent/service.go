@@ -527,15 +527,8 @@ func (consentService *consentService) SearchConsentsDetailed(ctx context.Context
 		filters.Offset = 0
 	}
 
-	// ── Delegate authorization check ─────────────────────────────────────────
-	// When dataPrincipalId is set, the caller must prove they are either the
-	// principal themselves or an active delegate for that principal.
-	//
-	// Failing open (skipping this check when CallerID is empty) would allow any
-	// caller to read another person's consents simply by omitting X-User-ID.
+	// Delegate authorization: when dataPrincipalId is set, verify caller is the principal or a delegate.
 	if filters.DataPrincipalID != "" {
-		// Require an explicit caller identity — no anonymous access to another
-		// principal's consents.
 		if filters.CallerID == "" {
 			logger.Warn("dataPrincipalId set but caller identity is missing")
 			return nil, serviceerror.CustomServiceError(
@@ -556,8 +549,7 @@ func (consentService *consentService) SearchConsentsDetailed(ctx context.Context
 		}
 
 		if authorizedIDs == nil {
-			// callerID == principalID — unrestricted self-access.
-			// Clear DataPrincipalID so the store does not filter by delegation attribute.
+			// Self-access — clear filter so store does not join on delegation attribute.
 			filters.DataPrincipalID = ""
 		} else if len(authorizedIDs) == 0 {
 			logger.Warn("Caller not authorized for principal",
@@ -569,11 +561,9 @@ func (consentService *consentService) SearchConsentsDetailed(ctx context.Context
 					filters.CallerID, filters.DataPrincipalID),
 			)
 		} else {
-			// Pass the authorized IDs directly to the DB filters so pagination works natively
 			filters.AuthorizedConsentIDs = authorizedIDs
 		}
 	}
-	// ── end delegate authorization check ─────────────────────────────────────
 
 	// Step 1: Search consents
 	consentStore := consentService.stores.Consent
@@ -760,15 +750,8 @@ func (consentService *consentService) UpdateConsent(ctx context.Context, req mod
 			fmt.Sprintf("Client '%s' is not authorized to update consent '%s'", clientID, consentID))
 	}
 
-	// ── Delegation-aware modify check ────────────────────────────────────────
-	// For self-consented records this is a no-op (IsGuardianConsent==false).
-	// For delegated consents the rules are:
-	//   if delegation expired    → only the principal (now adult) may modify
-	//   if caller == principal   → allowed, EXCEPT under active ANY-policy
+	// Delegation-aware modify check.
 	//                              delegation where the guardian controls modifications
-	//   if caller == delegate    → the delegate row must have canModify=true AND
-	//                              onBehalfOf == principalID
-	// Note: Unlike revocation, SUBJECT_ONLY policy does NOT block delegates
 	// from modifying — it only restricts who can revoke.
 	{
 		attributes, attErr := consentStore.GetAttributesByConsentID(ctx, consentID, orgID)
@@ -856,7 +839,6 @@ func (consentService *consentService) UpdateConsent(ctx context.Context, req mod
 			}
 		}
 	}
-	// ── end delegation modify check ─────────────────────────────────────────
 
 	currentTime := utils.GetCurrentTimeMillis()
 	previousStatus := existing.CurrentStatus
@@ -966,79 +948,6 @@ func (consentService *consentService) UpdateConsent(ctx context.Context, req mod
 			})
 		}
 	}
-
-	// ── Convert-to-self-consent ─────────────────────────────────────────
-	// When a delegated consent's guardian period has expired, the principal
-	// can convert it to a self-consent by stripping all delegation metadata.
-	// This lets the now-adult child (or recovered patient, etc.) take
-	// ownership of the existing consent record without creating a duplicate.
-	if req.ConvertToSelfConsent {
-		convAttrs, convErr := consentStore.GetAttributesByConsentID(ctx, consentID, orgID)
-		if convErr != nil {
-			logger.Error("Failed to load attributes for conversion check",
-				log.Error(convErr), log.String("consent_id", consentID))
-			return nil, serviceerror.CustomServiceError(ErrorInternalServerError, convErr.Error())
-		}
-		convMap := make(map[string]string)
-		for _, a := range convAttrs {
-			convMap[a.AttKey] = a.AttValue
-		}
-		convDelegCfg := parseDelegationConfig(convMap)
-
-		if !convDelegCfg.IsGuardianConsent() {
-			return nil, serviceerror.CustomServiceError(ErrorValidationFailed,
-				"convertToSelfConsent is only valid on delegated consents")
-		}
-		if !convDelegCfg.IsExpired() {
-			return nil, serviceerror.CustomServiceError(ErrorValidationFailed,
-				"delegation must be expired before the principal can convert to self-consent")
-		}
-		callerID := strings.TrimSpace(req.CallerID)
-		if callerID != convDelegCfg.PrincipalID {
-			return nil, serviceerror.CustomServiceError(ErrorRevocationNotPermitted,
-				fmt.Sprintf("only the principal '%s' can convert this consent to self-consent",
-					convDelegCfg.PrincipalID))
-		}
-
-		// Strip all 4 delegation attributes in the transaction
-		delegationKeys := []string{
-			model.AttrDelegationType,
-			model.AttrDelegationPrincipalID,
-			model.AttrGuardianValidUntil,
-			model.AttrGuardianRevocationPolicy,
-		}
-		for _, key := range delegationKeys {
-			k := key // capture for closure
-			queries = append(queries, func(tx dbmodel.TxInterface) error {
-				return consentStore.DeleteAttributeByKey(tx, consentID, k, orgID)
-			})
-		}
-
-		// Audit the conversion
-		convAuditID := utils.GenerateUUID()
-		convReason := fmt.Sprintf(
-			"[conversionToSelfConsent=true; actor=%s; fromDelegationType=%s; delegationExpired=true]",
-			callerID, convDelegCfg.Type)
-		convAudit := &model.ConsentStatusAudit{
-			StatusAuditID:  convAuditID,
-			ConsentID:      consentID,
-			CurrentStatus:  existing.CurrentStatus,
-			ActionTime:     utils.GetCurrentTimeMillis(),
-			Reason:         &convReason,
-			ActionBy:       &callerID,
-			PreviousStatus: &existing.CurrentStatus,
-			OrgID:          orgID,
-		}
-		queries = append(queries, func(tx dbmodel.TxInterface) error {
-			return consentStore.CreateStatusAudit(tx, convAudit)
-		})
-
-		logger.Info("Converting delegated consent to self-consent",
-			log.String("consent_id", consentID),
-			log.String("principal_id", convDelegCfg.PrincipalID),
-			log.String("former_delegation_type", convDelegCfg.Type))
-	}
-	// ── end convert-to-self-consent ─────────────────────────────────────
 
 	// Update authorization resources if provided
 	if updateReq.AuthResources != nil {
@@ -1292,8 +1201,6 @@ func (consentService *consentService) RevokeConsent(ctx context.Context, consent
 	// For normal self-consented records this entire block is a no-op because
 	// parseDelegationConfig returns IsGuardianConsent()=false.
 	//
-	// For delegated consents the rules are:
-	//   if delegation expired       → only the principal (now adult) may revoke
 	//   if policy = SUBJECT_ONLY    → only the principal may revoke; delegates blocked
 	//   if policy = ANY             → only delegates with canRevoke=true may revoke; principal blocked
 	//   if policy = BOTH            → both principal and delegates with canRevoke=true may revoke
@@ -1420,7 +1327,6 @@ func (consentService *consentService) RevokeConsent(ctx context.Context, consent
 			}
 		}
 	}
-	// ── end delegation revocation check ──────────────────────────────────────────
 
 	currentTime := utils.GetCurrentTimeMillis()
 
@@ -1428,7 +1334,7 @@ func (consentService *consentService) RevokeConsent(ctx context.Context, consent
 	auditID := utils.GenerateUUID()
 	reason := req.RevocationReason
 
-	// ── Delegation-aware audit enrichment ───────────────────────────────────
+	// Delegation-aware audit enrichment.
 	// When the revoker is acting as a delegate for another person, prepend a
 	// structured marker to the Reason field so the audit log answers
 	// "who revoked on whose behalf?" without a schema change. The marker is
@@ -1467,7 +1373,6 @@ func (consentService *consentService) RevokeConsent(ctx context.Context, consent
 			}
 		}
 	}
-	// ── end delegation audit enrichment ─────────────────────────────────────
 
 	audit := &model.ConsentStatusAudit{
 		StatusAuditID:  auditID,
@@ -1913,7 +1818,7 @@ func (consentService *consentService) GetConsentDelegates(ctx context.Context, c
 		}, nil
 	}
 
-	// ── Caller authorization check ───────────────────────────────────────
+	// Caller authorization check.
 	// The caller must be the data principal or an active, non-expired delegate.
 	// This prevents any authenticated user from enumerating delegate relationships
 	// by guessing consent IDs.

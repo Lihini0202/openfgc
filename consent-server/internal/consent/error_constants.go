@@ -64,11 +64,8 @@ var (
 	}
 )
 
-// Delegation errors — used when consent is given on behalf of another person.
-// Covers parent→child, carer→disabled adult, power-of-attorney, etc.
+// Delegation errors.
 var (
-	// ErrorInvalidDelegation is returned when a delegated consent request is
-	// missing required attributes such as principal_id or valid_until.
 	ErrorInvalidDelegation = serviceerror.ServiceError{
 		Type:        serviceerror.ClientErrorType,
 		Code:        "CS-4050",
@@ -76,8 +73,6 @@ var (
 		Description: "Delegated consent is missing required attributes",
 	}
 
-	// ErrorNotAuthorizedForPrincipal is returned when the caller tries to read
-	// another person's consents without being a registered delegate .
 	ErrorNotAuthorizedForPrincipal = serviceerror.ServiceError{
 		Type:        serviceerror.ClientErrorType,
 		Code:        "CS-4051",
@@ -85,8 +80,6 @@ var (
 		Description: "Caller is not a registered delegate for the requested data principal",
 	}
 
-	// ErrorRevocationNotPermitted is returned when the caller does not have
-	// permission to revoke a delegated consent .
 	ErrorRevocationNotPermitted = serviceerror.ServiceError{
 		Type:        serviceerror.ClientErrorType,
 		Code:        "CS-4052",
@@ -94,8 +87,6 @@ var (
 		Description: "Caller does not have permission to revoke this consent",
 	}
 
-	// ErrorDelegationExpired is returned when a delegate tries to act after
-	// guardian.valid_until has passed — only the principal may act now .
 	ErrorDelegationExpired = serviceerror.ServiceError{
 		Type:        serviceerror.ClientErrorType,
 		Code:        "CS-4053",
@@ -103,8 +94,6 @@ var (
 		Description: "The delegation period has ended; only the data principal may act on this consent",
 	}
 
-	// ErrorUnauthorized is returned when the caller is not permitted to perform
-	// the requested operation.
 	ErrorUnauthorized = serviceerror.ServiceError{
 		Type:        serviceerror.ClientErrorType,
 		Code:        "CS-4054",
