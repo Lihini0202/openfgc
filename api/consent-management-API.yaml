@@ -3612,6 +3612,11 @@ components:
     DelegateListResponse:
       type: object
       description: Response for GET /consents/{consentId}/delegates
+      required:
+        - consentId
+        - isDelegationExpired
+        - delegateCount
+        - delegates
       properties:
         consentId:
           type: string

@@ -94,10 +94,17 @@ var (
 		Description: "The delegation period has ended; only the data principal may act on this consent",
 	}
 
-	ErrorUnauthorized = serviceerror.ServiceError{
+	ErrorForbidden = serviceerror.ServiceError{
 		Type:        serviceerror.ClientErrorType,
 		Code:        "CS-4054",
-		Message:     "Unauthorized",
-		Description: "Caller is not authorized to perform this operation",
+		Message:     "Forbidden",
+		Description: "Caller is not permitted to perform this operation",
+	}
+
+	ErrorModificationNotPermitted = serviceerror.ServiceError{
+		Type:        serviceerror.ClientErrorType,
+		Code:        "CS-4055",
+		Message:     "Modification not permitted",
+		Description: "Caller does not have permission to modify this consent",
 	}
 )

@@ -869,6 +869,7 @@ func TestGetDelegates_InvalidConsentID(t *testing.T) {
 	req, err := http.NewRequest(http.MethodGet, server.URL+"/api/v1/consents/not-a-valid-uuid!!/delegates", nil)
 	require.NoError(t, err)
 	req.Header.Set(constants.HeaderOrgID, testOrgID)
+	req.Header.Set("X-User-ID", "caller-user-001")
 
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)

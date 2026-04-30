@@ -562,7 +562,7 @@ func TestValidateDelegation_PermanentDelegation(t *testing.T) {
 	require.NoError(t, err)
 }
 
-// delegation expired, delegate tries to revoke → expect error
+// guardian.valid_until in the past at creation time -> expect "must be a future timestamp"
 func TestValidateDelegation_ExpiredTimestamp(t *testing.T) {
 	attrs := map[string]string{
 		"delegation.type":            "guardian",
