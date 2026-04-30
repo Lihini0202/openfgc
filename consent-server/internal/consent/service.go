@@ -810,7 +810,7 @@ func (consentService *consentService) UpdateConsent(ctx context.Context, req mod
 				logger.Warn("Update denied: principal cannot modify under active ANY-policy guardianship",
 					log.String("principal_id", principalID))
 				return nil, serviceerror.CustomServiceError(
-					ErrorRevocationNotPermitted,
+					ErrorModificationNotPermitted,
 					"the data principal cannot modify a guardian-controlled consent directly; "+
 						"contact your guardian",
 				)
@@ -848,7 +848,7 @@ func (consentService *consentService) UpdateConsent(ctx context.Context, req mod
 					logger.Warn("Update denied: caller lacks canModify permission",
 						log.String("caller_id", callerID))
 					return nil, serviceerror.CustomServiceError(
-						ErrorRevocationNotPermitted,
+						ErrorModificationNotPermitted,
 						fmt.Sprintf("caller '%s' does not have canModify permission on this consent", callerID),
 					)
 				}
