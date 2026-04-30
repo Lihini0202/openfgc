@@ -1827,6 +1827,17 @@ func (consentService *consentService) GetConsentDelegates(ctx context.Context, c
 	if delegCfg.IsGuardianConsent() {
 		callerID = strings.TrimSpace(callerID)
 		principalID := delegCfg.PrincipalID
+		// Block expired delegates from viewing delegate list.
+		if delegCfg.IsExpired() && callerID != principalID {
+			logger.Warn("GetConsentDelegates denied: delegation expired, caller is not principal",
+				log.String("caller_id", callerID),
+				log.String("principal_id", principalID))
+			return nil, serviceerror.CustomServiceError(
+				ErrorDelegationExpired,
+				fmt.Sprintf("delegation for principal '%s' has expired; only the principal may view delegates",
+					principalID),
+			)
+		}
 		if callerID != principalID {
 			// Caller is not the principal — check if they are an active delegate.
 			authResources, arErr := consentService.stores.AuthResource.GetByConsentID(ctx, consentID, orgID)
