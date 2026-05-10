@@ -110,7 +110,7 @@ var (
 	QueryGetConsentPurposesByConsentID = dbmodel.DBQuery{
 		ID: "GET_PURPOSES_BY_CONSENT_ID",
 		Query: `
-			SELECT 
+			SELECT
 				pgc.CONSENT_ID,
 				pgc.PURPOSE_ID,
 				pg.NAME as PURPOSE_NAME
@@ -120,7 +120,7 @@ var (
 			ORDER BY pg.NAME
 		`,
 		PostgresQuery: `
-			SELECT 
+			SELECT
 				pgc.CONSENT_ID,
 				pgc.PURPOSE_ID,
 				pg.NAME as PURPOSE_NAME
@@ -146,7 +146,7 @@ var (
 	QueryGetElementApprovalsByConsentID = dbmodel.DBQuery{
 		ID: "GET_ELEMENT_APPROVALS_BY_CONSENT_ID",
 		Query: `
-			SELECT 
+			SELECT
 				pa.CONSENT_ID,
 				pa.PURPOSE_ID,
 				pg.NAME as PURPOSE_NAME,
@@ -158,13 +158,13 @@ var (
 			FROM CONSENT_ELEMENT_APPROVAL pa
 		JOIN CONSENT_ELEMENT p ON pa.ELEMENT_ID = p.ID AND pa.ORG_ID = p.ORG_ID
 		JOIN CONSENT_PURPOSE pg ON pa.PURPOSE_ID = pg.ID AND pa.ORG_ID = pg.ORG_ID
-		JOIN PURPOSE_ELEMENT_MAPPING gm ON pa.PURPOSE_ID = gm.PURPOSE_ID 
+		JOIN PURPOSE_ELEMENT_MAPPING gm ON pa.PURPOSE_ID = gm.PURPOSE_ID
 			AND pa.ELEMENT_ID = gm.ELEMENT_ID AND pa.ORG_ID = gm.ORG_ID
 			WHERE pa.CONSENT_ID = ? AND pa.ORG_ID = ?
 			ORDER BY pg.NAME, p.NAME
 		`,
 		PostgresQuery: `
-			SELECT 
+			SELECT
 				pa.CONSENT_ID,
 				pa.PURPOSE_ID,
 				pg.NAME as PURPOSE_NAME,
@@ -176,7 +176,7 @@ var (
 			FROM CONSENT_ELEMENT_APPROVAL pa
 		JOIN CONSENT_ELEMENT p ON pa.ELEMENT_ID = p.ID AND pa.ORG_ID = p.ORG_ID
 		JOIN CONSENT_PURPOSE pg ON pa.PURPOSE_ID = pg.ID AND pa.ORG_ID = pg.ORG_ID
-		JOIN PURPOSE_ELEMENT_MAPPING gm ON pa.PURPOSE_ID = gm.PURPOSE_ID 
+		JOIN PURPOSE_ELEMENT_MAPPING gm ON pa.PURPOSE_ID = gm.PURPOSE_ID
 			AND pa.ELEMENT_ID = gm.ELEMENT_ID AND pa.ORG_ID = gm.ORG_ID
 			WHERE pa.CONSENT_ID = $1 AND pa.ORG_ID = $2
 			ORDER BY pg.NAME, p.NAME
@@ -193,6 +193,12 @@ var (
 		ID:            "DELETE_ELEMENT_APPROVALS_BY_CONSENT_ID",
 		Query:         "DELETE FROM CONSENT_ELEMENT_APPROVAL WHERE CONSENT_ID = ? AND ORG_ID = ?",
 		PostgresQuery: "DELETE FROM CONSENT_ELEMENT_APPROVAL WHERE CONSENT_ID = $1 AND ORG_ID = $2",
+	}
+
+	QueryGetExpiredConsents = dbmodel.DBQuery{
+		ID:            "GET_EXPIRED_CONSENTS",
+		Query:         "SELECT CONSENT_ID, CREATED_TIME, UPDATED_TIME, CLIENT_ID, CONSENT_TYPE, CURRENT_STATUS, CONSENT_FREQUENCY, VALIDITY_TIME, RECURRING_INDICATOR, DATA_ACCESS_VALIDITY_DURATION, ORG_ID FROM CONSENT WHERE VALIDITY_TIME < ? AND CURRENT_STATUS IN (%s)",
+		PostgresQuery: "SELECT CONSENT_ID, CREATED_TIME, UPDATED_TIME, CLIENT_ID, CONSENT_TYPE, CURRENT_STATUS, CONSENT_FREQUENCY, VALIDITY_TIME, RECURRING_INDICATOR, DATA_ACCESS_VALIDITY_DURATION, ORG_ID FROM CONSENT WHERE VALIDITY_TIME < $1 AND CURRENT_STATUS IN (%s)",
 	}
 )
 
@@ -833,4 +839,40 @@ func getStringPointer(row map[string]interface{}, key string) *string {
 		return &str
 	}
 	return nil
+}
+
+func (s *store) GetExpiredConsents(nowMs int64, expirableStatuses []string) ([]model.Consent, error) {
+	dbClient, err := s.getDBClient()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get database client: %w", err)
+	}
+
+	placeholders := make([]string, len(expirableStatuses))
+	args := []interface{}{nowMs}
+	for i, status := range expirableStatuses {
+		placeholders[i] = "?"
+		args = append(args, status)
+	}
+
+	query := fmt.Sprintf(QueryGetExpiredConsents.Query, strings.Join(placeholders, ","))
+	postgresQuery := fmt.Sprintf(QueryGetExpiredConsents.PostgresQuery, strings.Join(placeholders, ","))
+
+	rows, err := dbClient.Query(dbmodel.DBQuery{
+		ID:            QueryGetExpiredConsents.ID,
+		Query:         query,
+		PostgresQuery: postgresQuery,
+	}, args...)
+	if err != nil {
+		return nil, err
+	}
+
+	consents := make([]model.Consent, 0, len(rows))
+	for _, row := range rows {
+		consent := mapToConsent(row)
+		if consent != nil {
+			consents = append(consents, *consent)
+		}
+	}
+
+	return consents, nil
 }

@@ -84,10 +84,22 @@ type ConsentStatus string
 // AuthStatus represents a typed authorization status
 type AuthStatus string
 
+// ExpirationFrequencyConfig holds the scheduler frequency config
+type ExpirationFrequencyConfig struct {
+	Frequency string `yaml:"frequency"`
+}
+
+// EligibleStatusesConfig holds the eligible consent statuses for expiration
+type EligibleStatusesConfig struct {
+	ConsentStatuses []string `yaml:"consent_statuses"`
+}
+
 // ConsentConfig holds consent-related configuration
 type ConsentConfig struct {
-	StatusMappings     ConsentStatusMappings `yaml:"status_mappings"`
-	AuthStatusMappings AuthStatusMappings    `yaml:"auth_status_mappings"`
+	ExpirationFrequency ExpirationFrequencyConfig `yaml:"expiration_frequency"`
+	EligibleStatuses    EligibleStatusesConfig    `yaml:"eligible_statuses"`
+	StatusMappings      ConsentStatusMappings     `yaml:"status_mappings"`
+	AuthStatusMappings  AuthStatusMappings        `yaml:"auth_status_mappings"`
 }
 
 // ConsentStatusMappings holds the mapping of specific consent lifecycle states
@@ -453,4 +465,18 @@ func (c *ConsentConfig) GetAllowedAuthStatuses() []AuthStatus {
 		c.GetSystemExpiredAuthStatus(),
 		c.GetSystemRevokedAuthStatus(),
 	}
+}
+
+// GetExpirationFrequency parses and returns the expiration frequency duration
+func (c *ConsentConfig) GetExpirationFrequency() time.Duration {
+	d, err := time.ParseDuration(c.ExpirationFrequency.Frequency)
+	if err != nil {
+		return 10 * time.Second // default fallback
+	}
+	return d
+}
+
+// GetEligibleConsentStatuses returns the list of consent statuses eligible for expiration
+func (c *ConsentConfig) GetEligibleConsentStatuses() []string {
+	return c.EligibleStatuses.ConsentStatuses
 }

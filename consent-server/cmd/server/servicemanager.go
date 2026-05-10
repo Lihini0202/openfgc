@@ -26,15 +26,14 @@ import (
 	"github.com/wso2/openfgc/internal/consent"
 	"github.com/wso2/openfgc/internal/consentelement"
 	"github.com/wso2/openfgc/internal/consentpurpose"
+	"github.com/wso2/openfgc/internal/system/config"
 	"github.com/wso2/openfgc/internal/system/healthcheck/handler"
 	"github.com/wso2/openfgc/internal/system/log"
 	"github.com/wso2/openfgc/internal/system/stores"
 )
 
 // registerServices registers all consent management services with the provided HTTP multiplexer.
-func registerServices(
-	mux *http.ServeMux,
-) {
+func registerServices(mux *http.ServeMux) {
 	logger := log.GetLogger()
 
 	// Create Store Registry with all stores
@@ -56,8 +55,17 @@ func registerServices(
 	consentpurpose.Initialize(mux, storeRegistry)
 	logger.Debug("ConsentPurpose module initialized")
 
-	consent.Initialize(mux, storeRegistry)
+	consentService := consent.Initialize(mux, storeRegistry)
 	logger.Debug("Consent module initialized")
+
+	// Start consent expiration scheduler
+	cfg := config.Get()
+	interval := cfg.Consent.GetExpirationFrequency()
+	statuses := consent.ExpirationStatuses{
+		ExpirableConsentStatuses: cfg.Consent.GetEligibleConsentStatuses(),
+	}
+	go consent.StartScheduler(consentService, interval, statuses)
+	logger.Debug("Consent expiration scheduler started", log.String("interval", interval.String()))
 
 	// Register health check endpoints
 	registerHealthCheckEndpoints(mux)

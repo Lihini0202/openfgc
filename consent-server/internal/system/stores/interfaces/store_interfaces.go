@@ -51,6 +51,7 @@ type ConsentStore interface {
 	DeleteConsentPurposeMappingsByConsentID(tx dbmodel.TxInterface, consentID, orgID string) error
 	DeletePurposeElementApprovalsByConsentID(tx dbmodel.TxInterface, consentID, orgID string) error
 	CheckPurposeUsedInConsents(ctx context.Context, purposeID, orgID string) (bool, error)
+	GetExpiredConsents(nowMs int64, expirableStatuses []string) ([]consentModel.Consent, error)
 }
 
 // AuthResourceStore defines the interface for authorization resource data operations

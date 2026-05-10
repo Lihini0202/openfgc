@@ -22,6 +22,12 @@ logging:
 
 # Consent status configuration
 consent:
+
+  expiration_frequency:
+    frequency: "10s"
+  eligible_statuses:
+    consent_statuses: ["ACTIVE", "CREATED", "REJECTED", "REVOKED"]
+
   status_mappings:
     # Status representing an active/authorized consent
     active_status: ACTIVE
