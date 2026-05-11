@@ -19,6 +19,7 @@
 package consent
 
 import (
+	"context"
 	"time"
 
 	"github.com/wso2/openfgc/internal/system/log"
@@ -30,15 +31,21 @@ type ExpirationStatuses struct {
 }
 
 // StartScheduler starts the consent expiration scheduler at the given interval.
-// It runs forever and does not support cancellation.
-func StartScheduler(svc ConsentService, interval time.Duration, statuses ExpirationStatuses) {
+// It runs until the context is cancelled.
+func StartScheduler(ctx context.Context, svc ConsentService, interval time.Duration, statuses ExpirationStatuses) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "ConsentScheduler"))
 
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
-	for range ticker.C {
-		logger.Debug("Scheduler tick — launching expiration job")
-		go RunExpirationJob(svc, statuses)
+	for {
+		select {
+		case <-ctx.Done():
+			logger.Debug("Scheduler stopped due to context cancellation")
+			return
+		case <-ticker.C:
+			logger.Debug("Scheduler tick — launching expiration job")
+			go RunExpirationJob(svc, statuses)
+		}
 	}
 }

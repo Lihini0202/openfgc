@@ -17,6 +17,7 @@
 package consent
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -25,7 +26,7 @@ import (
 )
 
 // TestStartScheduler_FiresJobOnTick verifies that StartScheduler launches RunExpirationJob on each ticker tick.
-// The scheduler runs forever and has no stop mechanism, so the test runs it in a background goroutine.
+// The scheduler runs until the context is cancelled, allowing clean test termination.
 func TestStartScheduler_FiresJobOnTick(t *testing.T) {
 	// Use the raw struct (not NewMockConsentService) to avoid the auto-cleanup
 	// assertion firing against a goroutine that outlives the test.
@@ -47,12 +48,16 @@ func TestStartScheduler_FiresJobOnTick(t *testing.T) {
 			}
 		})
 
-	// StartScheduler blocks forever; run it concurrently.
-	go StartScheduler(svc, 50*time.Millisecond, statuses)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel() // Ensure cleanup
+
+	// StartScheduler runs until context is cancelled; run it concurrently.
+	go StartScheduler(ctx, svc, 50*time.Millisecond, statuses)
 
 	select {
 	case <-jobFired:
 		// Scheduler fired the expiration job — test passes.
+		cancel() // Stop the scheduler cleanly
 	case <-time.After(2 * time.Second):
 		t.Fatal("scheduler did not fire the expiration job within 2 seconds")
 	}

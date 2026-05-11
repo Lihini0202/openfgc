@@ -56,7 +56,8 @@ func RunExpirationJob(svc ConsentService, statuses ExpirationStatuses) {
 	logger.Info("Found consents to expire", log.Int("count", len(consents)))
 
 	for _, consent := range consents {
-		// Copy loop variable before taking its address to avoid pointer aliasing.
+		// Copy loop variable before taking its address to avoid pointer aliasing,
+		// where all goroutines would reference the same memory location from the last iteration.
 		c := consent
 		if err := svc.ExpireConsent(ctx, &c, c.OrgID); err != nil {
 			logger.Error("Failed to expire consent",

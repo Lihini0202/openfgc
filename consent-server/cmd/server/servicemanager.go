@@ -20,6 +20,7 @@
 package main
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/wso2/openfgc/internal/authresource"
@@ -64,7 +65,7 @@ func registerServices(mux *http.ServeMux) {
 	statuses := consent.ExpirationStatuses{
 		ExpirableConsentStatuses: cfg.Consent.GetEligibleConsentStatuses(),
 	}
-	go consent.StartScheduler(consentService, interval, statuses)
+	go consent.StartScheduler(context.Background(), consentService, interval, statuses)
 	logger.Debug("Consent expiration scheduler started", log.String("interval", interval.String()))
 
 	// Register health check endpoints
