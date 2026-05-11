@@ -30,7 +30,7 @@ import (
 )
 
 const (
-	ServerBinary = "../../target/server/consent-server"
+	ServerBinary = "../../target/server/consent-server.exe"
 	ConfigPath   = "repository/conf/deployment.yaml" // Relative to tests/integration
 )
 
