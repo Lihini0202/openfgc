@@ -78,6 +78,7 @@ func runTests() error {
 		"./consentelement",
 		"./consentpurpose",
 		"./consent",
+		"./expiration",
 	}
 
 	for _, pkg := range packages {
