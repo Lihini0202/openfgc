@@ -26,10 +26,11 @@ import (
 
 // ExpirationStatuses groups all status strings needed by the expiration job.
 type ExpirationStatuses struct {
-	ExpirableConsentStatuses []string // e.g. ["ACTIVE", "CREATED"]
+	ExpirableConsentStatuses []string // Status values considered expirable by RunExpirationJob.
 }
 
 // StartScheduler starts the consent expiration scheduler at the given interval.
+// It runs forever and does not support cancellation.
 func StartScheduler(svc ConsentService, interval time.Duration, statuses ExpirationStatuses) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "ConsentScheduler"))
 

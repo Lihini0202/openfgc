@@ -38,10 +38,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// ---------------------------------------------------------------------------
 // DB config — read from deployment.yaml; override via env vars if needed
-// ---------------------------------------------------------------------------
-
 const configPath = "../repository/conf/deployment.yaml"
 
 type deploymentConfig struct {
@@ -86,10 +83,7 @@ func envOr(key, fallback string) string {
 	return fallback
 }
 
-// ---------------------------------------------------------------------------
 // Package-level DB handle
-// ---------------------------------------------------------------------------
-
 var db *sql.DB
 
 func TestMain(m *testing.M) {
@@ -136,10 +130,7 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
-// ---------------------------------------------------------------------------
 // Helpers
-// ---------------------------------------------------------------------------
-
 const consentTable = "CONSENT"
 
 func insertConsent(t *testing.T, id, status string, validityMs int64, orgID string) {
@@ -195,9 +186,7 @@ func queryExpiredConsents(t *testing.T, nowMs int64, expirableStatuses []string)
 	return ids
 }
 
-// ---------------------------------------------------------------------------
 // Integration Tests
-// ---------------------------------------------------------------------------
 
 // TestGetExpiredConsents_ReturnsConsentsWithPastValidity
 // Consents whose VALIDITY_TIME is in the past and whose status is in the

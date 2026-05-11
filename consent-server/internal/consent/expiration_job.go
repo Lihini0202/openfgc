@@ -27,8 +27,7 @@ import (
 
 // RunExpirationJob finds all consents whose VALIDITY_TIME has passed and marks them
 // as expired, along with all their auth resources.
-// It is safe to run concurrently — each tick launches a new goroutine, and any
-// panic is recovered so the scheduler goroutine is never killed.
+// Panics are recovered so a single job failure does not stop the scheduler.
 func RunExpirationJob(svc ConsentService, statuses ExpirationStatuses) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "ConsentExpirationJob"))
 
@@ -57,6 +56,7 @@ func RunExpirationJob(svc ConsentService, statuses ExpirationStatuses) {
 	logger.Info("Found consents to expire", log.Int("count", len(consents)))
 
 	for _, consent := range consents {
+		// Copy loop variable before taking its address to avoid pointer aliasing.
 		c := consent
 		if err := svc.ExpireConsent(ctx, &c, c.OrgID); err != nil {
 			logger.Error("Failed to expire consent",

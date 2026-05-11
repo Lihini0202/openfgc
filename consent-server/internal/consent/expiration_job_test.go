@@ -25,10 +25,8 @@ import (
 	"github.com/wso2/openfgc/internal/consent/model"
 )
 
-// ---------------------------------------------------------------------------
 // TestRunExpirationJob_NoExpiredConsents
 // When GetExpiredConsents returns an empty list, ExpireConsent must never be called.
-// ---------------------------------------------------------------------------
 func TestRunExpirationJob_NoExpiredConsents(t *testing.T) {
 	svc := NewMockConsentService(t)
 	statuses := ExpirationStatuses{ExpirableConsentStatuses: []string{"ACTIVE", "CREATED"}}
@@ -44,11 +42,8 @@ func TestRunExpirationJob_NoExpiredConsents(t *testing.T) {
 	svc.AssertNotCalled(t, "ExpireConsent")
 }
 
-// ---------------------------------------------------------------------------
 // TestRunExpirationJob_GetExpiredConsentsFails
-// When GetExpiredConsents returns an error, the job must abort early and
-// never call ExpireConsent.
-// ---------------------------------------------------------------------------
+// When GetExpiredConsents returns an error, the job must abort early and never call ExpireConsent.
 func TestRunExpirationJob_GetExpiredConsentsFails(t *testing.T) {
 	svc := NewMockConsentService(t)
 	statuses := ExpirationStatuses{ExpirableConsentStatuses: []string{"ACTIVE"}}
@@ -64,13 +59,9 @@ func TestRunExpirationJob_GetExpiredConsentsFails(t *testing.T) {
 	svc.AssertNotCalled(t, "ExpireConsent")
 }
 
-// ---------------------------------------------------------------------------
 // TestRunExpirationJob_ExpiresAllConsents
-// When GetExpiredConsents returns N consents, ExpireConsent must be called
-// exactly N times — once per consent.
-// Note: RunExpirationJob copies each consent (c := consent) before passing
-// &c to ExpireConsent, so we match by ConsentID, not by pointer identity.
-// ---------------------------------------------------------------------------
+// When GetExpiredConsents returns N consents, ExpireConsent must be called exactly N times.
+// Note: RunExpirationJob copies each consent before passing &c to ExpireConsent, so matching by ConsentID is required.
 func TestRunExpirationJob_ExpiresAllConsents(t *testing.T) {
 	svc := NewMockConsentService(t)
 	statuses := ExpirationStatuses{ExpirableConsentStatuses: []string{"ACTIVE"}}
@@ -103,11 +94,8 @@ func TestRunExpirationJob_ExpiresAllConsents(t *testing.T) {
 	svc.AssertNumberOfCalls(t, "ExpireConsent", 2)
 }
 
-// ---------------------------------------------------------------------------
 // TestRunExpirationJob_ContinuesOnExpireError
-// When ExpireConsent fails for one consent, the job must continue and still
-// attempt to expire the remaining consents (error is logged, not fatal).
-// ---------------------------------------------------------------------------
+// When ExpireConsent fails for one consent, the job must continue and still attempt to expire the remaining consents.
 func TestRunExpirationJob_ContinuesOnExpireError(t *testing.T) {
 	svc := NewMockConsentService(t)
 	statuses := ExpirationStatuses{ExpirableConsentStatuses: []string{"ACTIVE"}}
@@ -141,11 +129,8 @@ func TestRunExpirationJob_ContinuesOnExpireError(t *testing.T) {
 	svc.AssertNumberOfCalls(t, "ExpireConsent", 2)
 }
 
-// ---------------------------------------------------------------------------
 // TestRunExpirationJob_PanicRecovery
-// RunExpirationJob has a deferred recover(). A panic inside GetExpiredConsents
-// must be absorbed and must not propagate to the caller.
-// ---------------------------------------------------------------------------
+// RunExpirationJob has a deferred recover(). A panic inside GetExpiredConsents must be absorbed and must not propagate.
 func TestRunExpirationJob_PanicRecovery(t *testing.T) {
 	svc := NewMockConsentService(t)
 	statuses := ExpirationStatuses{ExpirableConsentStatuses: []string{"ACTIVE"}}

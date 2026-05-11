@@ -24,14 +24,8 @@ import (
 	"github.com/wso2/openfgc/internal/consent/model"
 )
 
-// ---------------------------------------------------------------------------
-// TestStartScheduler_FiresJobOnTick
-// Verifies that StartScheduler launches RunExpirationJob on each ticker tick.
-// We run the scheduler in a background goroutine (it blocks forever by design)
-// and detect the first job invocation via a buffered channel.
-// The goroutine is intentionally left running after the test — this is
-// acceptable because StartScheduler has no stop mechanism.
-// ---------------------------------------------------------------------------
+// TestStartScheduler_FiresJobOnTick verifies that StartScheduler launches RunExpirationJob on each ticker tick.
+// The scheduler runs forever and has no stop mechanism, so the test runs it in a background goroutine.
 func TestStartScheduler_FiresJobOnTick(t *testing.T) {
 	// Use the raw struct (not NewMockConsentService) to avoid the auto-cleanup
 	// assertion firing against a goroutine that outlives the test.
@@ -64,11 +58,7 @@ func TestStartScheduler_FiresJobOnTick(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// TestExpirationStatuses_Fields
-// Confirms ExpirationStatuses carries its status list correctly.
-// Keeps this test close to the scheduler file where the type is defined.
-// ---------------------------------------------------------------------------
+// TestExpirationStatuses_Fields confirms ExpirationStatuses carries its status list correctly.
 func TestExpirationStatuses_Fields(t *testing.T) {
 	statuses := ExpirationStatuses{
 		ExpirableConsentStatuses: []string{"ACTIVE", "CREATED"},
