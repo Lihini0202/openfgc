@@ -23,6 +23,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"syscall"
 	"time"
@@ -150,20 +151,26 @@ func SetupDatabase() error {
 func StartServer() error {
 	fmt.Println("Starting consent server...")
 
-	_, binaryName := getServerBinary()
-	cmd := exec.Command(binaryName)
-	cmd.Dir = "../../target/server" // Run from target/server directory where config files are located
+	binaryPath, _ := getServerBinary() // Use binaryPath, not binaryName
+
+	// Convert to absolute path to avoid working directory confusion
+	absBinaryPath, err := filepath.Abs(binaryPath)
+	if err != nil {
+		return fmt.Errorf("failed to resolve binary path: %w", err)
+	}
+
+	cmd := exec.Command(absBinaryPath) // ✅ Use full path
+	cmd.Dir = "../../target/server"
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
-	// Set environment variables for test mode
 	port := GetServerPort()
 	cmd.Env = append(os.Environ(),
 		"SERVER_PORT="+port,
 		"LOG_LEVEL=debug",
 	)
 
-	err := cmd.Start()
+	err = cmd.Start()
 	if err != nil {
 		return fmt.Errorf("failed to start server: %w", err)
 	}
