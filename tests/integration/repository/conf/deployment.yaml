@@ -22,6 +22,10 @@ logging:
 
 # Consent status configuration
 consent:
+  expiration_frequency:
+    frequency: "10s"
+  eligible_statuses:
+    consent_statuses: ["ACTIVE"]
   status_mappings:
     active_status: ACTIVE
     expired_status: EXPIRED

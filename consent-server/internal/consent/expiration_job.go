@@ -28,7 +28,7 @@ import (
 // RunExpirationJob finds all consents whose VALIDITY_TIME has passed and marks them
 // as expired, along with all their auth resources.
 // Panics are recovered so a single job failure does not stop the scheduler.
-func RunExpirationJob(svc ConsentService, statuses ExpirationStatuses) {
+func RunExpirationJob(consentService ConsentService, statuses ExpirationStatuses) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "ConsentExpirationJob"))
 
 	defer func() {
@@ -42,7 +42,7 @@ func RunExpirationJob(svc ConsentService, statuses ExpirationStatuses) {
 	ctx := context.Background()
 	nowMs := time.Now().UnixMilli()
 
-	consents, err := svc.GetExpiredConsents(ctx, nowMs, statuses.ExpirableConsentStatuses)
+	consents, err := consentService.GetExpiredConsents(ctx, nowMs, statuses.ExpirableConsentStatuses)
 	if err != nil {
 		logger.Error("Failed to query expired consents", log.Error(err))
 		return
@@ -56,10 +56,8 @@ func RunExpirationJob(svc ConsentService, statuses ExpirationStatuses) {
 	logger.Info("Found consents to expire", log.Int("count", len(consents)))
 
 	for _, consent := range consents {
-		// Copy loop variable before taking its address to avoid pointer aliasing,
-		// where all goroutines would reference the same memory location from the last iteration.
 		c := consent
-		if err := svc.ExpireConsent(ctx, &c, c.OrgID); err != nil {
+		if err := consentService.ExpireConsent(ctx, &c, c.OrgID); err != nil {
 			logger.Error("Failed to expire consent",
 				log.Error(err),
 				log.String("consent_id", c.ConsentID),
