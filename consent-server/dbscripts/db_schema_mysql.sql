@@ -103,8 +103,8 @@ CREATE TABLE IF NOT EXISTS ELEMENT (
   INDEX idx_org_id (ORG_ID)
 ) ENGINE=INNODB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Properties for consent element versions (key/value pairs scoped to element version + org)
-CREATE TABLE IF NOT EXISTS ELEMENT_VERSION_PROPERTY (
+-- Properties for element versions (key/value pairs scoped to element version)
+CREATE TABLE IF NOT EXISTS ELEMENT_PROPERTY (
   ELEMENT_VERSION_ID  CHAR(36) NOT NULL,
   ATT_KEY             VARCHAR(255) NOT NULL,
   ATT_VALUE           VARCHAR(1024) NOT NULL,
@@ -112,7 +112,7 @@ CREATE TABLE IF NOT EXISTS ELEMENT_VERSION_PROPERTY (
   PRIMARY KEY (ELEMENT_VERSION_ID, ATT_KEY),
   INDEX idx_att_key_element (ATT_KEY),
   INDEX idx_org_id (ORG_ID),
-  CONSTRAINT FK_ELEMENT_VERSION_PROPERTY
+  CONSTRAINT FK_ELEMENT_PROPERTY
     FOREIGN KEY (ELEMENT_VERSION_ID)
     REFERENCES ELEMENT (VERSION_ID)
     ON DELETE CASCADE
@@ -144,8 +144,8 @@ CREATE TABLE IF NOT EXISTS PURPOSE (
   DEFAULT CHARSET=utf8mb4
   COLLATE=utf8mb4_unicode_ci;
 
--- Properties for purpose versions (key/value pairs scoped to purpose version + org)
-CREATE TABLE IF NOT EXISTS PURPOSE_VERSION_PROPERTY (
+-- Properties for purpose versions (key/value pairs scoped to purpose version)
+CREATE TABLE IF NOT EXISTS PURPOSE_PROPERTY (
   PURPOSE_VERSION_ID  CHAR(36) NOT NULL,
   ATT_KEY             VARCHAR(255) NOT NULL,
   ATT_VALUE           VARCHAR(1024) NOT NULL,
@@ -153,7 +153,7 @@ CREATE TABLE IF NOT EXISTS PURPOSE_VERSION_PROPERTY (
   PRIMARY KEY (PURPOSE_VERSION_ID, ATT_KEY),
   INDEX idx_att_key_purpose (ATT_KEY),
   INDEX idx_org_id (ORG_ID),
-  CONSTRAINT FK_PURPOSE_VERSION_PROPERTY
+  CONSTRAINT FK_PURPOSE_PROPERTY
     FOREIGN KEY (PURPOSE_VERSION_ID)
     REFERENCES PURPOSE (VERSION_ID)
     ON DELETE CASCADE
@@ -214,7 +214,6 @@ CREATE TABLE IF NOT EXISTS CONSENT_ELEMENT_APPROVAL (
   APPROVED            BOOLEAN NOT NULL DEFAULT FALSE,
   VALUE               BLOB DEFAULT NULL,  -- user-provided value for this element
   ORG_ID              VARCHAR(255) NOT NULL DEFAULT 'DEFAULT_ORG',
-  -- One approval per element version per purpose version per consent
   PRIMARY KEY (CONSENT_ID, PURPOSE_VERSION_ID, ELEMENT_VERSION_ID),
   INDEX idx_approval_consent (CONSENT_ID),
   INDEX idx_approval_purpose_ver (PURPOSE_VERSION_ID),
