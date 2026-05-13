@@ -44,8 +44,12 @@ func StartScheduler(ctx context.Context, svc ConsentService, interval time.Durat
 			logger.Debug("Scheduler stopped due to context cancellation")
 			return
 		case <-ticker.C:
-			logger.Debug("Scheduler tick — launching expiration job")
-			go RunExpirationJob(svc, statuses)
+			// Run the expiration job synchronously. This blocks the scheduler loop
+			// until the job completes, ensuring only one job runs at a time.
+			// Ticks that occur during job execution are discarded by the ticker.
+			logger.Debug("Scheduler tick — running expiration job")
+			RunExpirationJob(svc, statuses)
+			logger.Debug("Expiration job completed")
 		}
 	}
 }

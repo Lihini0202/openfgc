@@ -22,11 +22,15 @@ logging:
 
 # Consent status configuration
 consent:
+  # How often the scheduler runs to check and expire consents.
+  # Supports Go duration format: "30s", "5m", "1h", "24h"
   expiration_frequency:
     frequency: "1h"
+  # Consents with these statuses are eligible to be checked for expiration.
+  # Only consents matching these statuses will be picked up by the expiration job.
+  # Valid values are defined in status_mappings below (e.g. ACTIVE, CREATED).
   eligible_statuses:
     consent_statuses: ["ACTIVE"]
-
   status_mappings:
     # Status representing an active/authorized consent
     active_status: ACTIVE
@@ -49,3 +53,4 @@ consent:
     system_expired_state: SYS_EXPIRED
     # Authorization state indicating authorization was system-revoked due to consent revocation
     system_revoked_state: SYS_REVOKED
+
