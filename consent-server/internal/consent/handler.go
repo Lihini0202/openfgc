@@ -25,7 +25,6 @@ import (
 	"strings"
 
 	"github.com/wso2/openfgc/internal/consent/model"
-	"github.com/wso2/openfgc/internal/consent/validator"
 	"github.com/wso2/openfgc/internal/system/constants"
 	"github.com/wso2/openfgc/internal/system/error/serviceerror"
 	"github.com/wso2/openfgc/internal/system/utils"
@@ -55,36 +54,6 @@ func (h *consentHandler) createConsent(w http.ResponseWriter, r *http.Request) {
 	var req model.ConsentAPIRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		utils.SendError(w, r, serviceerror.CustomServiceError(ErrorInvalidRequestBody, "Invalid request body"))
-		return
-	}
-
-	// Set CallerID from X-User-ID header for delegation validation.
-
-	req.CallerID = strings.TrimSpace(r.Header.Get("X-User-ID"))
-
-	// Copy PrincipalID into attributes map for delegation processing.
-	if req.PrincipalID != "" {
-		if req.Attributes == nil {
-			req.Attributes = make(map[string]string)
-		}
-		principalID := strings.TrimSpace(req.PrincipalID)
-		// If the caller also set delegation.principal_id directly in attributes,
-		// the two values must agree — reject mismatches rather than silently overwriting.
-		if existing := strings.TrimSpace(req.Attributes[model.AttrDelegationPrincipalID]); existing != "" && existing != principalID {
-			utils.SendError(w, r, serviceerror.CustomServiceError(
-				ErrorInvalidDelegation,
-				"principalId must match attributes.delegation.principal_id",
-			))
-			return
-		}
-		// Uses the canonical constant (e.g. "delegation.principal_id") to ensure the
-		// validator and storage layers interpret the field properly.
-		req.Attributes[model.AttrDelegationPrincipalID] = principalID
-	}
-
-	// Validate delegation attributes (no-op when delegation.type is absent).
-	if err := validator.ValidateDelegationAttributes(req.Attributes, req.Authorizations, req.CallerID); err != nil {
-		utils.SendError(w, r, serviceerror.CustomServiceError(ErrorInvalidDelegation, err.Error()))
 		return
 	}
 
@@ -165,20 +134,6 @@ func (h *consentHandler) listConsents(w http.ResponseWriter, r *http.Request) {
 		Offset: offset,
 	}
 
-	// CallerID from X-User-ID header for delegate authorization.
-	filters.CallerID = strings.TrimSpace(r.Header.Get("X-User-ID"))
-
-	// dataPrincipalId filters consents by data subject.
-
-	if values, ok := r.URL.Query()["dataPrincipalId"]; ok {
-		dpID := strings.TrimSpace(values[0])
-		if dpID == "" {
-			utils.SendError(w, r, serviceerror.CustomServiceError(ErrorValidationFailed, "dataPrincipalId cannot be blank"))
-			return
-		}
-		filters.DataPrincipalID = dpID
-	}
-
 	// Parse consentTypes (comma-separated)
 	if consentTypesStr := r.URL.Query().Get("consentTypes"); consentTypesStr != "" {
 		filters.ConsentTypes = strings.Split(consentTypesStr, ",")
@@ -234,6 +189,12 @@ func (h *consentHandler) listConsents(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Parse delegation filter (boolean)
+	if delegationStr := r.URL.Query().Get("delegation"); delegationStr != "" {
+		isDelegated := delegationStr == "true"
+		filters.IsDelegated = &isDelegated
+	}
+
 	// Use detailed search to include nested data
 	response, serviceErr := h.service.SearchConsentsDetailed(ctx, filters)
 	if serviceErr != nil {
@@ -268,11 +229,6 @@ func (h *consentHandler) updateConsent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Set CallerID from X-User-ID so UpdateConsent can enforce canModify on
-	// delegated consents. The header is injected by the gateway/IdP and cannot
-	// be spoofed by the client.
-	req.CallerID = strings.TrimSpace(r.Header.Get("X-User-ID"))
-
 	consent, serviceErr := h.service.UpdateConsent(ctx, req, clientID, orgID, consentID)
 	if serviceErr != nil {
 		utils.SendError(w, r, serviceErr)
@@ -306,13 +262,6 @@ func (h *consentHandler) revokeConsent(w http.ResponseWriter, r *http.Request) {
 		utils.SendError(w, r, serviceerror.CustomServiceError(ErrorInvalidRequestBody, "Invalid request body"))
 		return
 	}
-
-	// The header is injected by the gateway/IdP and cannot be spoofed by the
-	// client. Always overwrite req.ActionBy with the header value (even if
-	// empty) so the JSON body cannot be used to impersonate a user. When the
-	// header is missing the service will reject the request because ActionBy
-	// is required for delegation policy enforcement.
-	req.ActionBy = strings.TrimSpace(r.Header.Get("X-User-ID"))
 
 	revokeResponse, serviceErr := h.service.RevokeConsent(ctx, consentID, orgID, req)
 	if serviceErr != nil {
@@ -376,43 +325,6 @@ func (h *consentHandler) searchConsentsByAttribute(w http.ResponseWriter, r *htt
 
 	// Call service to search consents by attribute
 	response, serviceErr := h.service.SearchConsentsByAttribute(ctx, key, value, orgID)
-	if serviceErr != nil {
-		utils.SendError(w, r, serviceErr)
-		return
-	}
-
-	w.Header().Set(constants.HeaderContentType, constants.ContentTypeJSON)
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(response)
-}
-
-// getDelegates handles GET /consents/{consentId}/delegates
-// Returns all registered delegates for the given consent, along with delegation
-// metadata (principal_id, revocation policy, expiry).
-// Requires X-User-ID header — only the principal or an active delegate may view.
-func (h *consentHandler) getDelegates(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	consentID := r.PathValue("consentId")
-	orgID := r.Header.Get(constants.HeaderOrgID)
-	callerID := strings.TrimSpace(r.Header.Get("X-User-ID"))
-
-	if err := utils.ValidateOrgID(orgID); err != nil {
-		utils.SendError(w, r, serviceerror.CustomServiceError(ErrorValidationFailed, err.Error()))
-		return
-	}
-
-	if err := utils.ValidateConsentID(consentID); err != nil {
-		utils.SendError(w, r, serviceerror.CustomServiceError(ErrorValidationFailed, err.Error()))
-		return
-	}
-
-	if callerID == "" {
-		utils.SendError(w, r, serviceerror.CustomServiceError(ErrorNotAuthorizedForPrincipal,
-			"X-User-ID header is required to view consent delegates"))
-		return
-	}
-
-	response, serviceErr := h.service.GetConsentDelegates(ctx, consentID, orgID, callerID)
 	if serviceErr != nil {
 		utils.SendError(w, r, serviceErr)
 		return

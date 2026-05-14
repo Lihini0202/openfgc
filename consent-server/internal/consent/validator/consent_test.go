@@ -19,9 +19,7 @@
 package validator
 
 import (
-	"fmt"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 	"github.com/wso2/openfgc/internal/consent/model"
@@ -188,108 +186,108 @@ func TestValidateConsentUpdateRequest_MissingAuthType(t *testing.T) {
 	require.Contains(t, err.Error(), "authorizations[0].type is required")
 }
 
-// TestValidateConsentUpdateRequest_DelegationAttrImmutable_Type blocks delegation.type overwrite
-func TestValidateConsentUpdateRequest_DelegationAttrImmutable_Type(t *testing.T) {
-	req := model.ConsentAPIUpdateRequest{
-		Attributes: map[string]string{
-			"delegation.type": "parental_biological",
+// ==================== Delegation Validator Tests ====================
+
+// TestValidateConsentCreateRequest_DelegationPresent_AuthTypeNotRequired tests that
+// auth type is not required when delegation object is present
+func TestValidateConsentCreateRequest_DelegationPresent_AuthTypeNotRequired(t *testing.T) {
+	req := model.ConsentAPIRequest{
+		Type: "food_delivery_consent",
+		Delegation: &model.DelegationRequest{
+			Type:             "parental_biological",
+			RevocationPolicy: "ANY",
+			OnBehalfOf:       "child-456",
+		},
+		Purposes: []model.ConsentPurposeItem{
+			{
+				PurposeName: "food_delivery",
+				Elements: []model.ConsentElementApprovalItem{
+					{ElementName: "child_name", IsUserApproved: true},
+				},
+			},
+		},
+		Authorizations: []model.AuthorizationAPIRequest{
+			{UserID: "mother-111"},
+			{UserID: "father-222"},
 		},
 	}
-	err := ValidateConsentUpdateRequest(req)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "immutable")
+
+	err := ValidateConsentCreateRequest(req, "quickbite-app", "quickbite-org")
+	require.NoError(t, err, "Auth type should not be required when delegation is present")
 }
 
-// TestValidateConsentUpdateRequest_DelegationAttrImmutable_PrincipalID blocks principal_id overwrite
-func TestValidateConsentUpdateRequest_DelegationAttrImmutable_PrincipalID(t *testing.T) {
-	req := model.ConsentAPIUpdateRequest{
-		Attributes: map[string]string{
-			"delegation.principal_id": "child-user-123",
+// TestValidateConsentCreateRequest_NoDelegation_AuthTypeStillRequired tests that
+// auth type is still required when delegation object is NOT present
+func TestValidateConsentCreateRequest_NoDelegation_AuthTypeStillRequired(t *testing.T) {
+	req := model.ConsentAPIRequest{
+		Type: "marketing",
+		Purposes: []model.ConsentPurposeItem{
+			{
+				PurposeName: "purpose-1",
+				Elements: []model.ConsentElementApprovalItem{
+					{ElementName: "element-1", IsUserApproved: true},
+				},
+			},
+		},
+		Authorizations: []model.AuthorizationAPIRequest{
+			{UserID: "user@example.com", Status: "APPROVED"},
 		},
 	}
-	err := ValidateConsentUpdateRequest(req)
+
+	err := ValidateConsentCreateRequest(req, "test-app", "test-org")
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "immutable")
+	require.Contains(t, err.Error(), "authorizations[0].type is required")
 }
 
-// TestValidateConsentUpdateRequest_DelegationAttrImmutable_ValidUntil blocks valid_until overwrite
-func TestValidateConsentUpdateRequest_DelegationAttrImmutable_ValidUntil(t *testing.T) {
-	req := model.ConsentAPIUpdateRequest{
-		Attributes: map[string]string{
-			"guardian.valid_until": "9999999999",
+// TestValidateConsentCreateRequest_DelegationPresent_WithAuthType tests that
+// providing auth type with delegation present does not cause error
+func TestValidateConsentCreateRequest_DelegationPresent_WithAuthType(t *testing.T) {
+	req := model.ConsentAPIRequest{
+		Type: "food_delivery_consent",
+		Delegation: &model.DelegationRequest{
+			Type:             "parental_biological",
+			RevocationPolicy: "ANY",
+			OnBehalfOf:       "child-456",
+		},
+		Purposes: []model.ConsentPurposeItem{
+			{
+				PurposeName: "food_delivery",
+				Elements: []model.ConsentElementApprovalItem{
+					{ElementName: "child_name", IsUserApproved: true},
+				},
+			},
+		},
+		Authorizations: []model.AuthorizationAPIRequest{
+			{UserID: "mother-111", Type: "authorisation"},
 		},
 	}
-	err := ValidateConsentUpdateRequest(req)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "immutable")
+
+	err := ValidateConsentCreateRequest(req, "quickbite-app", "quickbite-org")
+	require.NoError(t, err, "Providing auth type with delegation present should not cause error")
 }
 
-// TestValidateConsentUpdateRequest_DelegationAttrImmutable_RevocationPolicy blocks policy overwrite
-func TestValidateConsentUpdateRequest_DelegationAttrImmutable_RevocationPolicy(t *testing.T) {
-	req := model.ConsentAPIUpdateRequest{
-		Attributes: map[string]string{
-			"guardian.revocation_policy": "SUBJECT_ONLY",
+// TestValidateConsentCreateRequest_DelegationWithEmptyFields tests delegation with empty fields
+func TestValidateConsentCreateRequest_DelegationWithEmptyFields(t *testing.T) {
+	req := model.ConsentAPIRequest{
+		Type: "food_delivery_consent",
+		Delegation: &model.DelegationRequest{
+			Type:             "",
+			RevocationPolicy: "",
+			OnBehalfOf:       "child-456",
+		},
+		Purposes: []model.ConsentPurposeItem{
+			{
+				PurposeName: "food_delivery",
+				Elements: []model.ConsentElementApprovalItem{
+					{ElementName: "child_name", IsUserApproved: true},
+				},
+			},
+		},
+		Authorizations: []model.AuthorizationAPIRequest{
+			{UserID: "mother-111"},
 		},
 	}
-	err := ValidateConsentUpdateRequest(req)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "immutable")
-}
 
-// TestValidateConsentUpdateRequest_NonDelegationAttr_Allowed allows normal attribute updates
-func TestValidateConsentUpdateRequest_NonDelegationAttr_Allowed(t *testing.T) {
-	req := model.ConsentAPIUpdateRequest{
-		Attributes: map[string]string{
-			"custom.attribute": "some-value",
-		},
-	}
-	err := ValidateConsentUpdateRequest(req)
-	require.NoError(t, err)
-}
-
-// TestValidateDelegation_MinorCannotSelfInitiateParental ensures a minor (caller == principal)
-// cannot self-initiate a parental delegation. Only the parent can initiate parental consent.
-func TestValidateDelegation_MinorCannotSelfInitiateParental(t *testing.T) {
-	attrs := map[string]string{
-		model.AttrDelegationType:           "parental_biological",
-		model.AttrDelegationPrincipalID:    "child-123",
-		model.AttrGuardianValidUntil:       fmt.Sprintf("%d", time.Now().Add(5*365*24*time.Hour).Unix()),
-		model.AttrGuardianRevocationPolicy: string(model.RevocationPolicyAny),
-	}
-	auths := []model.AuthorizationAPIRequest{
-		{UserID: "parent-456", Type: "PRIMARY", Delegation: &model.DelegationAPIRequest{
-			PrincipalID: "child-123", Type: "parental_biological", CanRevoke: true, CanModify: true,
-		}},
-	}
-
-	// Case 1: Caller == principal (child trying to self-initiate) — must fail
-	err := ValidateDelegationAttributes(attrs, auths, "child-123")
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "must be initiated by the parent")
-
-	// Case 2: Caller != principal (parent initiating) — must pass
-	err = ValidateDelegationAttributes(attrs, auths, "parent-456")
-	require.NoError(t, err)
-}
-
-// TestValidateDelegation_NonParentalDelegation_CallerCanBePrincipal ensures that
-// non-parental delegation types (guardian, carer, power_of_attorney) allow a capable
-// adult to proactively initiate delegation over their own data.
-func TestValidateDelegation_NonParentalDelegation_CallerCanBePrincipal(t *testing.T) {
-	attrs := map[string]string{
-		model.AttrDelegationType:           "power_of_attorney",
-		model.AttrDelegationPrincipalID:    "adult-123",
-		model.AttrGuardianValidUntil:       fmt.Sprintf("%d", time.Now().Add(10*365*24*time.Hour).Unix()),
-		model.AttrGuardianRevocationPolicy: string(model.RevocationPolicyBoth),
-	}
-	auths := []model.AuthorizationAPIRequest{
-		{UserID: "attorney-456", Type: "PRIMARY", Delegation: &model.DelegationAPIRequest{
-			PrincipalID: "adult-123", Type: "power_of_attorney", CanRevoke: true, CanModify: true,
-		}},
-	}
-
-	// Caller == principal, but delegation type is power_of_attorney (not parental) — must pass
-	// This is a valid scenario: a capable adult setting up PoA over their own data.
-	err := ValidateDelegationAttributes(attrs, auths, "adult-123")
-	require.NoError(t, err)
+	err := ValidateConsentCreateRequest(req, "quickbite-app", "quickbite-org")
+	require.NoError(t, err, "Empty delegation fields should be accepted — consent manager stores as-is")
 }

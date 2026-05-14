@@ -28,44 +28,6 @@ import (
 	"github.com/wso2/openfgc/internal/system/config"
 )
 
-// Delegation attribute keys stored in CONSENT_ATTRIBUTE table.
-const (
-	AttrDelegationType           = "delegation.type"
-	AttrDelegationPrincipalID    = "delegation.principal_id"
-	AttrGuardianValidUntil       = "guardian.valid_until"
-	AttrGuardianRevocationPolicy = "guardian.revocation_policy"
-)
-
-// RevocationPolicy controls who may revoke a delegated consent.
-type RevocationPolicy string
-
-const (
-	RevocationPolicyAny         RevocationPolicy = "ANY"          // Only delegates with canRevoke=true
-	RevocationPolicySubjectOnly RevocationPolicy = "SUBJECT_ONLY" // Only the data principal
-	RevocationPolicyBoth        RevocationPolicy = "BOTH"         // Both principal and delegates
-)
-
-// DelegationConfig is parsed from CONSENT_ATTRIBUTE rows at runtime.
-type DelegationConfig struct {
-	Type             string
-	PrincipalID      string
-	ValidUntil       int64
-	RevocationPolicy RevocationPolicy
-}
-
-// IsGuardianConsent returns true when delegation.type is set.
-func (d DelegationConfig) IsGuardianConsent() bool {
-	return d.Type != ""
-}
-
-// IsExpired returns true when the current time is past guardian.valid_until.
-func (d DelegationConfig) IsExpired() bool {
-	if d.ValidUntil == 0 {
-		return false
-	}
-	return time.Now().Unix() >= d.ValidUntil
-}
-
 // Consent represents the CONSENT table
 type Consent struct {
 	ConsentID                  string `db:"CONSENT_ID" json:"consentId"`
@@ -232,101 +194,30 @@ type ConsentAPIRequest struct {
 	DataAccessValidityDuration *int64                    `json:"dataAccessValidityDuration,omitempty"`
 	Purposes                   []ConsentPurposeItem      `json:"purposes" binding:"required,min=1"`
 	Attributes                 map[string]string         `json:"attributes,omitempty"`
-	Authorizations             []AuthorizationAPIRequest `json:"authorizations"`        // Remove omitempty to allow explicit empty array in updates
-	CallerID                   string                    `json:"-"`                     // Set from X-User-ID header, not from JSON body
-	PrincipalID                string                    `json:"principalId,omitempty"` // Convenience field — copied to attributes["delegation.principal_id"] by handler
+	Authorizations             []AuthorizationAPIRequest `json:"authorizations"` // Remove omitempty to allow explicit empty array in updates
+	Delegation                 *DelegationRequest        `json:"delegation,omitempty"`
 }
 
-// DelegationAPIRequest carries delegation metadata on an authorization resource.
-// Merged into the RESOURCES JSON blob of CONSENT_AUTH_RESOURCE.
-type DelegationAPIRequest struct {
-	Type        string `json:"type,omitempty"`
-	PrincipalID string `json:"principalId,omitempty"`
-	CanRevoke   bool   `json:"canRevoke,omitempty"`
-	CanModify   bool   `json:"canModify,omitempty"`
-}
-
-// mergeDelegationIntoResources merges Delegation fields into the Resources map.
-// Returns an error when resources is a non-object type.
-func mergeDelegationIntoResources(resources interface{}, delegation *DelegationAPIRequest) (interface{}, error) {
-	if delegation == nil {
-		return resources, nil
-	}
-
-	merged := make(map[string]interface{})
-	if resources != nil {
-		switch v := resources.(type) {
-		case map[string]interface{}:
-			for k, val := range v {
-				merged[k] = val
-			}
-		default:
-			b, err := json.Marshal(resources)
-			if err != nil {
-				return nil, fmt.Errorf("failed to marshal resources for delegation merge: %w", err)
-			}
-			var decoded interface{}
-			if err := json.Unmarshal(b, &decoded); err != nil {
-				return nil, fmt.Errorf("failed to unmarshal resources for delegation merge: %w", err)
-			}
-			m, ok := decoded.(map[string]interface{})
-			if !ok {
-				return nil, fmt.Errorf(
-					"resources must be a JSON object to merge delegation fields, got %T", decoded)
-			}
-			for k, val := range m {
-				merged[k] = val
-			}
-		}
-	}
-
-	if delegation.PrincipalID != "" {
-		merged["onBehalfOf"] = delegation.PrincipalID
-	}
-	if delegation.Type != "" {
-		merged["delegationType"] = delegation.Type
-	}
-	merged["canRevoke"] = delegation.CanRevoke
-	merged["canModify"] = delegation.CanModify
-
-	return merged, nil
-}
-
-// DelegateInfo represents a single delegate from CONSENT_AUTH_RESOURCE.
-type DelegateInfo struct {
-	AuthID         string `json:"authId"`
-	UserID         string `json:"userId"`
-	DelegationType string `json:"delegationType,omitempty"`
-	Status         string `json:"status"`
-	CanRevoke      bool   `json:"canRevoke"`
-	CanModify      bool   `json:"canModify"`
-	OnBehalfOf     string `json:"onBehalfOf,omitempty"`
-	UpdatedTime    int64  `json:"updatedTime"`
-}
-
-// DelegateListResponse is the response for GET /consents/{consentId}/delegates.
-type DelegateListResponse struct {
-	ConsentID           string         `json:"consentId"`
-	DataPrincipalID     string         `json:"dataPrincipalId,omitempty"`
-	RevocationPolicy    string         `json:"revocationPolicy,omitempty"`
-	ValidUntil          int64          `json:"validUntil,omitempty"`
-	IsDelegationExpired bool           `json:"isDelegationExpired"`
-	DelegateCount       int            `json:"delegateCount"`
-	Delegates           []DelegateInfo `json:"delegates"`
+// DelegationRequest represents the optional delegation metadata in the consent request.
+// When present, all authorizations are inferred as type "delegate".
+// The consent manager stores these values as-is without enforcing their meaning.
+type DelegationRequest struct {
+	Type             string `json:"type"`             // Free-form string (e.g., "parental_biological", "carer")
+	RevocationPolicy string `json:"revocationPolicy"` // Free-form string (e.g., "ANY", "BOTH", "SUBJECT_ONLY")
+	OnBehalfOf       string `json:"onBehalfOf"`       // User ID of the data subject
 }
 
 // AuthorizationAPIRequest represents the API payload for authorization resource (external format)
 // Status field represents the authorization status/state (created, approved, rejected, or custom)
 type AuthorizationAPIRequest struct {
-	UserID     string                `json:"userId,omitempty"`
-	Type       string                `json:"type" binding:"required"`
-	Status     string                `json:"status,omitempty"` // Optional: defaults to "approved" if not provided
-	Resources  interface{}           `json:"resources,omitempty"`
-	Delegation *DelegationAPIRequest `json:"delegation,omitempty"` // Merged into RESOURCES JSON blob
+	UserID    string      `json:"userId,omitempty"`
+	Type      string      `json:"type" binding:"required"`
+	Status    string      `json:"status,omitempty"` // Optional: defaults to "approved" if not provided
+	Resources interface{} `json:"resources,omitempty"`
 }
 
-// ToAuthResourceCreateRequest converts API request format to internal format.
-func (req *AuthorizationAPIRequest) ToAuthResourceCreateRequest() (*authmodel.ConsentAuthResourceCreateRequest, error) {
+// ToAuthResourceCreateRequest converts API request format to internal format
+func (req *AuthorizationAPIRequest) ToAuthResourceCreateRequest() *authmodel.ConsentAuthResourceCreateRequest {
 
 	AuthStatusMappings := config.Get().Consent.AuthStatusMappings
 	var userID *string
@@ -334,28 +225,20 @@ func (req *AuthorizationAPIRequest) ToAuthResourceCreateRequest() (*authmodel.Co
 		userID = &req.UserID
 	}
 
-	// Default status to "created" if not provided.
-	// Note: This defaults to CreatedState (unlike consent-embedded authorizations which default to
-	// ApprovedState) because direct authorization creation typically requires an explicit approval
-	// workflow.
+	// Default status to "created" if not provided
+	// Note: This defaults to CreatedState (unlike consent-embedded authorizations which default to ApprovedState)
+	// because direct authorization creation typically requires explicit approval workflow
 	status := req.Status
 	if status == "" {
 		status = string(AuthStatusMappings.CreatedState)
 	}
 
-	// Merge delegation metadata into the resources blob so onBehalfOf/canRevoke/
-	// canModify/delegationType are persisted and readable by the delegates endpoint.
-	resources, err := mergeDelegationIntoResources(req.Resources, req.Delegation)
-	if err != nil {
-		return nil, fmt.Errorf("failed to merge delegation into resources: %w", err)
-	}
-
 	return &authmodel.ConsentAuthResourceCreateRequest{
 		AuthType:   req.Type,
 		UserID:     userID,
-		AuthStatus: status,
-		Resources:  resources,
-	}, nil
+		AuthStatus: status, // Store the status value in AuthStatus field
+		Resources:  req.Resources,
+	}
 }
 
 // AuthorizationAPIUpdateRequest represents the API payload for updating authorization resource (external format)
@@ -392,8 +275,6 @@ type ConsentAPIUpdateRequest struct {
 	Purposes                   []ConsentPurposeItem      `json:"purposes"`
 	Attributes                 map[string]string         `json:"attributes"`
 	Authorizations             []AuthorizationAPIRequest `json:"authorizations"`
-	// CallerID is set from X-User-ID header. Used to enforce canModify on delegated consents.
-	CallerID string `json:"-"`
 }
 
 // ConsentCreateRequest represents the internal request payload for creating a consent
@@ -438,6 +319,7 @@ type ConsentResponse struct {
 	OrgID                      string                          `json:"orgId"`
 	Attributes                 map[string]string               `json:"attributes,omitempty"`
 	AuthResources              []authmodel.ConsentAuthResource `json:"authResources,omitempty"`
+	Delegation                 *ConsentDelegation              `json:"delegation,omitempty"`
 }
 
 // ConsentSearchParams represents search parameters for consent queries
@@ -470,6 +352,7 @@ type ConsentSearchMetadata struct {
 
 // ConsentSearchFilters represents search criteria for consents
 type ConsentSearchFilters struct {
+	ConsentIDs      []string // Filter by specific consent IDs (used by delegation filter)
 	ConsentTypes    []string // e.g., ["accounts", "payments"]
 	ConsentStatuses []string // e.g., ["active", "revoked"]
 	ClientIDs       []string // TPP client IDs
@@ -480,19 +363,16 @@ type ConsentSearchFilters struct {
 	Limit           int
 	Offset          int
 	OrgID           string
-	// DataPrincipalID filters consents by the data subject stored in
-	// CONSENT_ATTRIBUTE (key = delegation.principal_id).
-	// Use this when a parent/guardian wants to see consents for their child.
-	// The service will verify CallerID is an authorised delegate.
-	DataPrincipalID string
-	// CallerID is the authenticated user making the list request.
-	// Required when DataPrincipalID is set so the service can verify
-	// the caller is an authorised delegate before returning results.
-	CallerID string
-	// AuthorizedConsentIDs is a list of consent IDs that the caller is explicitly
-	// authorized to see. If non-nil, the DB search will be restricted to ONLY these IDs.
-	// This ensures pagination limits and offsets are applied accurately by the database.
-	AuthorizedConsentIDs []string
+	IsDelegated     *bool // When true, only return delegated consents; when false, only non-delegated
+}
+
+// ConsentDelegation represents the CONSENT_DELEGATION table
+type ConsentDelegation struct {
+	ConsentID        string `db:"CONSENT_ID" json:"consentId"`
+	DelegationType   string `db:"DELEGATION_TYPE" json:"type"`
+	RevocationPolicy string `db:"REVOCATION_POLICY" json:"revocationPolicy"`
+	OnBehalfOf       string `db:"ON_BEHALF_OF" json:"onBehalfOf"`
+	OrgID            string `db:"ORG_ID" json:"orgId,omitempty"`
 }
 
 // ConsentDetailResponse represents a detailed consent with related data
@@ -510,12 +390,7 @@ type ConsentDetailResponse struct {
 	DataAccessValidityDuration int64                 `json:"dataAccessValidityDuration"`
 	Attributes                 map[string]string     `json:"attributes"`
 	Authorizations             []AuthorizationDetail `json:"authorizations"`
-	// IsDelegationExpired is true when guardian.valid_until has passed.
-	// The principal is now an adult or has regained capacity. The portal should
-	// prompt them to review and re-confirm or revoke inherited consents.
-	// Uses the same wire name as DelegateListResponse so clients see one
-	// canonical field name for this concept across all consent endpoints.
-	IsDelegationExpired bool `json:"isDelegationExpired"`
+	Delegation                 *ConsentDelegation    `json:"delegation,omitempty"`
 }
 
 // AuthorizationDetail represents authorization resource details
@@ -550,8 +425,8 @@ func (c *Consent) GetUpdatedTime() time.Time {
 	return time.Unix(0, c.UpdatedTime*int64(time.Millisecond))
 }
 
-// ToConsentCreateRequest converts API request format to internal format.
-// Note: CurrentStatus will be set by the handler based on authorization states.
+// ToConsentCreateRequest converts API request format to internal format
+// Note: CurrentStatus will be set by the handler based on authorization states
 func (req *ConsentAPIRequest) ToConsentCreateRequest() (*ConsentCreateRequest, error) {
 
 	AuthStatusMappings := config.Get().Consent.AuthStatusMappings
@@ -595,9 +470,7 @@ func (req *ConsentAPIRequest) ToConsentCreateRequest() (*ConsentCreateRequest, e
 	}
 	createReq.Purposes = purposes
 
-	// Map authorizations to auth resources.
-	// mergeDelegationIntoResources ensures onBehalfOf/canRevoke/canModify/delegationType
-	// are persisted in the RESOURCES blob so the delegates endpoint can read them.
+	// Map authorizations to auth resources
 	if len(req.Authorizations) > 0 {
 		createReq.AuthResources = make([]authmodel.ConsentAuthResourceCreateRequest, len(req.Authorizations))
 		for i, auth := range req.Authorizations {
@@ -606,25 +479,26 @@ func (req *ConsentAPIRequest) ToConsentCreateRequest() (*ConsentCreateRequest, e
 				userID = &auth.UserID
 			}
 
-			// Default status to "approved" if not provided.
-			// Note: Consent-embedded authorizations default to ApprovedState (unlike direct auth
-			// resource creation which defaults to CreatedState) because they're created as part of
-			// the consent flow.
+			// Default status to "approved" if not provided
+			// Note: Consent-embedded authorizations default to ApprovedState (unlike direct auth resource
+			// creation which defaults to CreatedState) because they're created as part of consent flow
 			status := auth.Status
 			if status == "" {
 				status = string(AuthStatusMappings.ApprovedState)
 			}
 
-			resources, err := mergeDelegationIntoResources(auth.Resources, auth.Delegation)
-			if err != nil {
-				return nil, fmt.Errorf("failed to merge delegation for authorization %d: %w", i, err)
+			// Infer auth type as "delegate" when delegation object is present.
+			// If the app sets a different type, we override it to "delegate".
+			authType := auth.Type
+			if req.Delegation != nil {
+				authType = "delegate"
 			}
 
 			createReq.AuthResources[i] = authmodel.ConsentAuthResourceCreateRequest{
-				AuthType:   auth.Type,
+				AuthType:   authType,
 				UserID:     userID,
 				AuthStatus: status,
-				Resources:  resources,
+				Resources:  auth.Resources,
 			}
 		}
 	}
@@ -632,8 +506,8 @@ func (req *ConsentAPIRequest) ToConsentCreateRequest() (*ConsentCreateRequest, e
 	return createReq, nil
 }
 
-// ToConsentUpdateRequest converts API update request format to internal format.
-// Note: CurrentStatus will be set by the handler based on authorization states.
+// ToConsentUpdateRequest converts API update request format to internal format
+// Note: CurrentStatus will be set by the handler based on authorization states
 func (req *ConsentAPIUpdateRequest) ToConsentUpdateRequest() (*ConsentUpdateRequest, error) {
 
 	AuthStatusMappings := config.Get().Consent.AuthStatusMappings
@@ -684,10 +558,8 @@ func (req *ConsentAPIUpdateRequest) ToConsentUpdateRequest() (*ConsentUpdateRequ
 		DataAccessValidityDuration: req.DataAccessValidityDuration,
 	}
 
-	// Map authorizations to auth resources.
-	// If Authorizations is not nil (even if empty), set AuthResources to indicate intent to update.
-	// mergeDelegationIntoResources ensures delegation fields are persisted in the RESOURCES blob
-	// on update too — same as create.
+	// Map authorizations to auth resources
+	// If Authorizations is not nil (even if empty), set AuthResources to indicate intent to update
 	if req.Authorizations != nil {
 		updateReq.AuthResources = make([]authmodel.ConsentAuthResourceCreateRequest, len(req.Authorizations))
 		for i, auth := range req.Authorizations {
@@ -696,23 +568,19 @@ func (req *ConsentAPIUpdateRequest) ToConsentUpdateRequest() (*ConsentUpdateRequ
 				userID = &auth.UserID
 			}
 
-			// Default status to "approved" if not provided.
-			// Note: Consent-embedded authorizations default to ApprovedState.
+			// Default status to "approved" if not provided
+			// Note: Consent-embedded authorizations default to ApprovedState (unlike direct auth resource
+			// creation which defaults to CreatedState) because they're created as part of consent flow
 			status := auth.Status
 			if status == "" {
 				status = string(AuthStatusMappings.ApprovedState)
 			}
 
-			resources, err := mergeDelegationIntoResources(auth.Resources, auth.Delegation)
-			if err != nil {
-				return nil, fmt.Errorf("failed to merge delegation for authorization %d: %w", i, err)
-			}
-
 			updateReq.AuthResources[i] = authmodel.ConsentAuthResourceCreateRequest{
 				AuthType:   auth.Type,
 				UserID:     userID,
-				AuthStatus: status,
-				Resources:  resources,
+				AuthStatus: status, // Store the status value
+				Resources:  auth.Resources,
 			}
 		}
 	}
@@ -735,6 +603,7 @@ type ConsentAPIResponse struct {
 	DataAccessValidityDuration *int64                     `json:"dataAccessValidityDuration,omitempty"`
 	Attributes                 map[string]string          `json:"attributes"`
 	Authorizations             []AuthorizationAPIResponse `json:"authorizations"`
+	Delegation                 *ConsentDelegation         `json:"delegation,omitempty"`
 	ModifiedResponse           interface{}                `json:"modifiedResponse,omitempty"` // Present in GET/POST/PUT, excluded in validate
 }
 
@@ -775,6 +644,7 @@ func (resp *ConsentResponse) ToAPIResponse() *ConsentAPIResponse {
 		RecurringIndicator:         resp.RecurringIndicator,
 		DataAccessValidityDuration: resp.DataAccessValidityDuration,
 		Attributes:                 attributes,
+		Delegation:                 resp.Delegation,
 		ModifiedResponse:           make(map[string]interface{}),
 		Authorizations:             make([]AuthorizationAPIResponse, 0),
 	}
@@ -849,6 +719,7 @@ type ValidateConsentAPIResponse struct {
 	Purposes                   []ConsentPurposeItemValidate `json:"purposes"`
 	Attributes                 map[string]string            `json:"attributes,omitempty"`
 	Authorizations             []AuthorizationAPIResponse   `json:"authorizations,omitempty"`
+	Delegation                 *ConsentDelegation           `json:"delegation,omitempty"`
 }
 
 // ConsentRevokeResponse represents the response after revoking a consent

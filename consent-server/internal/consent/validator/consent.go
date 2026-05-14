@@ -20,7 +20,6 @@ package validator
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 
@@ -47,7 +46,9 @@ func ValidateConsentCreateRequest(req model.ConsentAPIRequest, clientID, orgID s
 
 	// Validate auth resources (Authorizations field)
 	for i, authReq := range req.Authorizations {
-		if authReq.Type == "" {
+		// Auth type is inferred as "delegate" when delegation is present,
+		// so the app does not need to set it.
+		if authReq.Type == "" && req.Delegation == nil {
 			return fmt.Errorf("authorizations[%d].type is required", i)
 		}
 		// Status is optional and defaults to "created" in ToAuthResourceCreateRequest (or "approved" in consent-embedded flows)
@@ -78,6 +79,7 @@ func ValidateConsentCreateRequest(req model.ConsentAPIRequest, clientID, orgID s
 // ValidateConsentUpdateRequest validates consent update request (keeping for future use)
 func ValidateConsentUpdateRequest(req model.ConsentAPIUpdateRequest) error {
 	// At least one field must be provided (check if nil, not if empty)
+	// Empty arrays are valid - they indicate removal of all items
 	if req.Type == "" && req.Frequency == nil &&
 		req.ValidityTime == nil && req.RecurringIndicator == nil &&
 		req.Attributes == nil && req.Authorizations == nil && req.Purposes == nil &&
@@ -98,23 +100,6 @@ func ValidateConsentUpdateRequest(req model.ConsentAPIUpdateRequest) error {
 	// Validate frequency if provided
 	if req.Frequency != nil && *req.Frequency < 0 {
 		return fmt.Errorf("frequency must be non-negative")
-	}
-
-	// Delegation attributes are immutable after consent creation.
-	protectedKeys := []string{
-		model.AttrDelegationType,
-		model.AttrDelegationPrincipalID,
-		model.AttrGuardianValidUntil,
-		model.AttrGuardianRevocationPolicy,
-	}
-	if req.Attributes != nil {
-		for _, key := range protectedKeys {
-			if _, exists := req.Attributes[key]; exists {
-				return fmt.Errorf(
-					"delegation attribute '%s' is immutable after consent creation "+
-						"and cannot be modified via update", key)
-			}
-		}
 	}
 
 	// Validate auth resources if provided
@@ -219,7 +204,7 @@ func EvaluateConsentStatusFromAuthStatuses(authStatuses []string) string {
 	}
 }
 
-// IsConsentExpired checks if a given validity time has expired
+// IsExpired checks if a given validity time has expired
 func IsConsentExpired(validityTime int64) bool {
 	if validityTime == 0 {
 		return false // No expiry set
@@ -241,163 +226,4 @@ func IsConsentExpired(validityTime int64) bool {
 
 	currentTimeMillis := time.Now().UnixNano() / int64(time.Millisecond)
 	return currentTimeMillis > validityTimeMillis
-}
-
-// ValidateDelegationAttributes validates delegation attributes when delegation.type is present.
-// No-op for normal self-consented requests.
-func ValidateDelegationAttributes(
-	attributes map[string]string,
-	authorizations []model.AuthorizationAPIRequest,
-	callerID string,
-) error {
-	// Not a delegated consent — skip all delegation checks.
-	delegationType := strings.TrimSpace(attributes[model.AttrDelegationType])
-	if delegationType == "" {
-		return nil
-	}
-	// Case-insensitive copy for comparisons.
-	delegationTypeLower := strings.ToLower(delegationType)
-
-	principalID := strings.TrimSpace(attributes[model.AttrDelegationPrincipalID])
-	if principalID == "" {
-		return fmt.Errorf(
-			"delegation.principal_id is required when delegation.type is set")
-	}
-
-	// Required for self-delegation check.
-	callerID = strings.TrimSpace(callerID)
-	if callerID == "" {
-		return fmt.Errorf(
-			"caller identity (X-User-ID) is required when delegation.type is set")
-	}
-
-	// Delegate userId must not equal the principal (circular self-delegation).
-	for _, auth := range authorizations {
-		delegateUserID := strings.TrimSpace(auth.UserID)
-		if delegateUserID != "" && delegateUserID == principalID {
-			return fmt.Errorf(
-				"delegate userId '%s' cannot be the same as the data principal; "+
-					"a person cannot be delegated authority over their own consent",
-				delegateUserID)
-		}
-	}
-
-	// If caller is the principal, at least one other delegate must exist.
-	if callerID == principalID {
-		// Guard against a minor self-initiating parental consent.
-		// Parental delegation must be initiated by the parent, not the child, per
-		// DPDP Section 9 and the stated design requirement.
-		// Non-parental delegation types (guardian, carer, power_of_attorney) are still
-		// allowed because a capable adult may legitimately initiate those over their own data.
-		if delegationTypeLower == "parental" || delegationTypeLower == "parental_biological" || delegationTypeLower == "parental_legal" {
-			return fmt.Errorf(
-				"parental delegation must be initiated by the parent, not the data principal; "+
-					"caller '%s' cannot be the principal for delegation.type '%s'",
-				callerID, delegationType)
-		}
-
-		hasRealDelegate := false
-		for _, auth := range authorizations {
-			delegateUserID := strings.TrimSpace(auth.UserID)
-			if delegateUserID != "" && delegateUserID != principalID {
-				hasRealDelegate = true
-				break
-			}
-		}
-		if !hasRealDelegate {
-			return fmt.Errorf(
-				"when caller is the data principal, at least one authorization must "+
-					"register a delegate with a different userId for principal '%s'",
-				principalID)
-		}
-	}
-
-	validUntilStr := strings.TrimSpace(attributes[model.AttrGuardianValidUntil])
-	if validUntilStr != "" {
-		validUntil, err := strconv.ParseInt(validUntilStr, 10, 64)
-		if err != nil || validUntil <= 0 {
-			return fmt.Errorf(
-				"guardian.valid_until must be a valid positive Unix timestamp in seconds")
-		}
-
-		// Unix seconds will not exceed 1e11 until the year 5138, so any value
-		// larger than that is almost certainly a millisecond value by mistake,
-		// which would create a delegation ~1000x longer than intended.
-		const maxUnixSeconds = int64(100_000_000_000)
-		if validUntil > maxUnixSeconds {
-			return fmt.Errorf(
-				"guardian.valid_until appears to be in milliseconds; provide a Unix timestamp in seconds")
-		}
-		if time.Now().Unix() >= validUntil {
-			return fmt.Errorf(
-				"guardian.valid_until must be a future timestamp; " +
-					"the delegation would be expired immediately")
-		}
-	}
-
-	// Validate revocation policy.
-	policy := strings.TrimSpace(attributes[model.AttrGuardianRevocationPolicy])
-	if policy == "" {
-		return fmt.Errorf(
-			"guardian.revocation_policy is required for delegated consents; "+
-				"valid values: %s, %s or %s",
-			model.RevocationPolicyAny,
-			model.RevocationPolicySubjectOnly,
-			model.RevocationPolicyBoth,
-		)
-	}
-	switch model.RevocationPolicy(policy) {
-	case model.RevocationPolicyAny,
-		model.RevocationPolicySubjectOnly,
-		model.RevocationPolicyBoth:
-
-	default:
-		return fmt.Errorf(
-			"guardian.revocation_policy must be %s, %s or %s, got: %s",
-			model.RevocationPolicyAny,
-			model.RevocationPolicySubjectOnly,
-			model.RevocationPolicyBoth,
-			policy,
-		)
-	}
-
-	// At least one authorization must have onBehalfOf matching the principal.
-	//
-	//
-	found := false
-	for _, auth := range authorizations {
-		// Resolve the effective principal from the Delegation struct (new path).
-		effectivePrincipal := ""
-		if auth.Delegation != nil {
-			effectivePrincipal = strings.TrimSpace(auth.Delegation.PrincipalID)
-		}
-
-		// Resolve from Resources map (legacy path).
-		if resources, ok := auth.Resources.(map[string]interface{}); ok {
-			if onBehalfOf, _ := resources["onBehalfOf"].(string); onBehalfOf != "" {
-				// If Delegation was also set, the two values must agree.
-				if effectivePrincipal != "" && effectivePrincipal != onBehalfOf {
-					return fmt.Errorf(
-						"authorization delegation principal mismatch: delegation.principalId %q "+
-							"does not match resources.onBehalfOf %q",
-						effectivePrincipal, onBehalfOf,
-					)
-				}
-				effectivePrincipal = onBehalfOf
-			}
-		}
-
-		if effectivePrincipal == principalID {
-			found = true
-			break
-		}
-	}
-	if !found {
-		return fmt.Errorf(
-			"at least one authorization must include onBehalfOf = %q "+
-				"(via resources or delegation.principalId) "+
-				"to register a delegate for the data principal", principalID)
-	}
-
-	return nil
 }

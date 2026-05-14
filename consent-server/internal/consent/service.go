@@ -22,8 +22,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strconv"
-	"strings"
 
 	authmodel "github.com/wso2/openfgc/internal/authresource/model"
 	"github.com/wso2/openfgc/internal/consent/model"
@@ -45,9 +43,6 @@ type ConsentService interface {
 	RevokeConsent(ctx context.Context, consentID, orgID string, req model.ConsentRevokeRequest) (*model.ConsentRevokeResponse, *serviceerror.ServiceError)
 	ValidateConsent(ctx context.Context, req model.ValidateRequest, orgID string) (*model.ValidateResponse, *serviceerror.ServiceError)
 	SearchConsentsByAttribute(ctx context.Context, key, value, orgID string) (*model.ConsentAttributeSearchResponse, *serviceerror.ServiceError)
-	// GetConsentDelegates returns all registered delegates for a single consent.
-	// The caller must be the data principal or an active delegate to access this data.
-	GetConsentDelegates(ctx context.Context, consentID, orgID, callerID string) (*model.DelegateListResponse, *serviceerror.ServiceError)
 }
 
 // consentService implements the ConsentService interface
@@ -61,129 +56,6 @@ func newConsentService(registry *stores.StoreRegistry) ConsentService {
 		stores: registry,
 	}
 }
-
-// ── Delegation helpers ────────────────────────────────────────────────────────
-
-// parseDelegationConfig reads delegation attributes from a consent's attribute map
-// and returns a DelegationConfig. Returns an empty DelegationConfig (IsGuardianConsent=false)
-// when no delegation.type attribute is present.
-func parseDelegationConfig(attMap map[string]string) model.DelegationConfig {
-	delegationType := strings.TrimSpace(attMap[model.AttrDelegationType])
-	principalID := strings.TrimSpace(attMap[model.AttrDelegationPrincipalID])
-	revocationPolicy := model.RevocationPolicy(strings.TrimSpace(attMap[model.AttrGuardianRevocationPolicy]))
-
-	validUntil := int64(0)
-	if s := strings.TrimSpace(attMap[model.AttrGuardianValidUntil]); s != "" {
-		if ts, err := strconv.ParseInt(s, 10, 64); err == nil {
-			validUntil = ts
-		} else {
-			validUntil = 0
-		}
-	}
-
-	return model.DelegationConfig{
-		Type:             delegationType,
-		PrincipalID:      principalID,
-		ValidUntil:       validUntil,
-		RevocationPolicy: revocationPolicy,
-	}
-}
-
-// isCallerAuthorizedForPrincipal returns the list of consent IDs the caller is
-// authorized to access for the given principal.
-//
-//   - A nil return means callerID == principalID (the principal sees all their own
-//     consents — unrestricted). The caller MUST treat nil as "no filter needed".
-//   - An empty slice means the caller has no delegate binding and is not authorized.
-//   - A non-empty slice lists the specific consent IDs the delegate may access.
-//
-// Authorization for a delegate is granted per-consent when:
-//   - The consent's delegation.principal_id attribute equals principalID.
-//   - The delegation has not yet expired (guardian.valid_until is in the future or unset).
-//   - The caller has an APPROVED auth resource row on that consent with
-//     onBehalfOf == principalID in the RESOURCES JSON blob.
-//
-// This per-consent check prevents a delegate binding on one consent from granting
-// visibility into all consents of the same principal.
-func (consentService *consentService) isCallerAuthorizedForPrincipal(
-	ctx context.Context,
-	callerID, principalID, orgID string,
-) ([]string, error) {
-	// Principals can always access all of their own consents — no per-consent check needed.
-	if callerID == principalID {
-		return nil, nil // nil signals "unrestricted / self-access"
-	}
-
-	// Find every consent that lists principalID as the delegation subject.
-	consentStore := consentService.stores.Consent
-	consentIDs, err := consentStore.FindConsentIDsByAttribute(
-		ctx, model.AttrDelegationPrincipalID, principalID, orgID,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to look up delegated consents: %w", err)
-	}
-	if len(consentIDs) == 0 {
-		return []string{}, nil
-	}
-
-	approvedStatus := string(config.Get().Consent.AuthStatusMappings.ApprovedState)
-	authorizedIDs := make([]string, 0)
-
-	for _, consentID := range consentIDs {
-		// Load attributes to check whether the delegation period is still active.
-		attributes, err := consentStore.GetAttributesByConsentID(ctx, consentID, orgID)
-		if err != nil {
-			log.GetLogger().WithContext(ctx).Warn("Skipping consent in delegate check due to attribute read error",
-				log.Error(err),
-				log.String("consent_id", consentID))
-			continue
-		}
-		attMap := make(map[string]string)
-		for _, a := range attributes {
-			attMap[a.AttKey] = a.AttValue
-		}
-		cfg := parseDelegationConfig(attMap)
-		if cfg.IsExpired() {
-			// Delegation period ended — this delegate's access rights have lapsed.
-			continue
-		}
-
-		// Check whether callerID has an approved auth resource row for this consent
-		// where onBehalfOf matches principalID.  Checking onBehalfOf prevents an
-		// unrelated canRevoke=true row from accidentally granting access to a
-		// different principal's data.
-		authResources, err := consentService.stores.AuthResource.GetByConsentID(ctx, consentID, orgID)
-		if err != nil {
-			log.GetLogger().WithContext(ctx).Warn("Skipping consent in delegate check due to auth resource read error",
-				log.Error(err),
-				log.String("consent_id", consentID))
-			continue
-		}
-		for _, ar := range authResources {
-			if ar.AuthStatus != approvedStatus {
-				continue
-			}
-			if ar.UserID == nil || *ar.UserID != callerID {
-				continue
-			}
-			if ar.Resources == nil || *ar.Resources == "" {
-				continue
-			}
-			var res map[string]interface{}
-			if json.Unmarshal([]byte(*ar.Resources), &res) != nil {
-				continue
-			}
-			if onBehalfOf, _ := res["onBehalfOf"].(string); onBehalfOf == principalID {
-				// Caller is an authorized delegate for this specific consent.
-				authorizedIDs = append(authorizedIDs, consentID)
-				break // No need to check other auth rows for the same consent.
-			}
-		}
-	}
-	return authorizedIDs, nil
-}
-
-// ── end delegation helpers ────────────────────────────────────────────────────
 
 // CreateConsent creates a new consent with all related entities in a single transaction
 func (consentService *consentService) CreateConsent(ctx context.Context, req model.ConsentAPIRequest, clientID, orgID string) (*model.ConsentResponse, *serviceerror.ServiceError) {
@@ -200,9 +72,6 @@ func (consentService *consentService) CreateConsent(ctx context.Context, req mod
 	}
 
 	logger.Debug("initial request validation successful")
-
-	// Note: ValidateDelegationAttributes is called in the handler before this method
-	// is reached, so delegation attribute validation has already been applied.
 
 	// Convert API request to internal format
 	createReq, err := req.ToConsentCreateRequest()
@@ -373,6 +242,24 @@ func (consentService *consentService) CreateConsent(ctx context.Context, req mod
 		}
 	}
 
+	// Add delegation record if delegation object is present in the request
+	if req.Delegation != nil {
+		delegation := &model.ConsentDelegation{
+			ConsentID:        consentID,
+			DelegationType:   req.Delegation.Type,
+			RevocationPolicy: req.Delegation.RevocationPolicy,
+			OnBehalfOf:       req.Delegation.OnBehalfOf,
+			OrgID:            orgID,
+		}
+		queries = append(queries, func(tx dbmodel.TxInterface) error {
+			return consentStore.CreateDelegation(tx, delegation)
+		})
+		logger.Info("Adding delegation metadata",
+			log.String("consent_id", consentID),
+			log.String("delegation_type", req.Delegation.Type),
+			log.String("on_behalf_of", req.Delegation.OnBehalfOf))
+	}
+
 	// Execute all operations in a single transaction
 	logger.Debug("Executing transaction", log.Int("operation_count", len(queries)))
 	if err := consentService.stores.ExecuteTransaction(queries); err != nil {
@@ -423,7 +310,12 @@ func (consentService *consentService) CreateConsent(ctx context.Context, req mod
 	}
 
 	// Build complete response using the resolved purposes data
-	response := buildConsentResponse(consent, purposes, attributesMap, authResources)
+	// Load delegation data if this is a delegated consent
+	var delegation *model.ConsentDelegation
+	if req.Delegation != nil {
+		delegation, _ = consentStore.GetDelegationByConsentID(ctx, consentID, orgID)
+	}
+	response := buildConsentResponse(consent, purposes, attributesMap, authResources, delegation)
 
 	logger.Info("Consent creation completed",
 		log.String("consent_id", consentID),
@@ -497,7 +389,8 @@ func (consentService *consentService) GetConsent(ctx context.Context, consentID,
 	}
 
 	// Build complete response with all related data
-	response := buildConsentResponse(consent, purposes, attributesMap, authResources)
+	delegation, _ := consentStore.GetDelegationByConsentID(ctx, consentID, orgID)
+	response := buildConsentResponse(consent, purposes, attributesMap, authResources, delegation)
 
 	logger.Debug("Consent retrieved successfully",
 		log.String("consent_id", consentID),
@@ -527,56 +420,54 @@ func (consentService *consentService) SearchConsentsDetailed(ctx context.Context
 		filters.Offset = 0
 	}
 
-	// ── Delegate authorization check ─────────────────────────────────────────
-	// When dataPrincipalId is set, the caller must prove they are either the
-	// principal themselves or an active delegate for that principal.
-	//
-	// Failing open (skipping this check when CallerID is empty) would allow any
-	// caller to read another person's consents simply by omitting X-User-ID.
-	if filters.DataPrincipalID != "" {
-		// Require an explicit caller identity — no anonymous access to another
-		// principal's consents.
-		if filters.CallerID == "" {
-			logger.Warn("dataPrincipalId set but caller identity is missing")
-			return nil, serviceerror.CustomServiceError(
-				ErrorNotAuthorizedForPrincipal,
-				"caller identity is required when dataPrincipalId is set",
-			)
-		}
-
-		authorizedIDs, authErr := consentService.isCallerAuthorizedForPrincipal(
-			ctx, filters.CallerID, filters.DataPrincipalID, filters.OrgID,
-		)
-		if authErr != nil {
-			logger.Error("Failed to verify delegate authorization",
-				log.Error(authErr),
-				log.String("caller_id", filters.CallerID),
-				log.String("principal_id", filters.DataPrincipalID))
-			return nil, serviceerror.CustomServiceError(ErrorInternalServerError, authErr.Error())
-		}
-
-		if authorizedIDs == nil {
-			// callerID == principalID — unrestricted self-access.
-			// Clear DataPrincipalID so the store does not filter by delegation attribute.
-			filters.DataPrincipalID = ""
-		} else if len(authorizedIDs) == 0 {
-			logger.Warn("Caller not authorized for principal",
-				log.String("caller_id", filters.CallerID),
-				log.String("principal_id", filters.DataPrincipalID))
-			return nil, serviceerror.CustomServiceError(
-				ErrorNotAuthorizedForPrincipal,
-				fmt.Sprintf("caller '%s' is not a registered delegate for principal '%s'",
-					filters.CallerID, filters.DataPrincipalID),
-			)
-		} else {
-			// Pass the authorized IDs directly to the DB filters so pagination works natively
-			filters.AuthorizedConsentIDs = authorizedIDs
-		}
-	}
-	// ── end delegate authorization check ─────────────────────────────────────
-
-	// Step 1: Search consents
+	// Step 1: Handle delegation filter
 	consentStore := consentService.stores.Consent
+
+	if filters.IsDelegated != nil && *filters.IsDelegated {
+		// Filter by delegated consents
+		var delegatedIDs []string
+		var delegErr error
+
+		if len(filters.UserIDs) > 0 {
+			// When delegation=true and userIds are provided, search by onBehalfOf
+			// This finds consents delegated on behalf of these users
+			allDelegatedIDs := make([]string, 0)
+			for _, userID := range filters.UserIDs {
+				ids, err := consentStore.GetDelegatedConsentIDsByOnBehalfOf(ctx, userID, filters.OrgID)
+				if err != nil {
+					logger.Error("Failed to get delegated consent IDs", log.Error(err))
+					return nil, serviceerror.CustomServiceError(ErrorInternalServerError, err.Error())
+				}
+				allDelegatedIDs = append(allDelegatedIDs, ids...)
+			}
+			delegatedIDs = allDelegatedIDs
+			// Clear UserIDs so the main search doesn't filter by auth resource user IDs
+			filters.UserIDs = nil
+		} else {
+			delegatedIDs, delegErr = consentStore.GetDelegatedConsentIDs(ctx, filters.OrgID)
+			if delegErr != nil {
+				logger.Error("Failed to get delegated consent IDs", log.Error(delegErr))
+				return nil, serviceerror.CustomServiceError(ErrorInternalServerError, delegErr.Error())
+			}
+		}
+
+		if len(delegatedIDs) == 0 {
+			return &model.ConsentDetailSearchResponse{
+				Data: []model.ConsentDetailResponse{},
+				Metadata: model.ConsentSearchMetadata{
+					Total:  0,
+					Limit:  filters.Limit,
+					Offset: filters.Offset,
+					Count:  0,
+				},
+			}, nil
+		}
+
+		// Add delegated consent IDs as a filter for the main search
+		filters.ConsentIDs = delegatedIDs
+	}
+
+	// Step 2: Search consents
 	consents, total, err := consentStore.Search(ctx, filters)
 	if err != nil {
 		logger.Error("Failed to search consents", log.Error(err))
@@ -587,7 +478,7 @@ func (consentService *consentService) SearchConsentsDetailed(ctx context.Context
 		return &model.ConsentDetailSearchResponse{
 			Data: []model.ConsentDetailResponse{},
 			Metadata: model.ConsentSearchMetadata{
-				Total:  total, // Preserve store-reported total so pagination metadata is correct
+				Total:  0,
 				Limit:  filters.Limit,
 				Offset: filters.Offset,
 				Count:  0,
@@ -625,6 +516,7 @@ func (consentService *consentService) SearchConsentsDetailed(ctx context.Context
 	// Step 5: Assemble detailed responses
 	detailedResponses := make([]model.ConsentDetailResponse, 0, len(consents))
 	for _, consent := range consents {
+		// Build authorizations - initialize as empty slice
 		authorizations := make([]model.AuthorizationDetail, 0)
 		for _, auth := range authsByConsent[consent.ConsentID] {
 			var resources interface{}
@@ -647,19 +539,23 @@ func (consentService *consentService) SearchConsentsDetailed(ctx context.Context
 			})
 		}
 
+		// Resolve purposes for this consent
 		purposes, err := consentService.getResolvedConsentPurposes(ctx, consent.ConsentID, filters.OrgID)
 		if err != nil {
 			logger.Warn("Failed to resolve purposes for consent",
 				log.String("consent_id", consent.ConsentID),
 				log.Error(err))
+			// Continue with empty purposes rather than failing
 			purposes = []model.ConsentPurposeItem{}
 		}
 
+		// Get attributes (already grouped by consent ID)
 		attributes := attributesByConsent[consent.ConsentID]
 		if attributes == nil {
 			attributes = make(map[string]string)
 		}
 
+		// Dereference pointer fields for response
 		frequency := 0
 		if consent.ConsentFrequency != nil {
 			frequency = *consent.ConsentFrequency
@@ -677,7 +573,8 @@ func (consentService *consentService) SearchConsentsDetailed(ctx context.Context
 			dataAccessValidityDuration = *consent.DataAccessValidityDuration
 		}
 
-		delegCfg := parseDelegationConfig(attributes)
+		// Load delegation data for this consent
+		detailDelegation, _ := consentService.stores.Consent.GetDelegationByConsentID(ctx, consent.ConsentID, consent.OrgID)
 
 		detailedResponses = append(detailedResponses, model.ConsentDetailResponse{
 			ID:                         consent.ConsentID,
@@ -693,8 +590,7 @@ func (consentService *consentService) SearchConsentsDetailed(ctx context.Context
 			DataAccessValidityDuration: dataAccessValidityDuration,
 			Attributes:                 attributes,
 			Authorizations:             authorizations,
-			// True when guardian period ends; prompts principal to review inherited consents.
-			IsDelegationExpired: delegCfg.IsGuardianConsent() && delegCfg.IsExpired(),
+			Delegation:                 detailDelegation,
 		})
 	}
 
@@ -759,104 +655,6 @@ func (consentService *consentService) UpdateConsent(ctx context.Context, req mod
 		return nil, serviceerror.CustomServiceError(ErrorValidationFailed,
 			fmt.Sprintf("Client '%s' is not authorized to update consent '%s'", clientID, consentID))
 	}
-
-	// ── Delegation-aware modify check ────────────────────────────────────────
-	// For self-consented records this is a no-op (IsGuardianConsent==false).
-	// For delegated consents the rules are:
-	//   if delegation expired    → only the principal (now adult) may modify
-	//   if caller == principal   → allowed, EXCEPT under active ANY-policy
-	//                              delegation where the guardian controls modifications
-	//   if caller == delegate    → the delegate row must have canModify=true AND
-	//                              onBehalfOf == principalID
-	// Note: Unlike revocation, SUBJECT_ONLY policy does NOT block delegates
-	// from modifying — it only restricts who can revoke.
-	{
-		attributes, attErr := consentStore.GetAttributesByConsentID(ctx, consentID, orgID)
-		if attErr != nil {
-			logger.Error("Failed to load delegation attributes for modify check",
-				log.Error(attErr), log.String("consent_id", consentID))
-			return nil, serviceerror.CustomServiceError(ErrorInternalServerError, attErr.Error())
-		}
-		attMap := make(map[string]string)
-		for _, a := range attributes {
-			attMap[a.AttKey] = a.AttValue
-		}
-		delegCfg := parseDelegationConfig(attMap)
-
-		if delegCfg.IsGuardianConsent() {
-			principalID := delegCfg.PrincipalID
-			callerID := strings.TrimSpace(req.CallerID)
-			if callerID == "" {
-				return nil, serviceerror.CustomServiceError(
-					ErrorNotAuthorizedForPrincipal,
-					"caller identity is required to update a delegated consent",
-				)
-			}
-			isPrincipal := callerID == principalID
-
-			if delegCfg.IsExpired() {
-				if !isPrincipal {
-					logger.Warn("Update denied: delegation expired, caller is not principal",
-						log.String("caller_id", callerID),
-						log.String("principal_id", principalID))
-					return nil, serviceerror.CustomServiceError(
-						ErrorDelegationExpired,
-						fmt.Sprintf("delegation for principal '%s' has expired; "+
-							"only the principal may modify this consent", principalID),
-					)
-				}
-			} else if isPrincipal && delegCfg.RevocationPolicy == model.RevocationPolicyAny {
-				// Active ANY-policy delegation: guardian controls modifications too.
-				logger.Warn("Update denied: principal cannot modify under active ANY-policy guardianship",
-					log.String("principal_id", principalID))
-				return nil, serviceerror.CustomServiceError(
-					ErrorModificationNotPermitted,
-					"the data principal cannot modify a guardian-controlled consent directly; "+
-						"contact your guardian",
-				)
-			} else if !isPrincipal {
-				// Caller is a (claimed) delegate — must have canModify=true for this principal.
-				approvedStatus := string(config.Get().Consent.AuthStatusMappings.ApprovedState)
-				authResources, arErr := authResourceStore.GetByConsentID(ctx, consentID, orgID)
-				if arErr != nil {
-					logger.Error("Failed to load auth resources for delegate modify check",
-						log.Error(arErr), log.String("consent_id", consentID))
-					return nil, serviceerror.CustomServiceError(ErrorInternalServerError, arErr.Error())
-				}
-				callerCanModify := false
-				for _, ar := range authResources {
-					if ar.UserID == nil || *ar.UserID != callerID {
-						continue
-					}
-					if ar.AuthStatus != approvedStatus {
-						continue
-					}
-					if ar.Resources == nil || *ar.Resources == "" {
-						continue
-					}
-					var res map[string]interface{}
-					if json.Unmarshal([]byte(*ar.Resources), &res) != nil {
-						continue
-					}
-					onBehalfOf, _ := res["onBehalfOf"].(string)
-					if canModify, _ := res["canModify"].(bool); canModify && onBehalfOf == principalID {
-						callerCanModify = true
-						break
-					}
-				}
-				if !callerCanModify {
-					logger.Warn("Update denied: caller lacks canModify permission",
-						log.String("caller_id", callerID))
-					return nil, serviceerror.CustomServiceError(
-						ErrorModificationNotPermitted,
-						fmt.Sprintf("caller '%s' does not have canModify permission on this consent", callerID),
-					)
-				}
-				logger.Debug("Delegate canModify check passed", log.String("caller_id", callerID))
-			}
-		}
-	}
-	// ── end delegation modify check ─────────────────────────────────────────
 
 	currentTime := utils.GetCurrentTimeMillis()
 	previousStatus := existing.CurrentStatus
@@ -1165,7 +963,8 @@ func (consentService *consentService) UpdateConsent(ctx context.Context, req mod
 	}
 
 	// Build complete response
-	response := buildConsentResponse(updated, purposes, attributesMap, authResources)
+	updateDelegation, _ := consentService.stores.Consent.GetDelegationByConsentID(ctx, consentID, orgID)
+	response := buildConsentResponse(updated, purposes, attributesMap, authResources, updateDelegation)
 
 	logger.Info("Consent updated successfully",
 		log.String("consent_id", consentID),
@@ -1215,167 +1014,11 @@ func (consentService *consentService) RevokeConsent(ctx context.Context, consent
 		return nil, serviceerror.CustomServiceError(ErrorConsentAlreadyRevoked, fmt.Sprintf("Consent with ID '%s' is already revoked", consentID))
 	}
 
-	// Delegation-aware revocation check.
-	// No-op for normal self-consented records (IsGuardianConsent=false).
-	var revokeDelegCfg model.DelegationConfig
-	{
-		attributes, attErr := store.GetAttributesByConsentID(ctx, consentID, orgID)
-		if attErr != nil {
-			logger.Error("Failed to load delegation attributes for revocation",
-				log.Error(attErr),
-				log.String("consent_id", consentID))
-			return nil, serviceerror.CustomServiceError(ErrorInternalServerError, attErr.Error())
-		}
-		attMap := make(map[string]string)
-		for _, a := range attributes {
-			attMap[a.AttKey] = a.AttValue
-		}
-		revokeDelegCfg = parseDelegationConfig(attMap)
-
-		if revokeDelegCfg.IsGuardianConsent() {
-			principalID := revokeDelegCfg.PrincipalID
-			callerID := strings.TrimSpace(req.ActionBy)
-			isPrincipal := callerID == principalID
-
-			if revokeDelegCfg.IsExpired() {
-				// delegation ended (e.g., child is now an adult).
-				// Only the principal has authority; delegates are locked out.
-				if !isPrincipal {
-					logger.Warn("Revocation denied: delegation expired, caller is not principal",
-						log.String("caller_id", callerID),
-						log.String("principal_id", principalID))
-					return nil, serviceerror.CustomServiceError(
-						ErrorDelegationExpired,
-						fmt.Sprintf("delegation for principal '%s' has expired; "+
-							"only the principal may revoke this consent", principalID),
-					)
-				}
-				// Principal is now an adult — allow revocation to continue.
-				logger.Debug("Delegation expired; principal revoking their own consent",
-					log.String("principal_id", principalID))
-
-			} else {
-
-				// SUBJECT_ONLY means only the principal may revoke; delegates are blocked.
-				// ANY means only delegates with canRevoke=true may revoke; principal is blocked.
-				// BOTH means both the principal and delegates with canRevoke=true may revoke.
-				if revokeDelegCfg.RevocationPolicy == model.RevocationPolicySubjectOnly {
-					if !isPrincipal {
-						// Delegate blocked by policy.
-						logger.Warn("Revocation denied: policy is SUBJECT_ONLY",
-							log.String("caller_id", callerID))
-						return nil, serviceerror.CustomServiceError(
-							ErrorRevocationNotPermitted,
-							"revocation policy is SUBJECT_ONLY; only the data principal may revoke",
-						)
-					}
-					// Principal is explicitly allowed under SUBJECT_ONLY — fall through.
-					logger.Debug("SUBJECT_ONLY policy: principal revoking their own consent",
-						log.String("principal_id", principalID))
-
-				} else if isPrincipal {
-					// BOTH policy: both the principal and delegate may revoke.
-					// Used for capable adults — power of attorney, voluntary
-					// assisted delegation, any scenario where the data subject
-					// retains full authority alongside their delegate.
-					if revokeDelegCfg.RevocationPolicy == model.RevocationPolicyBoth {
-						logger.Debug("BOTH policy: principal revoking their own consent",
-							log.String("principal_id", principalID))
-						// Fall through — allow revocation to continue.
-					} else {
-						// ANY policy: guardian controls this consent while active.
-						// Principal (e.g. minor child) cannot override the guardian.
-						logger.Warn("Revocation denied: principal cannot revoke under active guardianship",
-							log.String("principal_id", principalID))
-						return nil, serviceerror.CustomServiceError(
-							ErrorRevocationNotPermitted,
-							"the data principal cannot revoke a guardian-controlled consent directly; "+
-								"contact your guardian",
-						)
-					}
-
-				} else {
-					// Delegate attempting revocation under ANY or BOTH policy.
-					// Check: delegate must have canRevoke=true on the delegation row for principalID.
-					approvedStatus := string(config.Get().Consent.AuthStatusMappings.ApprovedState)
-					authResources, arErr := consentService.stores.AuthResource.GetByConsentID(ctx, consentID, orgID)
-					if arErr != nil {
-						logger.Error("Failed to load auth resources for delegate revocation check",
-							log.Error(arErr),
-							log.String("consent_id", consentID))
-						return nil, serviceerror.CustomServiceError(ErrorInternalServerError, arErr.Error())
-					}
-					callerCanRevoke := false
-					for _, ar := range authResources {
-						if ar.UserID == nil || *ar.UserID != callerID {
-							continue
-						}
-						if ar.AuthStatus != approvedStatus {
-							continue
-						}
-						if ar.Resources == nil || *ar.Resources == "" {
-							continue
-						}
-						var res map[string]interface{}
-						if json.Unmarshal([]byte(*ar.Resources), &res) != nil {
-							continue
-						}
-						// principalID — prevents an unrelated canRevoke=true row from
-						// accidentally granting revoke rights over a different principal.
-						onBehalfOf, _ := res["onBehalfOf"].(string)
-						if canRevoke, _ := res["canRevoke"].(bool); canRevoke && onBehalfOf == principalID {
-							callerCanRevoke = true
-							break
-						}
-					}
-					if !callerCanRevoke {
-						logger.Warn("Revocation denied: caller lacks canRevoke permission",
-							log.String("caller_id", callerID))
-						return nil, serviceerror.CustomServiceError(
-							ErrorRevocationNotPermitted,
-							fmt.Sprintf("caller '%s' does not have canRevoke permission on this consent", callerID),
-						)
-					}
-					logger.Debug("Delegate canRevoke check passed", log.String("caller_id", callerID))
-				}
-			}
-		}
-	}
-	// ── end delegation revocation check ──────────────────────────────────────────
-
 	currentTime := utils.GetCurrentTimeMillis()
 
 	// Create audit entry
 	auditID := utils.GenerateUUID()
 	reason := req.RevocationReason
-
-	// ── Delegation-aware audit enrichment ───────────────────────────────────
-	// Delegation-aware audit enrichment (reuses revokeDelegCfg from authorization check).
-	trimmedActionBy := strings.TrimSpace(req.ActionBy)
-	if revokeDelegCfg.IsGuardianConsent() && trimmedActionBy != revokeDelegCfg.PrincipalID {
-		// Delegate is acting — record the relationship.
-		marker := fmt.Sprintf(
-			"[delegateAction=true; actor=%s; onBehalfOf=%s; delegationType=%s]",
-			trimmedActionBy, revokeDelegCfg.PrincipalID, revokeDelegCfg.Type,
-		)
-		if reason == "" {
-			reason = marker
-		} else {
-			reason = marker + " " + reason
-		}
-	} else if revokeDelegCfg.IsGuardianConsent() && trimmedActionBy == revokeDelegCfg.PrincipalID {
-		// Principal acting on their own consent under a delegation record.
-		marker := fmt.Sprintf(
-			"[principalAction=true; actor=%s; delegationExpired=%t]",
-			trimmedActionBy, revokeDelegCfg.IsExpired(),
-		)
-		if reason == "" {
-			reason = marker
-		} else {
-			reason = marker + " " + reason
-		}
-	}
-
 	audit := &model.ConsentStatusAudit{
 		StatusAuditID:  auditID,
 		ConsentID:      consentID,
@@ -1507,7 +1150,8 @@ func (consentService *consentService) ValidateConsent(ctx context.Context, req m
 			return nil, serviceerror.CustomServiceError(ErrorInternalServerError, err.Error())
 		} else {
 			// Build complete consent response
-			consentResponse := buildConsentResponse(consent, purposes, attributesMap, authResources)
+			searchDelegation, _ := consentService.stores.Consent.GetDelegationByConsentID(ctx, consent.ConsentID, consent.OrgID)
+			consentResponse := buildConsentResponse(consent, purposes, attributesMap, authResources, searchDelegation)
 			// Convert to ValidateConsentAPIResponse with enriched purpose details
 			response.ConsentInformation = consentService.EnrichedValidateConsentAPIResponse(ctx, consentResponse, orgID)
 
@@ -1643,6 +1287,7 @@ func (consentService *consentService) EnrichedValidateConsentAPIResponse(ctx con
 		Frequency:                  consent.ConsentFrequency,
 		DataAccessValidityDuration: consent.DataAccessValidityDuration,
 		Attributes:                 consent.Attributes,
+		Delegation:                 consent.Delegation,
 	}
 
 	// Convert authorizations
@@ -1753,6 +1398,7 @@ func buildConsentResponse(
 	purposes []model.ConsentPurposeItem,
 	attributes map[string]string,
 	authResources []authmodel.AuthResource,
+	delegation *model.ConsentDelegation,
 ) *model.ConsentResponse {
 	// AuthResource is already a type alias for ConsentAuthResource - use directly
 	authResourcesResp := authResources
@@ -1772,164 +1418,8 @@ func buildConsentResponse(
 		OrgID:                      consent.OrgID,
 		Attributes:                 attributes,
 		AuthResources:              authResourcesResp,
+		Delegation:                 delegation,
 	}
-}
-
-// GetConsentDelegates returns all registered delegates for a consent.
-// It reads CONSENT_AUTH_RESOURCE rows (RESOURCES JSON blob for per-delegate flags)
-// and CONSENT_ATTRIBUTE rows (for delegation.principal_id, guardian.valid_until, etc.).
-
-func (consentService *consentService) GetConsentDelegates(ctx context.Context, consentID, orgID, callerID string) (*model.DelegateListResponse, *serviceerror.ServiceError) {
-	logger := log.GetLogger().WithContext(ctx)
-	logger.Info("Getting consent delegates",
-		log.String("consent_id", consentID),
-		log.String("org_id", orgID))
-
-	// Verify consent exists.
-	store := consentService.stores.Consent
-	existing, err := store.GetByID(ctx, consentID, orgID)
-	if err != nil {
-		return nil, serviceerror.CustomServiceError(ErrorInternalServerError, err.Error())
-	}
-	if existing == nil {
-		return nil, serviceerror.CustomServiceError(ErrorConsentNotFound,
-			fmt.Sprintf("consent with ID '%s' not found", consentID))
-	}
-
-	// Load attributes to read delegation metadata.
-	attributes, err := store.GetAttributesByConsentID(ctx, consentID, orgID)
-	if err != nil {
-		return nil, serviceerror.CustomServiceError(ErrorInternalServerError, err.Error())
-	}
-	attMap := make(map[string]string)
-	for _, a := range attributes {
-		attMap[a.AttKey] = a.AttValue
-	}
-	delegCfg := parseDelegationConfig(attMap)
-
-	// If this consent has no delegation metadata, return an empty delegate list
-	// rather than scanning auth resources for orphaned onBehalfOf entries.
-	if !delegCfg.IsGuardianConsent() {
-		logger.Info("Consent is not a guardian consent, returning empty delegate list",
-			log.String("consent_id", consentID),
-			log.String("caller_id", callerID))
-		return &model.DelegateListResponse{
-			ConsentID:     consentID,
-			DelegateCount: 0,
-			Delegates:     []model.DelegateInfo{},
-		}, nil
-	}
-
-	// ── Caller authorization check ───────────────────────────────────────
-	// The caller must be the data principal or an active, non-expired delegate.
-	// This prevents any authenticated user from enumerating delegate relationships
-	// by guessing consent IDs.
-	if delegCfg.IsGuardianConsent() {
-		callerID = strings.TrimSpace(callerID)
-		principalID := delegCfg.PrincipalID
-		// Block expired delegates from viewing delegate list.
-		if delegCfg.IsExpired() && callerID != principalID {
-			logger.Warn("GetConsentDelegates denied: delegation expired, caller is not principal",
-				log.String("caller_id", callerID),
-				log.String("principal_id", principalID))
-			return nil, serviceerror.CustomServiceError(
-				ErrorDelegationExpired,
-				fmt.Sprintf("delegation for principal '%s' has expired; only the principal may view delegates",
-					principalID),
-			)
-		}
-		if callerID != principalID {
-			// Caller is not the principal — check if they are an active delegate.
-			authResources, arErr := consentService.stores.AuthResource.GetByConsentID(ctx, consentID, orgID)
-			if arErr != nil {
-				return nil, serviceerror.CustomServiceError(ErrorInternalServerError, arErr.Error())
-			}
-			approvedStatus := string(config.Get().Consent.AuthStatusMappings.ApprovedState)
-			isAuthorized := false
-			for _, ar := range authResources {
-				if ar.UserID == nil || *ar.UserID != callerID {
-					continue
-				}
-				if ar.AuthStatus != approvedStatus {
-					continue
-				}
-				if ar.Resources == nil || *ar.Resources == "" {
-					continue
-				}
-				var res map[string]interface{}
-				if json.Unmarshal([]byte(*ar.Resources), &res) != nil {
-					continue
-				}
-				if onBehalfOf, _ := res["onBehalfOf"].(string); onBehalfOf == principalID {
-					isAuthorized = true
-					break
-				}
-			}
-			if !isAuthorized {
-				logger.Warn("GetConsentDelegates denied: caller is not principal or delegate",
-					log.String("caller_id", callerID),
-					log.String("principal_id", principalID))
-				return nil, serviceerror.CustomServiceError(ErrorNotAuthorizedForPrincipal,
-					fmt.Sprintf("caller '%s' is not authorized to view delegates for this consent", callerID))
-			}
-		}
-	}
-
-	// Load all auth resource rows for this consent.
-	authResources, err := consentService.stores.AuthResource.GetByConsentID(ctx, consentID, orgID)
-	if err != nil {
-		return nil, serviceerror.CustomServiceError(ErrorInternalServerError, err.Error())
-	}
-
-	// Build DelegateInfo list from auth resources that carry onBehalfOf in RESOURCES.
-	delegates := make([]model.DelegateInfo, 0)
-	for _, ar := range authResources {
-		if ar.Resources == nil || *ar.Resources == "" {
-			continue
-		}
-		var res map[string]interface{}
-		if json.Unmarshal([]byte(*ar.Resources), &res) != nil {
-			continue
-		}
-		onBehalfOf, _ := res["onBehalfOf"].(string)
-		if onBehalfOf == "" {
-			continue // not a delegate auth resource
-		}
-		userID := ""
-		if ar.UserID != nil {
-			userID = *ar.UserID
-		}
-		canRevoke, _ := res["canRevoke"].(bool)
-		canModify, _ := res["canModify"].(bool)
-		delegationType, _ := res["delegationType"].(string)
-
-		delegates = append(delegates, model.DelegateInfo{
-			AuthID:         ar.AuthID,
-			UserID:         userID,
-			DelegationType: delegationType,
-			Status:         ar.AuthStatus,
-			CanRevoke:      canRevoke,
-			CanModify:      canModify,
-			OnBehalfOf:     onBehalfOf,
-			UpdatedTime:    ar.UpdatedTime,
-		})
-	}
-
-	response := &model.DelegateListResponse{
-		ConsentID:           consentID,
-		DataPrincipalID:     delegCfg.PrincipalID,
-		RevocationPolicy:    string(delegCfg.RevocationPolicy),
-		ValidUntil:          delegCfg.ValidUntil,
-		IsDelegationExpired: delegCfg.IsExpired(),
-		DelegateCount:       len(delegates),
-		Delegates:           delegates,
-	}
-
-	logger.Info("Consent delegates retrieved",
-		log.Int("delegate_count", len(delegates)),
-		log.String("consent_id", consentID))
-
-	return response, nil
 }
 
 // SearchConsentsByAttribute searches for consents by attribute key and optionally value
@@ -2106,7 +1596,7 @@ func (s *consentService) getResolvedConsentPurposes(
 // This validation is called AFTER purpose resolution from database, so it checks the
 // complete set of elements (including auto-filled ones), not just what user provided.
 // This prevents an element from being assigned to multiple purposes, which would create
-
+// ambiguity in consent management.
 func (s *consentService) validateNoDuplicateElementsAcrossPurposes(
 	purposes []model.ConsentPurposeCreateRequest,
 ) error {
@@ -2138,7 +1628,7 @@ func (s *consentService) validateNoDuplicateElementsAcrossPurposes(
 // 3. Validates that user-provided elements belong to their respective purposes
 // 4. Resolves missing purposes (not in request) with isUserApproved=false
 // 5. Validates no duplicate elements exist across all resolved elements in purposes
-
+// Returns fully enriched purposes ready for database insertion.
 func (s *consentService) validatePurposes(
 	ctx context.Context,
 	purposes []model.ConsentPurposeCreateRequest,
@@ -2147,7 +1637,7 @@ func (s *consentService) validatePurposes(
 
 	logger := log.GetLogger().WithContext(ctx)
 
-	// Resolve purposes and get their full definitions from database
+	// Step 1: Resolve purposes and get their full definitions from database
 	resolvedPurposes := make([]model.ConsentPurposeCreateRequest, 0, len(purposes))
 	purposeStore := s.stores.ConsentPurpose
 
@@ -2175,7 +1665,7 @@ func (s *consentService) validatePurposes(
 			log.String("purpose_name", requestedIndividualPurpose.PurposeName),
 			log.String("purpose_id", retrievedPurpose.ID))
 
-		// Get ALL elements defined in this purpose.
+		// Step 2: Get ALL elements defined in this purpose.
 		// This gives us the complete list of elements with their IDs, names, and mandatory flags
 		purposeElementsFromDB := retrievedPurpose.Elements
 
@@ -2184,14 +1674,14 @@ func (s *consentService) validatePurposes(
 			log.Int("total_elements", len(purposeElementsFromDB)),
 			log.Int("requested_elements", len(requestedIndividualPurpose.Elements)))
 
-		// Create lookup map for elements provided in the request
+		// Step 3: Create lookup map for elements provided in the request
 		// Key: element name, Value: approval details from request
 		requestedElementsMap := make(map[string]model.ConsentElementApprovalCreateRequest)
 		for _, requestedElements := range requestedIndividualPurpose.Elements {
 			requestedElementsMap[requestedElements.ElementName] = requestedElements
 		}
 
-		// Create lookup map for valid elements from database
+		// Step 4: Create lookup map for valid elements from database
 		// This is used to validate that user-provided elements actually belong to this purpose
 		validElementNames := make(map[string]bool)
 		for _, elem := range purposeElementsFromDB {
@@ -2208,6 +1698,7 @@ func (s *consentService) validatePurposes(
 			}
 		}
 
+		// Step 6: Resolve ALL elements in the purpose (merge requested + missing)
 		// For elements in request: use their approval status and values
 		// For elements not in request: add with isUserApproved=false (user didn't approve)
 		allElements := make([]model.ConsentElementApprovalCreateRequest, 0, len(purposeElementsFromDB))
@@ -2244,7 +1735,7 @@ func (s *consentService) validatePurposes(
 		})
 	}
 
-	// Validate no duplicate elements across ALL resolved purposes
+	// Step 7: Validate no duplicate elements across ALL resolved purposes
 	// This check happens AFTER resolution because we now have the complete picture
 	// of all elements across all purposes (including auto-filled ones)
 	if err := s.validateNoDuplicateElementsAcrossPurposes(resolvedPurposes); err != nil {

@@ -110,25 +110,25 @@ var (
 	QueryGetConsentPurposesByConsentID = dbmodel.DBQuery{
 		ID: "GET_PURPOSES_BY_CONSENT_ID",
 		Query: `
-            SELECT 
-                pgc.CONSENT_ID,
-                pgc.PURPOSE_ID,
-                pg.NAME as PURPOSE_NAME
-            FROM PURPOSE_CONSENT_MAPPING pgc
-            JOIN CONSENT_PURPOSE pg ON pgc.PURPOSE_ID = pg.ID AND pgc.ORG_ID = pg.ORG_ID
-            WHERE pgc.CONSENT_ID = ? AND pgc.ORG_ID = ?
-            ORDER BY pg.NAME
-        `,
+			SELECT 
+				pgc.CONSENT_ID,
+				pgc.PURPOSE_ID,
+				pg.NAME as PURPOSE_NAME
+			FROM PURPOSE_CONSENT_MAPPING pgc
+			JOIN CONSENT_PURPOSE pg ON pgc.PURPOSE_ID = pg.ID AND pgc.ORG_ID = pg.ORG_ID
+			WHERE pgc.CONSENT_ID = ? AND pgc.ORG_ID = ?
+			ORDER BY pg.NAME
+		`,
 		PostgresQuery: `
-            SELECT 
-                pgc.CONSENT_ID,
-                pgc.PURPOSE_ID,
-                pg.NAME as PURPOSE_NAME
-            FROM PURPOSE_CONSENT_MAPPING pgc
-            JOIN CONSENT_PURPOSE pg ON pgc.PURPOSE_ID = pg.ID AND pgc.ORG_ID = pg.ORG_ID
-            WHERE pgc.CONSENT_ID = $1 AND pgc.ORG_ID = $2
-            ORDER BY pg.NAME
-        `,
+			SELECT 
+				pgc.CONSENT_ID,
+				pgc.PURPOSE_ID,
+				pg.NAME as PURPOSE_NAME
+			FROM PURPOSE_CONSENT_MAPPING pgc
+			JOIN CONSENT_PURPOSE pg ON pgc.PURPOSE_ID = pg.ID AND pgc.ORG_ID = pg.ORG_ID
+			WHERE pgc.CONSENT_ID = $1 AND pgc.ORG_ID = $2
+			ORDER BY pg.NAME
+		`,
 	}
 
 	QueryCheckPurposeUsedInConsents = dbmodel.DBQuery{
@@ -146,41 +146,41 @@ var (
 	QueryGetElementApprovalsByConsentID = dbmodel.DBQuery{
 		ID: "GET_ELEMENT_APPROVALS_BY_CONSENT_ID",
 		Query: `
-            SELECT 
-                pa.CONSENT_ID,
-                pa.PURPOSE_ID,
-                pg.NAME as PURPOSE_NAME,
-                pa.ELEMENT_ID,
-                p.NAME as ELEMENT_NAME,
-                pa.IS_USER_APPROVED,
-                pa.VALUE,
-                gm.IS_MANDATORY
-            FROM CONSENT_ELEMENT_APPROVAL pa
-        JOIN CONSENT_ELEMENT p ON pa.ELEMENT_ID = p.ID AND pa.ORG_ID = p.ORG_ID
-        JOIN CONSENT_PURPOSE pg ON pa.PURPOSE_ID = pg.ID AND pa.ORG_ID = pg.ORG_ID
-        JOIN PURPOSE_ELEMENT_MAPPING gm ON pa.PURPOSE_ID = gm.PURPOSE_ID 
-            AND pa.ELEMENT_ID = gm.ELEMENT_ID AND pa.ORG_ID = gm.ORG_ID
-            WHERE pa.CONSENT_ID = ? AND pa.ORG_ID = ?
-            ORDER BY pg.NAME, p.NAME
-        `,
+			SELECT 
+				pa.CONSENT_ID,
+				pa.PURPOSE_ID,
+				pg.NAME as PURPOSE_NAME,
+				pa.ELEMENT_ID,
+				p.NAME as ELEMENT_NAME,
+				pa.IS_USER_APPROVED,
+				pa.VALUE,
+				gm.IS_MANDATORY
+			FROM CONSENT_ELEMENT_APPROVAL pa
+		JOIN CONSENT_ELEMENT p ON pa.ELEMENT_ID = p.ID AND pa.ORG_ID = p.ORG_ID
+		JOIN CONSENT_PURPOSE pg ON pa.PURPOSE_ID = pg.ID AND pa.ORG_ID = pg.ORG_ID
+		JOIN PURPOSE_ELEMENT_MAPPING gm ON pa.PURPOSE_ID = gm.PURPOSE_ID 
+			AND pa.ELEMENT_ID = gm.ELEMENT_ID AND pa.ORG_ID = gm.ORG_ID
+			WHERE pa.CONSENT_ID = ? AND pa.ORG_ID = ?
+			ORDER BY pg.NAME, p.NAME
+		`,
 		PostgresQuery: `
-            SELECT 
-                pa.CONSENT_ID,
-                pa.PURPOSE_ID,
-                pg.NAME as PURPOSE_NAME,
-                pa.ELEMENT_ID,
-                p.NAME as ELEMENT_NAME,
-                pa.IS_USER_APPROVED,
-                pa.VALUE,
-                gm.IS_MANDATORY
-            FROM CONSENT_ELEMENT_APPROVAL pa
-        JOIN CONSENT_ELEMENT p ON pa.ELEMENT_ID = p.ID AND pa.ORG_ID = p.ORG_ID
-        JOIN CONSENT_PURPOSE pg ON pa.PURPOSE_ID = pg.ID AND pa.ORG_ID = pg.ORG_ID
-        JOIN PURPOSE_ELEMENT_MAPPING gm ON pa.PURPOSE_ID = gm.PURPOSE_ID 
-            AND pa.ELEMENT_ID = gm.ELEMENT_ID AND pa.ORG_ID = gm.ORG_ID
-            WHERE pa.CONSENT_ID = $1 AND pa.ORG_ID = $2
-            ORDER BY pg.NAME, p.NAME
-        `,
+			SELECT 
+				pa.CONSENT_ID,
+				pa.PURPOSE_ID,
+				pg.NAME as PURPOSE_NAME,
+				pa.ELEMENT_ID,
+				p.NAME as ELEMENT_NAME,
+				pa.IS_USER_APPROVED,
+				pa.VALUE,
+				gm.IS_MANDATORY
+			FROM CONSENT_ELEMENT_APPROVAL pa
+		JOIN CONSENT_ELEMENT p ON pa.ELEMENT_ID = p.ID AND pa.ORG_ID = p.ORG_ID
+		JOIN CONSENT_PURPOSE pg ON pa.PURPOSE_ID = pg.ID AND pa.ORG_ID = pg.ORG_ID
+		JOIN PURPOSE_ELEMENT_MAPPING gm ON pa.PURPOSE_ID = gm.PURPOSE_ID 
+			AND pa.ELEMENT_ID = gm.ELEMENT_ID AND pa.ORG_ID = gm.ORG_ID
+			WHERE pa.CONSENT_ID = $1 AND pa.ORG_ID = $2
+			ORDER BY pg.NAME, p.NAME
+		`,
 	}
 
 	QueryDeleteConsentPurposesByConsentID = dbmodel.DBQuery{
@@ -193,6 +193,31 @@ var (
 		ID:            "DELETE_ELEMENT_APPROVALS_BY_CONSENT_ID",
 		Query:         "DELETE FROM CONSENT_ELEMENT_APPROVAL WHERE CONSENT_ID = ? AND ORG_ID = ?",
 		PostgresQuery: "DELETE FROM CONSENT_ELEMENT_APPROVAL WHERE CONSENT_ID = $1 AND ORG_ID = $2",
+	}
+
+	// Delegation queries
+	QueryCreateDelegation = dbmodel.DBQuery{
+		ID:            "CREATE_DELEGATION",
+		Query:         "INSERT INTO CONSENT_DELEGATION (CONSENT_ID, DELEGATION_TYPE, REVOCATION_POLICY, ON_BEHALF_OF, ORG_ID) VALUES (?, ?, ?, ?, ?)",
+		PostgresQuery: "INSERT INTO CONSENT_DELEGATION (CONSENT_ID, DELEGATION_TYPE, REVOCATION_POLICY, ON_BEHALF_OF, ORG_ID) VALUES ($1, $2, $3, $4, $5)",
+	}
+
+	QueryGetDelegationByConsentID = dbmodel.DBQuery{
+		ID:            "GET_DELEGATION_BY_CONSENT_ID",
+		Query:         "SELECT CONSENT_ID, DELEGATION_TYPE, REVOCATION_POLICY, ON_BEHALF_OF, ORG_ID FROM CONSENT_DELEGATION WHERE CONSENT_ID = ? AND ORG_ID = ?",
+		PostgresQuery: "SELECT CONSENT_ID, DELEGATION_TYPE, REVOCATION_POLICY, ON_BEHALF_OF, ORG_ID FROM CONSENT_DELEGATION WHERE CONSENT_ID = $1 AND ORG_ID = $2",
+	}
+
+	QueryGetDelegatedConsentIDs = dbmodel.DBQuery{
+		ID:            "GET_DELEGATED_CONSENT_IDS",
+		Query:         "SELECT CONSENT_ID FROM CONSENT_DELEGATION WHERE ORG_ID = ? ORDER BY CONSENT_ID",
+		PostgresQuery: "SELECT CONSENT_ID FROM CONSENT_DELEGATION WHERE ORG_ID = $1 ORDER BY CONSENT_ID",
+	}
+
+	QueryGetDelegatedConsentIDsByOnBehalfOf = dbmodel.DBQuery{
+		ID:            "GET_DELEGATED_CONSENT_IDS_BY_ON_BEHALF_OF",
+		Query:         "SELECT CONSENT_ID FROM CONSENT_DELEGATION WHERE ON_BEHALF_OF = ? AND ORG_ID = ? ORDER BY CONSENT_ID",
+		PostgresQuery: "SELECT CONSENT_ID FROM CONSENT_DELEGATION WHERE ON_BEHALF_OF = $1 AND ORG_ID = $2 ORDER BY CONSENT_ID",
 	}
 )
 
@@ -249,20 +274,15 @@ func (s *store) Search(ctx context.Context, filters model.ConsentSearchFilters) 
 	args := []interface{}{filters.OrgID}
 	countArgs := []interface{}{filters.OrgID}
 
-	// Add AuthorizedConsentIDs filter (IN clause) - OPTION 1 PAGINATION FIX
-	if filters.AuthorizedConsentIDs != nil {
-		if len(filters.AuthorizedConsentIDs) == 0 {
-			// Non-nil but empty means "caller is authorized for zero consents" — return nothing.
-			whereConditions = append(whereConditions, "1 = 0")
-		} else {
-			placeholders := make([]string, len(filters.AuthorizedConsentIDs))
-			for i, id := range filters.AuthorizedConsentIDs {
-				placeholders[i] = "?"
-				args = append(args, id)
-				countArgs = append(countArgs, id)
-			}
-			whereConditions = append(whereConditions, fmt.Sprintf("CONSENT.CONSENT_ID IN (%s)", strings.Join(placeholders, ",")))
+	// Add consentIDs filter (IN clause) - used by delegation search
+	if len(filters.ConsentIDs) > 0 {
+		placeholders := make([]string, len(filters.ConsentIDs))
+		for i, id := range filters.ConsentIDs {
+			placeholders[i] = "?"
+			args = append(args, id)
+			countArgs = append(countArgs, id)
 		}
+		whereConditions = append(whereConditions, fmt.Sprintf("CONSENT.CONSENT_ID IN (%s)", strings.Join(placeholders, ",")))
 	}
 
 	// Add consentTypes filter (IN clause)
@@ -338,40 +358,18 @@ func (s *store) Search(ctx context.Context, filters model.ConsentSearchFilters) 
 		countArgs = append(countArgs, *filters.ToTime)
 	}
 
-	// Filter by dataPrincipalId via INNER JOIN on CONSENT_ATTRIBUTE.
-	// The attribute key predicate is pushed into the JOIN ON clause to optimize
-	// query performance by narrowing the join before the WHERE filter runs.
-	//
-	// CRITICAL: joinArgs must be prepended (not appended) to the final argument
-	// list. Since the JOIN clause appears before the WHERE clause in the SQL,
-	// its placeholder must be position #1 to prevent parameter shifting.
-
-	joinArgs := make([]interface{}, 0, 1)
-	if filters.DataPrincipalID != "" {
-		joinClause += " INNER JOIN CONSENT_ATTRIBUTE ca_dp" +
-			" ON CONSENT.CONSENT_ID = ca_dp.CONSENT_ID" +
-			" AND CONSENT.ORG_ID = ca_dp.ORG_ID" +
-			" AND ca_dp.ATT_KEY = ?"
-		whereConditions = append(whereConditions, "ca_dp.ATT_VALUE = ?")
-		joinArgs = append(joinArgs, model.AttrDelegationPrincipalID)
-		args = append(args, filters.DataPrincipalID)
-		countArgs = append(countArgs, filters.DataPrincipalID)
-	}
-
 	whereClause := strings.Join(whereConditions, " AND ")
 
 	// Build COUNT query
 	countQuery := fmt.Sprintf("SELECT COUNT(DISTINCT CONSENT.CONSENT_ID) as count FROM CONSENT%s WHERE %s",
 		joinClause, whereClause)
 
-	// Execute count query.
-	// joinArgs must come first: their placeholder(s) appear in the JOIN ON clause
-	// which is rendered before the WHERE clause in the SQL string.
+	// Execute count query
 	countRows, err := dbClient.Query(dbmodel.DBQuery{
 		ID:            "COUNT_SEARCH_RESULTS",
 		Query:         countQuery,
 		PostgresQuery: dbutils.ConvertToPostgresParams(countQuery),
-	}, append(joinArgs, countArgs...)...)
+	}, countArgs...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -398,13 +396,12 @@ func (s *store) Search(ctx context.Context, filters model.ConsentSearchFilters) 
 	// Add pagination parameters
 	args = append(args, filters.Limit, filters.Offset)
 
-	// Execute search query.
-	// joinArgs must come first for the same reason as the count query above.
+	// Execute search query
 	rows, err := dbClient.Query(dbmodel.DBQuery{
 		ID:            "SEARCH_CONSENTS",
 		Query:         selectQuery,
 		PostgresQuery: dbutils.ConvertToPostgresParams(selectQuery),
-	}, append(joinArgs, args...)...)
+	}, args...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -872,4 +869,78 @@ func getStringPointer(row map[string]interface{}, key string) *string {
 		return &str
 	}
 	return nil
+}
+
+// CreateDelegation inserts a delegation record within a transaction
+func (s *store) CreateDelegation(tx dbmodel.TxInterface, delegation *model.ConsentDelegation) error {
+	_, err := tx.Exec(QueryCreateDelegation,
+		delegation.ConsentID, delegation.DelegationType, delegation.RevocationPolicy,
+		delegation.OnBehalfOf, delegation.OrgID)
+	return err
+}
+
+// GetDelegationByConsentID retrieves the delegation record for a consent
+func (s *store) GetDelegationByConsentID(ctx context.Context, consentID, orgID string) (*model.ConsentDelegation, error) {
+	dbClient, err := s.getDBClient()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get database client: %w", err)
+	}
+
+	rows, err := dbClient.Query(QueryGetDelegationByConsentID, consentID, orgID)
+	if err != nil {
+		return nil, err
+	}
+	if len(rows) == 0 {
+		return nil, nil
+	}
+
+	return &model.ConsentDelegation{
+		ConsentID:        getString(rows[0], "consent_id"),
+		DelegationType:   getString(rows[0], "delegation_type"),
+		RevocationPolicy: getString(rows[0], "revocation_policy"),
+		OnBehalfOf:       getString(rows[0], "on_behalf_of"),
+		OrgID:            getString(rows[0], "org_id"),
+	}, nil
+}
+
+// GetDelegatedConsentIDs returns all consent IDs that have delegation records
+func (s *store) GetDelegatedConsentIDs(ctx context.Context, orgID string) ([]string, error) {
+	dbClient, err := s.getDBClient()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get database client: %w", err)
+	}
+
+	rows, err := dbClient.Query(QueryGetDelegatedConsentIDs, orgID)
+	if err != nil {
+		return nil, err
+	}
+
+	consentIDs := make([]string, 0, len(rows))
+	for _, row := range rows {
+		if consentID := getString(row, "consent_id"); consentID != "" {
+			consentIDs = append(consentIDs, consentID)
+		}
+	}
+	return consentIDs, nil
+}
+
+// GetDelegatedConsentIDsByOnBehalfOf returns consent IDs delegated on behalf of a specific user
+func (s *store) GetDelegatedConsentIDsByOnBehalfOf(ctx context.Context, onBehalfOf, orgID string) ([]string, error) {
+	dbClient, err := s.getDBClient()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get database client: %w", err)
+	}
+
+	rows, err := dbClient.Query(QueryGetDelegatedConsentIDsByOnBehalfOf, onBehalfOf, orgID)
+	if err != nil {
+		return nil, err
+	}
+
+	consentIDs := make([]string, 0, len(rows))
+	for _, row := range rows {
+		if consentID := getString(row, "consent_id"); consentID != "" {
+			consentIDs = append(consentIDs, consentID)
+		}
+	}
+	return consentIDs, nil
 }

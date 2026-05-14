@@ -28,6 +28,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/wso2/openfgc/internal/consent/model"
+	"github.com/wso2/openfgc/internal/system/config"
 	"github.com/wso2/openfgc/internal/system/constants"
 	"github.com/wso2/openfgc/internal/system/error/serviceerror"
 )
@@ -217,15 +218,7 @@ func TestListConsents_Success(t *testing.T) {
 func TestRevokeConsent_Success(t *testing.T) {
 	mockService := NewMockConsentService(t)
 
-	// Body sends a DIFFERENT ActionBy than the header to prove the handler
-	// overwrites the JSON body value with the trusted X-User-ID header.
-	bodyRequest := model.ConsentRevokeRequest{
-		ActionBy:         "body-user-should-be-overwritten",
-		RevocationReason: "User requested revocation",
-	}
-
-	// The service must receive the header value, not the body value.
-	expectedServiceRequest := model.ConsentRevokeRequest{
+	revokeRequest := model.ConsentRevokeRequest{
 		ActionBy:         "user-123",
 		RevocationReason: "User requested revocation",
 	}
@@ -236,7 +229,7 @@ func TestRevokeConsent_Success(t *testing.T) {
 		RevocationReason: "User requested revocation",
 	}
 
-	mockService.On("RevokeConsent", mock.Anything, "550e8400-e29b-41d4-a716-446655440000", testOrgID, expectedServiceRequest).
+	mockService.On("RevokeConsent", mock.Anything, "550e8400-e29b-41d4-a716-446655440000", testOrgID, revokeRequest).
 		Return(expectedResponse, nil)
 
 	handler := newConsentHandler(mockService)
@@ -246,16 +239,13 @@ func TestRevokeConsent_Success(t *testing.T) {
 	server := httptest.NewServer(mux)
 	defer server.Close()
 
-	body, err := json.Marshal(bodyRequest)
+	body, err := json.Marshal(revokeRequest)
 	require.NoError(t, err)
 
 	req, err := http.NewRequest(http.MethodPut, server.URL+"/api/v1/consents/550e8400-e29b-41d4-a716-446655440000/revoke", bytes.NewBuffer(body))
 	require.NoError(t, err)
 	req.Header.Set(constants.HeaderOrgID, testOrgID)
 	req.Header.Set(constants.HeaderContentType, constants.ContentTypeJSON)
-
-	// Set the header so the handler overwrites ActionBy correctly.
-	req.Header.Set("X-User-ID", "user-123")
 
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
@@ -774,314 +764,73 @@ func TestSearchConsentsByAttribute_MissingOrgID(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, rr.Code)
 }
 
-// ── GET /consents/{consentId}/delegates ──────────────────────────────────────
+// ==================== Delegation Tests ====================
 
-func TestGetDelegates_Success(t *testing.T) {
+// TestCreateDelegatedConsent_Success tests creating a consent with delegation object
+func TestCreateDelegatedConsent_Success(t *testing.T) {
 	mockService := NewMockConsentService(t)
-	handler := newConsentHandler(mockService)
 
-	consentID := "550e8400-e29b-41d4-a716-446655440000"
-	expectedResponse := &model.DelegateListResponse{
-		ConsentID:        consentID,
-		DataPrincipalID:  "child_user_123",
-		RevocationPolicy: "ANY",
-		DelegateCount:    2,
-		Delegates: []model.DelegateInfo{
-			{
-				AuthID:         "auth-001",
-				UserID:         "parent_mom_456",
-				DelegationType: "parental_biological",
-				Status:         "approved",
-				CanRevoke:      true,
-				CanModify:      true,
-				OnBehalfOf:     "child_user_123",
-				UpdatedTime:    1700000000000,
-			},
-			{
-				AuthID:         "auth-002",
-				UserID:         "parent_dad_789",
-				DelegationType: "parental_biological",
-				Status:         "approved",
-				CanRevoke:      true,
-				CanModify:      true,
-				OnBehalfOf:     "child_user_123",
-				UpdatedTime:    1700000000000,
-			},
-		},
-	}
-
-	mockService.On("GetConsentDelegates", mock.Anything, consentID, testOrgID, "parent_mom_456").
-		Return(expectedResponse, nil)
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET "+constants.APIBasePath+"/consents/{consentId}/delegates", handler.getDelegates)
-
-	server := httptest.NewServer(mux)
-	defer server.Close()
-
-	req, err := http.NewRequest(http.MethodGet, server.URL+"/api/v1/consents/"+consentID+"/delegates", nil)
-	require.NoError(t, err)
-	req.Header.Set(constants.HeaderOrgID, testOrgID)
-	req.Header.Set("X-User-ID", "parent_mom_456")
-
-	resp, err := http.DefaultClient.Do(req)
-	require.NoError(t, err)
-	defer resp.Body.Close()
-
-	require.Equal(t, http.StatusOK, resp.StatusCode)
-
-	var response model.DelegateListResponse
-	err = json.NewDecoder(resp.Body).Decode(&response)
-	require.NoError(t, err)
-	require.Equal(t, consentID, response.ConsentID)
-	require.Equal(t, 2, response.DelegateCount)
-	require.Equal(t, "child_user_123", response.DataPrincipalID)
-	require.Equal(t, "ANY", response.RevocationPolicy)
-	mockService.AssertExpectations(t)
-}
-
-func TestGetDelegates_MissingOrgID(t *testing.T) {
-	mockService := NewMockConsentService(t)
-	handler := newConsentHandler(mockService)
-
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/consents/550e8400-e29b-41d4-a716-446655440000/delegates", nil)
-	// No org-id header
-	rr := httptest.NewRecorder()
-
-	handler.getDelegates(rr, req)
-
-	require.Equal(t, http.StatusBadRequest, rr.Code)
-}
-
-func TestGetDelegates_InvalidConsentID(t *testing.T) {
-	mockService := NewMockConsentService(t)
-	handler := newConsentHandler(mockService)
-
-	// Calling handler.getDelegates directly bypasses the router, meaning
-	// PathValue always returns "" and the test passes for the wrong reason
-	// (missing field) instead of exercising the malformed-UUID validation path.
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET "+constants.APIBasePath+"/consents/{consentId}/delegates", handler.getDelegates)
-
-	server := httptest.NewServer(mux)
-	defer server.Close()
-
-	req, err := http.NewRequest(http.MethodGet, server.URL+"/api/v1/consents/not-a-valid-uuid!!/delegates", nil)
-	require.NoError(t, err)
-	req.Header.Set(constants.HeaderOrgID, testOrgID)
-	req.Header.Set("X-User-ID", "caller-user-001")
-
-	resp, err := http.DefaultClient.Do(req)
-	require.NoError(t, err)
-	defer resp.Body.Close()
-
-	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
-}
-
-func TestGetDelegates_NotFound(t *testing.T) {
-	mockService := NewMockConsentService(t)
-	handler := newConsentHandler(mockService)
-
-	consentID := "550e8400-e29b-41d4-a716-446655440001"
-
-	mockService.On("GetConsentDelegates", mock.Anything, consentID, testOrgID, "caller-user-001").
-		Return(nil, serviceerror.CustomServiceError(ErrorConsentNotFound, "Consent not found"))
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET "+constants.APIBasePath+"/consents/{consentId}/delegates", handler.getDelegates)
-
-	server := httptest.NewServer(mux)
-	defer server.Close()
-
-	req, err := http.NewRequest(http.MethodGet, server.URL+"/api/v1/consents/"+consentID+"/delegates", nil)
-	require.NoError(t, err)
-	req.Header.Set(constants.HeaderOrgID, testOrgID)
-	req.Header.Set("X-User-ID", "caller-user-001")
-
-	resp, err := http.DefaultClient.Do(req)
-	require.NoError(t, err)
-	defer resp.Body.Close()
-
-	require.Equal(t, http.StatusNotFound, resp.StatusCode)
-	mockService.AssertExpectations(t)
-}
-
-func TestGetDelegates_ServiceError(t *testing.T) {
-	mockService := NewMockConsentService(t)
-	handler := newConsentHandler(mockService)
-
-	consentID := "550e8400-e29b-41d4-a716-446655440002"
-
-	mockService.On("GetConsentDelegates", mock.Anything, consentID, testOrgID, "caller-user-001").
-		Return(nil, serviceerror.CustomServiceError(ErrorInternalServerError, "database error"))
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET "+constants.APIBasePath+"/consents/{consentId}/delegates", handler.getDelegates)
-
-	server := httptest.NewServer(mux)
-	defer server.Close()
-
-	req, err := http.NewRequest(http.MethodGet, server.URL+"/api/v1/consents/"+consentID+"/delegates", nil)
-	require.NoError(t, err)
-	req.Header.Set(constants.HeaderOrgID, testOrgID)
-	req.Header.Set("X-User-ID", "caller-user-001")
-
-	resp, err := http.DefaultClient.Do(req)
-	require.NoError(t, err)
-	defer resp.Body.Close()
-
-	require.Equal(t, http.StatusInternalServerError, resp.StatusCode)
-	mockService.AssertExpectations(t)
-}
-
-func TestGetDelegates_NoDelegates(t *testing.T) {
-	mockService := NewMockConsentService(t)
-	handler := newConsentHandler(mockService)
-
-	consentID := "550e8400-e29b-41d4-a716-446655440003"
-	expectedResponse := &model.DelegateListResponse{
-		ConsentID:     consentID,
-		DelegateCount: 0,
-		Delegates:     []model.DelegateInfo{},
-	}
-
-	mockService.On("GetConsentDelegates", mock.Anything, consentID, testOrgID, "caller-user-001").
-		Return(expectedResponse, nil)
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET "+constants.APIBasePath+"/consents/{consentId}/delegates", handler.getDelegates)
-
-	server := httptest.NewServer(mux)
-	defer server.Close()
-
-	req, err := http.NewRequest(http.MethodGet, server.URL+"/api/v1/consents/"+consentID+"/delegates", nil)
-	require.NoError(t, err)
-	req.Header.Set(constants.HeaderOrgID, testOrgID)
-	req.Header.Set("X-User-ID", "caller-user-001")
-
-	resp, err := http.DefaultClient.Do(req)
-	require.NoError(t, err)
-	defer resp.Body.Close()
-
-	require.Equal(t, http.StatusOK, resp.StatusCode)
-
-	var response model.DelegateListResponse
-	err = json.NewDecoder(resp.Body).Decode(&response)
-	require.NoError(t, err)
-	require.Equal(t, 0, response.DelegateCount)
-	require.Empty(t, response.Delegates)
-	mockService.AssertExpectations(t)
-}
-
-func TestGetDelegates_MissingUserID(t *testing.T) {
-	mockService := NewMockConsentService(t)
-	handler := newConsentHandler(mockService)
-
-	consentID := "550e8400-e29b-41d4-a716-446655440000"
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET "+constants.APIBasePath+"/consents/{consentId}/delegates", handler.getDelegates)
-
-	server := httptest.NewServer(mux)
-	defer server.Close()
-
-	// No X-User-ID header — must be rejected before reaching the service
-	req, err := http.NewRequest(http.MethodGet, server.URL+"/api/v1/consents/"+consentID+"/delegates", nil)
-	require.NoError(t, err)
-	req.Header.Set(constants.HeaderOrgID, testOrgID)
-
-	resp, err := http.DefaultClient.Do(req)
-	require.NoError(t, err)
-	defer resp.Body.Close()
-
-	require.Equal(t, http.StatusForbidden, resp.StatusCode)
-}
-
-// ── GET /consents?dataPrincipalId= ───────────────────────────────────────────
-
-func TestListConsents_WithDataPrincipalID(t *testing.T) {
-	mockService := NewMockConsentService(t)
-	handler := newConsentHandler(mockService)
-
-	expectedResponse := &model.ConsentDetailSearchResponse{
-		Data: []model.ConsentDetailResponse{},
-		Metadata: model.ConsentSearchMetadata{
-			Total:  0,
-			Limit:  10,
-			Offset: 0,
-			Count:  0,
-		},
-	}
-
-	// to ConsentSearchFilters.CallerID so the delegation authorization path
-	// is exercised (X-User-ID is required for dataPrincipalId queries).
-	mockService.On("SearchConsentsDetailed", mock.Anything,
-		mock.MatchedBy(func(f model.ConsentSearchFilters) bool {
-			return f.DataPrincipalID == "child_user_123" &&
-				f.OrgID == testOrgID &&
-				f.CallerID == "parent_user_456"
-		}),
-	).Return(expectedResponse, nil)
-
-	req := httptest.NewRequest(http.MethodGet, "/consents?dataPrincipalId=child_user_123", nil)
-	req.Header.Set(constants.HeaderOrgID, testOrgID)
-	req.Header.Set("X-User-ID", "parent_user_456")
-	rr := httptest.NewRecorder()
-
-	handler.listConsents(rr, req)
-
-	require.Equal(t, http.StatusOK, rr.Code)
-	mockService.AssertExpectations(t)
-}
-
-// GET /consents?dataPrincipalId=X without being a delegate → 403
-
-func TestListConsents_UnauthorizedForPrincipal(t *testing.T) {
-	mockService := NewMockConsentService(t)
-	handler := newConsentHandler(mockService)
-
-	// Simulate unauthorized access error from service layer
-	// service-layer authorization check is properly exercised.
-	mockService.On("SearchConsentsDetailed", mock.Anything,
-		mock.MatchedBy(func(f model.ConsentSearchFilters) bool {
-			return f.DataPrincipalID == "unauthorized_user" &&
-				f.OrgID == testOrgID &&
-				f.CallerID == "some_caller_999"
-		}),
-	).Return(nil, serviceerror.CustomServiceError(
-		ErrorNotAuthorizedForPrincipal,
-		"not allowed to access this principal",
-	))
-
-	req := httptest.NewRequest(http.MethodGet, "/consents?dataPrincipalId=unauthorized_user", nil)
-	req.Header.Set(constants.HeaderOrgID, testOrgID)
-	req.Header.Set("X-User-ID", "some_caller_999")
-	rr := httptest.NewRecorder()
-
-	handler.listConsents(rr, req)
-
-	require.Equal(t, http.StatusForbidden, rr.Code)
-	mockService.AssertExpectations(t)
-}
-
-// — POST /consents with delegation.type but no principal_id → 400
-
-func TestCreateConsent_InvalidDelegationAttributes(t *testing.T) {
-	mockService := NewMockConsentService(t)
-	handler := newConsentHandler(mockService)
-
-	// ValidateDelegationAttributes checks req.Attributes["delegation.type"].
-	// When delegation.type is set but delegation.principal_id is missing,
-	// the validator rejects the request before CreateConsent is ever called —
-	// so no Mock.On("CreateConsent") is needed here.
 	request := model.ConsentAPIRequest{
-		Type: "accounts",
-		// delegation.type is set → triggers ValidateDelegationAttributes
-		// delegation.principal_id is intentionally absent → Rule 1 rejects the request
-		Attributes: map[string]string{
-			"delegation.type": "guardian",
-			// "delegation.principal_id" deliberately omitted
+		Type: "food_delivery_consent",
+		Delegation: &model.DelegationRequest{
+			Type:             "parental_biological",
+			RevocationPolicy: "ANY",
+			OnBehalfOf:       "child-456",
 		},
+		Purposes: []model.ConsentPurposeItem{
+			{
+				PurposeName: "food_delivery",
+				Elements: []model.ConsentElementApprovalItem{
+					{ElementName: "child_name", IsUserApproved: true},
+				},
+			},
+		},
+		Authorizations: []model.AuthorizationAPIRequest{
+			{UserID: "mother-111", Status: "APPROVED", Resources: map[string]interface{}{}},
+			{UserID: "father-222", Status: "APPROVED", Resources: map[string]interface{}{}},
+		},
+	}
+
+	expectedResponse := &model.ConsentResponse{
+		ConsentID:   "consent-delegation-123",
+		ConsentType: "food_delivery_consent",
+		Delegation: &model.ConsentDelegation{
+			ConsentID:        "consent-delegation-123",
+			DelegationType:   "parental_biological",
+			RevocationPolicy: "ANY",
+			OnBehalfOf:       "child-456",
+		},
+	}
+
+	mockService.On("CreateConsent", mock.Anything, request, testClientID, testOrgID).
+		Return(expectedResponse, nil)
+
+	handler := newConsentHandler(mockService)
+	body, _ := json.Marshal(request)
+	req := httptest.NewRequest(http.MethodPost, "/consents", bytes.NewBuffer(body))
+	req.Header.Set(constants.HeaderOrgID, testOrgID)
+	req.Header.Set(constants.HeaderTPPClientID, testClientID)
+	rr := httptest.NewRecorder()
+
+	handler.createConsent(rr, req)
+
+	require.Equal(t, http.StatusCreated, rr.Code)
+
+	var response model.ConsentAPIResponse
+	err := json.NewDecoder(rr.Body).Decode(&response)
+	require.NoError(t, err)
+	require.NotNil(t, response.Delegation, "Delegation should be present in response")
+	require.Equal(t, "parental_biological", response.Delegation.DelegationType)
+	require.Equal(t, "ANY", response.Delegation.RevocationPolicy)
+	require.Equal(t, "child-456", response.Delegation.OnBehalfOf)
+}
+
+// TestCreateConsent_WithoutDelegation_NoDelegationInResponse tests that normal consent has no delegation
+func TestCreateConsent_WithoutDelegation_NoDelegationInResponse(t *testing.T) {
+	mockService := NewMockConsentService(t)
+
+	request := model.ConsentAPIRequest{
+		Type: "marketing",
 		Purposes: []model.ConsentPurposeItem{
 			{
 				PurposeName: "purpose-1",
@@ -1091,10 +840,20 @@ func TestCreateConsent_InvalidDelegationAttributes(t *testing.T) {
 			},
 		},
 		Authorizations: []model.AuthorizationAPIRequest{
-			{Type: "accounts"},
+			{Type: "authorisation", UserID: "user@example.com", Status: "APPROVED"},
 		},
 	}
 
+	expectedResponse := &model.ConsentResponse{
+		ConsentID:   "consent-normal-123",
+		ConsentType: "marketing",
+		Delegation:  nil,
+	}
+
+	mockService.On("CreateConsent", mock.Anything, request, testClientID, testOrgID).
+		Return(expectedResponse, nil)
+
+	handler := newConsentHandler(mockService)
 	body, _ := json.Marshal(request)
 	req := httptest.NewRequest(http.MethodPost, "/consents", bytes.NewBuffer(body))
 	req.Header.Set(constants.HeaderOrgID, testOrgID)
@@ -1103,6 +862,288 @@ func TestCreateConsent_InvalidDelegationAttributes(t *testing.T) {
 
 	handler.createConsent(rr, req)
 
-	// Expect 400 Bad Request — delegation.principal_id missing (Rule 1 of ValidateDelegationAttributes)
-	require.Equal(t, http.StatusBadRequest, rr.Code)
+	require.Equal(t, http.StatusCreated, rr.Code)
+
+	var response model.ConsentAPIResponse
+	err := json.NewDecoder(rr.Body).Decode(&response)
+	require.NoError(t, err)
+	require.Nil(t, response.Delegation, "Delegation should be nil for non-delegated consent")
+}
+
+// TestListConsents_WithDelegationFilter tests the delegation=true query parameter
+func TestListConsents_WithDelegationFilter(t *testing.T) {
+	mockService := NewMockConsentService(t)
+
+	expectedResponse := &model.ConsentDetailSearchResponse{
+		Data: []model.ConsentDetailResponse{
+			{
+				ID:     "consent-delegation-123",
+				Type:   "food_delivery_consent",
+				Status: "ACTIVE",
+				Delegation: &model.ConsentDelegation{
+					DelegationType:   "parental_biological",
+					RevocationPolicy: "ANY",
+					OnBehalfOf:       "child-456",
+				},
+			},
+		},
+		Metadata: model.ConsentSearchMetadata{
+			Total:  1,
+			Limit:  25,
+			Offset: 0,
+			Count:  1,
+		},
+	}
+
+	mockService.On("SearchConsentsDetailed", mock.Anything, mock.MatchedBy(func(filters model.ConsentSearchFilters) bool {
+		return filters.IsDelegated != nil && *filters.IsDelegated == true
+	})).Return(expectedResponse, nil)
+
+	handler := newConsentHandler(mockService)
+	req := httptest.NewRequest(http.MethodGet, "/consents?delegation=true", nil)
+	req.Header.Set(constants.HeaderOrgID, testOrgID)
+	rr := httptest.NewRecorder()
+
+	handler.listConsents(rr, req)
+
+	require.Equal(t, http.StatusOK, rr.Code)
+
+	var response model.ConsentDetailSearchResponse
+	err := json.NewDecoder(rr.Body).Decode(&response)
+	require.NoError(t, err)
+	require.Len(t, response.Data, 1)
+	require.NotNil(t, response.Data[0].Delegation)
+	require.Equal(t, "child-456", response.Data[0].Delegation.OnBehalfOf)
+}
+
+// TestListConsents_DelegationFilterNotSet tests that without delegation param, IsDelegated is nil
+func TestListConsents_DelegationFilterNotSet(t *testing.T) {
+	mockService := NewMockConsentService(t)
+
+	expectedResponse := &model.ConsentDetailSearchResponse{
+		Data:     []model.ConsentDetailResponse{},
+		Metadata: model.ConsentSearchMetadata{Total: 0, Limit: 25, Offset: 0, Count: 0},
+	}
+
+	mockService.On("SearchConsentsDetailed", mock.Anything, mock.MatchedBy(func(filters model.ConsentSearchFilters) bool {
+		return filters.IsDelegated == nil
+	})).Return(expectedResponse, nil)
+
+	handler := newConsentHandler(mockService)
+	req := httptest.NewRequest(http.MethodGet, "/consents", nil)
+	req.Header.Set(constants.HeaderOrgID, testOrgID)
+	rr := httptest.NewRecorder()
+
+	handler.listConsents(rr, req)
+
+	require.Equal(t, http.StatusOK, rr.Code)
+}
+
+// TestDelegationRequest_Structure tests DelegationRequest struct fields
+func TestDelegationRequest_Structure(t *testing.T) {
+	delegation := model.DelegationRequest{
+		Type:             "parental_biological",
+		RevocationPolicy: "ANY",
+		OnBehalfOf:       "child-456",
+	}
+
+	require.Equal(t, "parental_biological", delegation.Type)
+	require.Equal(t, "ANY", delegation.RevocationPolicy)
+	require.Equal(t, "child-456", delegation.OnBehalfOf)
+}
+
+// TestConsentDelegation_Structure tests ConsentDelegation DB model struct
+func TestConsentDelegation_Structure(t *testing.T) {
+	delegation := model.ConsentDelegation{
+		ConsentID:        "consent-123",
+		DelegationType:   "registered_carer",
+		RevocationPolicy: "BOTH",
+		OnBehalfOf:       "patient-321",
+		OrgID:            "hospital-org",
+	}
+
+	require.Equal(t, "consent-123", delegation.ConsentID)
+	require.Equal(t, "registered_carer", delegation.DelegationType)
+	require.Equal(t, "BOTH", delegation.RevocationPolicy)
+	require.Equal(t, "patient-321", delegation.OnBehalfOf)
+	require.Equal(t, "hospital-org", delegation.OrgID)
+}
+
+// TestDelegationRequest_JSONMarshaling tests JSON serialization of DelegationRequest
+func TestDelegationRequest_JSONMarshaling(t *testing.T) {
+	delegation := model.DelegationRequest{
+		Type:             "parental_biological",
+		RevocationPolicy: "ANY",
+		OnBehalfOf:       "child-456",
+	}
+
+	data, err := json.Marshal(delegation)
+	require.NoError(t, err)
+
+	var parsed model.DelegationRequest
+	err = json.Unmarshal(data, &parsed)
+	require.NoError(t, err)
+
+	require.Equal(t, delegation.Type, parsed.Type)
+	require.Equal(t, delegation.RevocationPolicy, parsed.RevocationPolicy)
+	require.Equal(t, delegation.OnBehalfOf, parsed.OnBehalfOf)
+}
+
+// TestConsentAPIRequest_WithDelegation tests ConsentAPIRequest with delegation field
+func TestConsentAPIRequest_WithDelegation(t *testing.T) {
+	req := model.ConsentAPIRequest{
+		Type: "food_delivery_consent",
+		Delegation: &model.DelegationRequest{
+			Type:             "parental_biological",
+			RevocationPolicy: "ANY",
+			OnBehalfOf:       "child-456",
+		},
+		Authorizations: []model.AuthorizationAPIRequest{
+			{UserID: "mother-111", Status: "APPROVED"},
+		},
+	}
+
+	require.NotNil(t, req.Delegation)
+	require.Equal(t, "parental_biological", req.Delegation.Type)
+	require.Equal(t, "child-456", req.Delegation.OnBehalfOf)
+}
+
+// TestConsentAPIRequest_WithoutDelegation tests ConsentAPIRequest without delegation
+func TestConsentAPIRequest_WithoutDelegation(t *testing.T) {
+	req := model.ConsentAPIRequest{
+		Type: "marketing",
+		Authorizations: []model.AuthorizationAPIRequest{
+			{Type: "authorisation", UserID: "user@example.com"},
+		},
+	}
+
+	require.Nil(t, req.Delegation)
+}
+
+// TestToConsentCreateRequest_InfersAuthType tests that auth type is inferred as "delegate"
+func TestToConsentCreateRequest_InfersAuthType(t *testing.T) {
+	// Initialize config for ToConsentCreateRequest
+	config.SetGlobal(&config.Config{
+		Consent: config.ConsentConfig{
+			AuthStatusMappings: config.AuthStatusMappings{
+				ApprovedState: "APPROVED",
+				CreatedState:  "CREATED",
+				RejectedState: "REJECTED",
+			},
+		},
+	})
+
+	req := model.ConsentAPIRequest{
+		Type: "food_delivery_consent",
+		Delegation: &model.DelegationRequest{
+			Type:             "parental_biological",
+			RevocationPolicy: "ANY",
+			OnBehalfOf:       "child-456",
+		},
+		Purposes: []model.ConsentPurposeItem{
+			{
+				PurposeName: "food_delivery",
+				Elements:    []model.ConsentElementApprovalItem{{ElementName: "child_name", IsUserApproved: true}},
+			},
+		},
+		Authorizations: []model.AuthorizationAPIRequest{
+			{UserID: "mother-111", Type: "authorisation", Status: "APPROVED"},
+			{UserID: "father-222", Status: "APPROVED"},
+		},
+	}
+
+	createReq, err := req.ToConsentCreateRequest()
+	require.NoError(t, err)
+
+	for _, auth := range createReq.AuthResources {
+		require.Equal(t, "delegate", auth.AuthType, "Auth type should be inferred as 'delegate' when delegation is present")
+	}
+}
+
+// TestToConsentCreateRequest_NoInferenceWithoutDelegation tests auth type is NOT inferred without delegation
+func TestToConsentCreateRequest_NoInferenceWithoutDelegation(t *testing.T) {
+	// Initialize config for ToConsentCreateRequest
+	config.SetGlobal(&config.Config{
+		Consent: config.ConsentConfig{
+			AuthStatusMappings: config.AuthStatusMappings{
+				ApprovedState: "APPROVED",
+				CreatedState:  "CREATED",
+				RejectedState: "REJECTED",
+			},
+		},
+	})
+
+	req := model.ConsentAPIRequest{
+		Type: "marketing",
+		Purposes: []model.ConsentPurposeItem{
+			{
+				PurposeName: "purpose-1",
+				Elements:    []model.ConsentElementApprovalItem{{ElementName: "elem-1", IsUserApproved: true}},
+			},
+		},
+		Authorizations: []model.AuthorizationAPIRequest{
+			{UserID: "user@example.com", Type: "authorisation", Status: "APPROVED"},
+		},
+	}
+
+	createReq, err := req.ToConsentCreateRequest()
+	require.NoError(t, err)
+
+	require.Equal(t, "authorisation", createReq.AuthResources[0].AuthType)
+}
+
+// TestConsentSearchFilters_DelegationFilter tests IsDelegated filter field
+func TestConsentSearchFilters_DelegationFilter(t *testing.T) {
+	isDelegated := true
+	filters := model.ConsentSearchFilters{
+		OrgID:       "test-org",
+		IsDelegated: &isDelegated,
+	}
+
+	require.NotNil(t, filters.IsDelegated)
+	require.True(t, *filters.IsDelegated)
+}
+
+// TestConsentSearchFilters_ConsentIDsFilter tests ConsentIDs filter field
+func TestConsentSearchFilters_ConsentIDsFilter(t *testing.T) {
+	filters := model.ConsentSearchFilters{
+		OrgID:      "test-org",
+		ConsentIDs: []string{"consent-1", "consent-2"},
+	}
+
+	require.Len(t, filters.ConsentIDs, 2)
+	require.Equal(t, "consent-1", filters.ConsentIDs[0])
+}
+
+// TestConsentResponse_WithDelegation tests ConsentResponse includes delegation
+func TestConsentResponse_WithDelegation(t *testing.T) {
+	response := model.ConsentResponse{
+		ConsentID:   "consent-123",
+		ConsentType: "food_delivery_consent",
+		Delegation: &model.ConsentDelegation{
+			ConsentID:        "consent-123",
+			DelegationType:   "parental_biological",
+			RevocationPolicy: "ANY",
+			OnBehalfOf:       "child-456",
+		},
+	}
+
+	require.NotNil(t, response.Delegation)
+	require.Equal(t, "child-456", response.Delegation.OnBehalfOf)
+}
+
+// TestConsentDetailResponse_WithDelegation tests ConsentDetailResponse includes delegation
+func TestConsentDetailResponse_WithDelegation(t *testing.T) {
+	response := model.ConsentDetailResponse{
+		ID:   "consent-123",
+		Type: "food_delivery_consent",
+		Delegation: &model.ConsentDelegation{
+			DelegationType:   "parental_biological",
+			RevocationPolicy: "ANY",
+			OnBehalfOf:       "child-456",
+		},
+	}
+
+	require.NotNil(t, response.Delegation)
+	require.Equal(t, "parental_biological", response.Delegation.DelegationType)
 }
