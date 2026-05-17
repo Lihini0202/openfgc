@@ -84,22 +84,21 @@ type ConsentStatus string
 // AuthStatus represents a typed authorization status
 type AuthStatus string
 
-// ExpirationFrequencyConfig holds the scheduler frequency config
-type ExpirationFrequencyConfig struct {
+// PeriodicalExpirationConfig holds all configuration for the background expiration job
+type PeriodicalExpirationConfig struct {
+	// Enabled controls whether the background expiration job runs at startup.
+	Enabled bool `yaml:"enabled"`
+	// Frequency is how often the scheduler runs. Supports Go duration format: "30s", "5m", "1h".
 	Frequency string `yaml:"frequency"`
-}
-
-// EligibleStatusesConfig holds the eligible consent statuses for expiration
-type EligibleStatusesConfig struct {
-	ConsentStatuses []string `yaml:"consent_statuses"`
+	// EligibleStatuses lists the consent statuses that are eligible for expiration checks.
+	EligibleStatuses []string `yaml:"eligible_statuses"`
 }
 
 // ConsentConfig holds consent-related configuration
 type ConsentConfig struct {
-	ExpirationFrequency ExpirationFrequencyConfig `yaml:"expiration_frequency"`
-	EligibleStatuses    EligibleStatusesConfig    `yaml:"eligible_statuses"`
-	StatusMappings      ConsentStatusMappings     `yaml:"status_mappings"`
-	AuthStatusMappings  AuthStatusMappings        `yaml:"auth_status_mappings"`
+	PeriodicalExpiration PeriodicalExpirationConfig `yaml:"periodical_expiration"`
+	StatusMappings       ConsentStatusMappings      `yaml:"status_mappings"`
+	AuthStatusMappings   AuthStatusMappings         `yaml:"auth_status_mappings"`
 }
 
 // ConsentStatusMappings holds the mapping of specific consent lifecycle states
@@ -170,19 +169,29 @@ func (c *ConsentConfig) GetSystemRevokedAuthStatus() AuthStatus {
 	return AuthStatus(c.AuthStatusMappings.SystemRevokedState)
 }
 
+// GetExpirationFrequency parses and returns the periodical expiration frequency duration
+func (c *ConsentConfig) GetExpirationFrequency() time.Duration {
+	d, err := time.ParseDuration(c.PeriodicalExpiration.Frequency)
+	if err != nil {
+		return 1 * time.Hour // default fallback
+	}
+	return d
+}
+
+// GetEligibleConsentStatuses returns the list of consent statuses eligible for expiration
+func (c *ConsentConfig) GetEligibleConsentStatuses() []string {
+	return c.PeriodicalExpiration.EligibleStatuses
+}
+
 // Load reads configuration from file and environment variables
 func Load(configPath string) (*Config, error) {
 	logger := log.GetLogger()
 	logger.Debug("Loading configuration", log.String("config_path", configPath))
 
-	// Determine config file path
 	var finalPath string
 	if configPath != "" {
 		finalPath = configPath
 	} else {
-		// Default configuration lookup order:
-		// 1. ./repository/conf/deployment.yaml (production - relative to binary)
-		// 2. ./cmd/server/repository/conf/deployment.yaml (development)
 		paths := []string{
 			"./repository/conf/deployment.yaml",
 			"./cmd/server/repository/conf/deployment.yaml",
@@ -202,7 +211,6 @@ func Load(configPath string) (*Config, error) {
 		}
 	}
 
-	// Read the config file
 	finalPath = filepath.Clean(finalPath)
 	data, err := os.ReadFile(finalPath)
 	if err != nil {
@@ -210,7 +218,6 @@ func Load(configPath string) (*Config, error) {
 		return nil, fmt.Errorf("failed to read config file: %w", err)
 	}
 
-	// Substitute environment variables
 	data, err = substituteEnvironmentVariables(data)
 	if err != nil {
 		logger.Error("Failed to substitute environment variables", log.Error(err))
@@ -219,7 +226,6 @@ func Load(configPath string) (*Config, error) {
 
 	logger.Info("Config file loaded", log.String("file", finalPath))
 
-	// Unmarshal config
 	var config Config
 	decoder := yaml.NewDecoder(strings.NewReader(string(data)))
 	decoder.KnownFields(true)
@@ -228,7 +234,6 @@ func Load(configPath string) (*Config, error) {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 	}
 
-	// Validate config
 	if err := validateConfig(&config); err != nil {
 		logger.Error("Config validation failed", log.Error(err))
 		return nil, fmt.Errorf("config validation failed: %w", err)
@@ -246,7 +251,6 @@ func Load(configPath string) (*Config, error) {
 func substituteEnvironmentVariables(data []byte) ([]byte, error) {
 	content := string(data)
 
-	// Find all ${...} patterns using a moving index
 	pos := 0
 	for pos < len(content) {
 		start := strings.Index(content[pos:], "${")
@@ -260,16 +264,9 @@ func substituteEnvironmentVariables(data []byte) ([]byte, error) {
 		}
 		end += start
 
-		// Extract variable name
 		varName := content[start+2 : end]
-
-		// Get environment variable value
 		varValue := os.Getenv(varName)
-
-		// Replace the pattern with the value
 		content = content[:start] + varValue + content[end+1:]
-
-		// Move position past the replaced value to avoid re-expansion
 		pos = start + len(varValue)
 	}
 
@@ -294,7 +291,7 @@ func validateConfig(config *Config) error {
 		if config.Database.Consent.Database == "" {
 			return fmt.Errorf("database name is required")
 		}
-	default: // mysql and empty (defaults to mysql)
+	default:
 		if config.Database.Consent.Hostname == "" {
 			return fmt.Errorf("database hostname is required")
 		}
@@ -303,7 +300,6 @@ func validateConfig(config *Config) error {
 		}
 	}
 
-	// Validate consent status mappings
 	if config.Consent.StatusMappings.ActiveStatus == "" {
 		return fmt.Errorf("consent active status mapping is required")
 	}
@@ -320,7 +316,6 @@ func validateConfig(config *Config) error {
 		return fmt.Errorf("consent rejected status mapping is required")
 	}
 
-	// Validate auth status mappings
 	if config.Consent.AuthStatusMappings.ApprovedState == "" {
 		return fmt.Errorf("auth approved status mapping is required")
 	}
@@ -351,8 +346,6 @@ func SetGlobal(cfg *Config) {
 }
 
 // GetDSN returns the database connection string appropriate for the configured database type.
-// For SQLite it returns the file path with optional query parameters.
-// For MySQL (default) it returns the standard TCP DSN.
 func (d *DatabaseConfig) GetDSN() string {
 	switch d.Type {
 	case "sqlite":
@@ -381,7 +374,7 @@ func (d *DatabaseConfig) GetDSN() string {
 			dsn += " " + d.Options
 		}
 		return dsn
-	default: // mysql
+	default:
 		return fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?parseTime=true&multiStatements=true",
 			d.User,
 			d.Password,
@@ -465,18 +458,4 @@ func (c *ConsentConfig) GetAllowedAuthStatuses() []AuthStatus {
 		c.GetSystemExpiredAuthStatus(),
 		c.GetSystemRevokedAuthStatus(),
 	}
-}
-
-// GetExpirationFrequency parses and returns the expiration frequency duration
-func (c *ConsentConfig) GetExpirationFrequency() time.Duration {
-	d, err := time.ParseDuration(c.ExpirationFrequency.Frequency)
-	if err != nil {
-		return 10 * time.Second // default fallback
-	}
-	return d
-}
-
-// GetEligibleConsentStatuses returns the list of consent statuses eligible for expiration
-func (c *ConsentConfig) GetEligibleConsentStatuses() []string {
-	return c.EligibleStatuses.ConsentStatuses
 }

@@ -3,17 +3,15 @@
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
- * in compliance with the License.
- * You may obtain a copy of the License at
+ * in compliance with the License. You may obtain a copy of the License at
  *
  * http://www.apache.org/licenses/LICENSE-2.0
  *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
- * KIND, either express or implied.  See the License for the
- * specific language governing permissions and limitations
- * under the License.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 // Package managers provides functionality for managing and registering system services.
@@ -37,7 +35,6 @@ import (
 func registerServices(mux *http.ServeMux) {
 	logger := log.GetLogger()
 
-	// Create Store Registry with all stores
 	storeRegistry := stores.NewStoreRegistry(
 		consent.NewConsentStore(),
 		authresource.NewAuthResourceStore(),
@@ -46,7 +43,6 @@ func registerServices(mux *http.ServeMux) {
 	)
 	logger.Debug("Store Registry initialized with all stores")
 
-	// Initialize all services with the registry
 	authresource.Initialize(mux, storeRegistry)
 	logger.Debug("AuthResource module initialized")
 
@@ -56,47 +52,46 @@ func registerServices(mux *http.ServeMux) {
 	consentpurpose.Initialize(mux, storeRegistry)
 	logger.Debug("ConsentPurpose module initialized")
 
-	consentService := consent.Initialize(mux, storeRegistry)
+	expirationService := consent.Initialize(mux, storeRegistry)
 	logger.Debug("Consent module initialized")
 
-	startConsentExpirationScheduler(consentService)
+	startConsentExpirationScheduler(expirationService)
 
-	// Register health check endpoints
 	registerHealthCheckEndpoints(mux)
 	logger.Debug("Health check endpoints registered")
 }
 
 // startConsentExpirationScheduler starts the background scheduler for expiring eligible consents.
-func startConsentExpirationScheduler(consentService consent.ConsentService) {
+// If periodical expiration is disabled in config, the scheduler is not started.
+func startConsentExpirationScheduler(expirationSvc consent.ExpirationService) {
 	logger := log.GetLogger()
 
 	cfg := config.Get()
+
+	if !cfg.Consent.PeriodicalExpiration.Enabled {
+		logger.Info("Consent periodical expiration is disabled — skipping scheduler startup")
+		return
+	}
+
 	interval := cfg.Consent.GetExpirationFrequency()
 	statuses := consent.ExpirationStatuses{
 		ExpirableConsentStatuses: cfg.Consent.GetEligibleConsentStatuses(),
 	}
 
-	go consent.StartScheduler(context.Background(), consentService, interval, statuses)
-	logger.Debug("Consent expiration scheduler started", log.String("interval", interval.String()))
+	go consent.StartScheduler(context.Background(), expirationSvc, interval, statuses)
+	logger.Info("Consent expiration scheduler started", log.String("interval", interval.String()))
 }
 
 // registerHealthCheckEndpoints registers the health check endpoints.
 func registerHealthCheckEndpoints(mux *http.ServeMux) {
 	healthCheckHandler := handler.NewHealthCheckHandler()
 
-	// Liveness endpoint - simple check if server is running
 	mux.HandleFunc("GET /health/liveness", healthCheckHandler.HandleLivenessRequest)
-
-	// Readiness endpoint - checks if server and dependencies are ready
 	mux.HandleFunc("GET /health/readiness", healthCheckHandler.HandleReadinessRequest)
-
-	// Legacy health endpoint (for backward compatibility)
 	mux.HandleFunc("GET /health", healthCheckHandler.HandleLivenessRequest)
 }
 
 // unregisterServices performs cleanup of all services during shutdown.
-// Currently a placeholder for future service cleanup needs.
 func unregisterServices() {
 	// Future: Add any service-specific cleanup logic here
-	// e.g., closing connections, flushing caches, etc.
 }

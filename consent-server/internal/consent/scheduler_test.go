@@ -21,43 +21,39 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/mock"
 	"github.com/wso2/openfgc/internal/consent/model"
 )
 
+// signalingExpirationService satisfies ExpirationService and signals when GetExpiredConsents is called.
+type signalingExpirationService struct {
+	fired chan struct{}
+}
+
+func (s *signalingExpirationService) GetExpiredConsents(_ context.Context, _ int64, _ []string) ([]model.Consent, error) {
+	select {
+	case s.fired <- struct{}{}:
+	default:
+	}
+	return []model.Consent{}, nil
+}
+
+func (s *signalingExpirationService) ExpireConsent(_ context.Context, _ *model.Consent, _ string) error {
+	return nil
+}
+
 // TestStartScheduler_FiresJobOnTick verifies that StartScheduler launches RunExpirationJob on each ticker tick.
-// The scheduler runs until the context is cancelled, allowing clean test termination.
 func TestStartScheduler_FiresJobOnTick(t *testing.T) {
-	// Use the raw struct (not NewMockConsentService) to avoid the auto-cleanup
-	// assertion firing against a goroutine that outlives the test.
-	svc := &MockConsentService{}
+	svc := &signalingExpirationService{fired: make(chan struct{}, 1)}
 	statuses := ExpirationStatuses{ExpirableConsentStatuses: []string{"ACTIVE"}}
 
-	jobFired := make(chan struct{}, 1)
-
-	svc.On("GetExpiredConsents",
-		mock.Anything,
-		mock.AnythingOfType("int64"),
-		statuses.ExpirableConsentStatuses,
-	).Return([]model.Consent{}, nil).
-		Run(func(_ mock.Arguments) {
-			// Signal on first invocation only; ignore subsequent ticks.
-			select {
-			case jobFired <- struct{}{}:
-			default:
-			}
-		})
-
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel() // Ensure cleanup
+	defer cancel()
 
-	// StartScheduler runs until context is cancelled; run it concurrently.
 	go StartScheduler(ctx, svc, 50*time.Millisecond, statuses)
 
 	select {
-	case <-jobFired:
-		// Scheduler fired the expiration job — test passes.
-		cancel() // Stop the scheduler cleanly
+	case <-svc.fired:
+		cancel()
 	case <-time.After(2 * time.Second):
 		t.Fatal("scheduler did not fire the expiration job within 2 seconds")
 	}
