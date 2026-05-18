@@ -191,8 +191,9 @@ func (h *consentHandler) listConsents(w http.ResponseWriter, r *http.Request) {
 
 	// Parse delegation filter (boolean)
 	if delegationStr := r.URL.Query().Get("delegation"); delegationStr != "" {
-		isDelegated := delegationStr == "true"
-		filters.IsDelegated = &isDelegated
+		if isDelegated, err := strconv.ParseBool(delegationStr); err == nil {
+			filters.IsDelegated = &isDelegated
+		}
 	}
 
 	// Use detailed search to include nested data

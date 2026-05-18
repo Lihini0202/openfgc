@@ -823,6 +823,7 @@ func TestCreateDelegatedConsent_Success(t *testing.T) {
 	require.Equal(t, "parental_biological", response.Delegation.DelegationType)
 	require.Equal(t, "ANY", response.Delegation.RevocationPolicy)
 	require.Equal(t, "child-456", response.Delegation.OnBehalfOf)
+	mockService.AssertExpectations(t)
 }
 
 // TestCreateConsent_WithoutDelegation_NoDelegationInResponse tests that normal consent has no delegation
@@ -868,6 +869,7 @@ func TestCreateConsent_WithoutDelegation_NoDelegationInResponse(t *testing.T) {
 	err := json.NewDecoder(rr.Body).Decode(&response)
 	require.NoError(t, err)
 	require.Nil(t, response.Delegation, "Delegation should be nil for non-delegated consent")
+	mockService.AssertExpectations(t)
 }
 
 // TestListConsents_WithDelegationFilter tests the delegation=true query parameter
@@ -914,6 +916,7 @@ func TestListConsents_WithDelegationFilter(t *testing.T) {
 	require.Len(t, response.Data, 1)
 	require.NotNil(t, response.Data[0].Delegation)
 	require.Equal(t, "child-456", response.Data[0].Delegation.OnBehalfOf)
+	mockService.AssertExpectations(t)
 }
 
 // TestListConsents_DelegationFilterNotSet tests that without delegation param, IsDelegated is nil
@@ -937,6 +940,7 @@ func TestListConsents_DelegationFilterNotSet(t *testing.T) {
 	handler.listConsents(rr, req)
 
 	require.Equal(t, http.StatusOK, rr.Code)
+	mockService.AssertExpectations(t)
 }
 
 // TestDelegationRequest_Structure tests DelegationRequest struct fields
@@ -1023,6 +1027,8 @@ func TestConsentAPIRequest_WithoutDelegation(t *testing.T) {
 // TestToConsentCreateRequest_InfersAuthType tests that auth type is inferred as "delegate"
 func TestToConsentCreateRequest_InfersAuthType(t *testing.T) {
 	// Initialize config for ToConsentCreateRequest
+	prev := config.Get()
+	t.Cleanup(func() { config.SetGlobal(prev) })
 	config.SetGlobal(&config.Config{
 		Consent: config.ConsentConfig{
 			AuthStatusMappings: config.AuthStatusMappings{
@@ -1063,6 +1069,8 @@ func TestToConsentCreateRequest_InfersAuthType(t *testing.T) {
 // TestToConsentCreateRequest_NoInferenceWithoutDelegation tests auth type is NOT inferred without delegation
 func TestToConsentCreateRequest_NoInferenceWithoutDelegation(t *testing.T) {
 	// Initialize config for ToConsentCreateRequest
+	prev := config.Get()
+	t.Cleanup(func() { config.SetGlobal(prev) })
 	config.SetGlobal(&config.Config{
 		Consent: config.ConsentConfig{
 			AuthStatusMappings: config.AuthStatusMappings{

@@ -254,10 +254,9 @@ func (consentService *consentService) CreateConsent(ctx context.Context, req mod
 		queries = append(queries, func(tx dbmodel.TxInterface) error {
 			return consentStore.CreateDelegation(tx, delegation)
 		})
-		logger.Info("Adding delegation metadata",
+		logger.Debug("Adding delegation metadata",
 			log.String("consent_id", consentID),
-			log.String("delegation_type", req.Delegation.Type),
-			log.String("on_behalf_of", req.Delegation.OnBehalfOf))
+			log.String("delegation_type", req.Delegation.Type))
 	}
 
 	// Execute all operations in a single transaction
@@ -310,12 +309,18 @@ func (consentService *consentService) CreateConsent(ctx context.Context, req mod
 	}
 
 	// Build complete response using the resolved purposes data
-	// Load delegation data if this is a delegated consent
-	var delegation *model.ConsentDelegation
+	// Reuse the delegation already built and persisted above, if any
+	var delegationForResponse *model.ConsentDelegation
 	if req.Delegation != nil {
-		delegation, _ = consentStore.GetDelegationByConsentID(ctx, consentID, orgID)
+		delegationForResponse = &model.ConsentDelegation{
+			ConsentID:        consentID,
+			DelegationType:   req.Delegation.Type,
+			RevocationPolicy: req.Delegation.RevocationPolicy,
+			OnBehalfOf:       req.Delegation.OnBehalfOf,
+			OrgID:            orgID,
+		}
 	}
-	response := buildConsentResponse(consent, purposes, attributesMap, authResources, delegation)
+	response := buildConsentResponse(consent, purposes, attributesMap, authResources, delegationForResponse)
 
 	logger.Info("Consent creation completed",
 		log.String("consent_id", consentID),

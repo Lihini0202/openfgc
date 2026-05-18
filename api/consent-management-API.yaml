@@ -2587,6 +2587,8 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ConsentAuthorizationCreateResponse"
+        delegation:
+          $ref: "#/components/schemas/DelegationObject"
         modifiedResponse:
           description: Optional field used to provide an alternative payload that overrides the original `consentPurpose` during consent processing.
           type: object
@@ -2683,6 +2685,8 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ConsentAuthorizationCreateResponse"
+        delegation:
+          $ref: "#/components/schemas/DelegationObject"
         modifiedResponse:
           description: Optional field used to provide an alternative payload that overrides the original `consentPurpose` during consent processing.
           type: object
@@ -3190,6 +3194,8 @@ components:
                 type: integer
                 format: int64
                 example: 1699651200
+        delegation:
+          $ref: "#/components/schemas/DelegationObject"
       required:
         - id
         - type
