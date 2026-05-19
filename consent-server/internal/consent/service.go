@@ -394,7 +394,11 @@ func (consentService *consentService) GetConsent(ctx context.Context, consentID,
 	}
 
 	// Build complete response with all related data
-	delegation, _ := consentStore.GetDelegationByConsentID(ctx, consentID, orgID)
+	delegation, err := consentStore.GetDelegationByConsentID(ctx, consentID, orgID)
+	if err != nil {
+		logger.Error("Failed to get delegation data", log.Error(err), log.String("consent_id", consentID))
+		return nil, serviceerror.CustomServiceError(ErrorInternalServerError, err.Error())
+	}
 	response := buildConsentResponse(consent, purposes, attributesMap, authResources, delegation)
 
 	logger.Debug("Consent retrieved successfully",
@@ -512,6 +516,12 @@ func (consentService *consentService) SearchConsentsDetailed(ctx context.Context
 		return nil, serviceerror.CustomServiceError(ErrorInternalServerError, err.Error())
 	}
 
+	delegationsByConsent, err := consentStore.GetDelegationsByConsentIDs(ctx, consentIDs, filters.OrgID)
+	if err != nil {
+		logger.Error("Failed to get consent delegations", log.Error(err))
+		return nil, serviceerror.CustomServiceError(ErrorInternalServerError, err.Error())
+	}
+
 	// Step 4: Group auth resources by consent ID
 	authsByConsent := make(map[string][]authmodel.AuthResource)
 	for _, auth := range authResources {
@@ -578,8 +588,8 @@ func (consentService *consentService) SearchConsentsDetailed(ctx context.Context
 			dataAccessValidityDuration = *consent.DataAccessValidityDuration
 		}
 
-		// Load delegation data for this consent
-		detailDelegation, _ := consentService.stores.Consent.GetDelegationByConsentID(ctx, consent.ConsentID, consent.OrgID)
+		// Get delegation data from batch-fetched map
+		detailDelegation := delegationsByConsent[consent.ConsentID]
 
 		detailedResponses = append(detailedResponses, model.ConsentDetailResponse{
 			ID:                         consent.ConsentID,
@@ -968,7 +978,11 @@ func (consentService *consentService) UpdateConsent(ctx context.Context, req mod
 	}
 
 	// Build complete response
-	updateDelegation, _ := consentService.stores.Consent.GetDelegationByConsentID(ctx, consentID, orgID)
+	updateDelegation, err := consentService.stores.Consent.GetDelegationByConsentID(ctx, consentID, orgID)
+	if err != nil {
+		logger.Error("Failed to get delegation data", log.Error(err), log.String("consent_id", consentID))
+		return nil, serviceerror.CustomServiceError(ErrorInternalServerError, err.Error())
+	}
 	response := buildConsentResponse(updated, purposes, attributesMap, authResources, updateDelegation)
 
 	logger.Info("Consent updated successfully",
@@ -1155,7 +1169,10 @@ func (consentService *consentService) ValidateConsent(ctx context.Context, req m
 			return nil, serviceerror.CustomServiceError(ErrorInternalServerError, err.Error())
 		} else {
 			// Build complete consent response
-			searchDelegation, _ := consentService.stores.Consent.GetDelegationByConsentID(ctx, consent.ConsentID, consent.OrgID)
+			searchDelegation, delegErr := consentService.stores.Consent.GetDelegationByConsentID(ctx, consent.ConsentID, consent.OrgID)
+			if delegErr != nil {
+				logger.Error("Failed to get delegation data", log.Error(delegErr), log.String("consent_id", consent.ConsentID))
+			}
 			consentResponse := buildConsentResponse(consent, purposes, attributesMap, authResources, searchDelegation)
 			// Convert to ValidateConsentAPIResponse with enriched purpose details
 			response.ConsentInformation = consentService.EnrichedValidateConsentAPIResponse(ctx, consentResponse, orgID)

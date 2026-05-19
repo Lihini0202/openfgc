@@ -219,6 +219,10 @@ var (
 		Query:         "SELECT CONSENT_ID FROM CONSENT_DELEGATION WHERE ON_BEHALF_OF = ? AND ORG_ID = ? ORDER BY CONSENT_ID",
 		PostgresQuery: "SELECT CONSENT_ID FROM CONSENT_DELEGATION WHERE ON_BEHALF_OF = $1 AND ORG_ID = $2 ORDER BY CONSENT_ID",
 	}
+
+	QueryGetDelegationsByConsentIDs = dbmodel.DBQuery{
+		ID: "GET_DELEGATIONS_BY_CONSENT_IDS",
+	}
 )
 
 // store implements the interfaces.ConsentStore interface
@@ -943,4 +947,52 @@ func (s *store) GetDelegatedConsentIDsByOnBehalfOf(ctx context.Context, onBehalf
 		}
 	}
 	return consentIDs, nil
+}
+
+// GetDelegationsByConsentIDs retrieves delegation records for multiple consents, keyed by consent ID
+func (s *store) GetDelegationsByConsentIDs(ctx context.Context, consentIDs []string, orgID string) (map[string]*model.ConsentDelegation, error) {
+	if len(consentIDs) == 0 {
+		return make(map[string]*model.ConsentDelegation), nil
+	}
+
+	dbClient, err := s.getDBClient()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get database client: %w", err)
+	}
+
+	placeholders := ""
+	args := make([]interface{}, 0, len(consentIDs)+1)
+	for i, id := range consentIDs {
+		if i > 0 {
+			placeholders += ", "
+		}
+		placeholders += "?"
+		args = append(args, id)
+	}
+	args = append(args, orgID)
+
+	mysqlQuery := fmt.Sprintf("SELECT CONSENT_ID, DELEGATION_TYPE, REVOCATION_POLICY, ON_BEHALF_OF, ORG_ID FROM CONSENT_DELEGATION WHERE CONSENT_ID IN (%s) AND ORG_ID = ?", placeholders)
+	query := dbmodel.DBQuery{
+		ID:            QueryGetDelegationsByConsentIDs.ID,
+		Query:         mysqlQuery,
+		PostgresQuery: dbutils.ConvertToPostgresParams(mysqlQuery),
+	}
+
+	rows, err := dbClient.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make(map[string]*model.ConsentDelegation)
+	for _, row := range rows {
+		delegation := &model.ConsentDelegation{
+			ConsentID:        getString(row, "consent_id"),
+			DelegationType:   getString(row, "delegation_type"),
+			RevocationPolicy: getString(row, "revocation_policy"),
+			OnBehalfOf:       getString(row, "on_behalf_of"),
+			OrgID:            getString(row, "org_id"),
+		}
+		result[delegation.ConsentID] = delegation
+	}
+	return result, nil
 }

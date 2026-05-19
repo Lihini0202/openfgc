@@ -1336,3 +1336,13 @@ func (_m *ConsentStore) GetDelegatedConsentIDsByOnBehalfOf(ctx context.Context, 
 	}
 	return r0, ret.Error(1)
 }
+
+func (_m *ConsentStore) GetDelegationsByConsentIDs(ctx context.Context, consentIDs []string, orgID string) (map[string]*consentmodel.ConsentDelegation, error) {
+	ret := _m.Called(ctx, consentIDs, orgID)
+
+	var r0 map[string]*consentmodel.ConsentDelegation
+	if ret.Get(0) != nil {
+		r0 = ret.Get(0).(map[string]*consentmodel.ConsentDelegation)
+	}
+	return r0, ret.Error(1)
+}
