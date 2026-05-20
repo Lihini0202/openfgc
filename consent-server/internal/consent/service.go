@@ -429,54 +429,8 @@ func (consentService *consentService) SearchConsentsDetailed(ctx context.Context
 		filters.Offset = 0
 	}
 
-	// Step 1: Handle delegation filter
+	// Search consents with filters (delegation filter handled by store via JOIN)
 	consentStore := consentService.stores.Consent
-
-	if filters.IsDelegated != nil && *filters.IsDelegated {
-		// Filter by delegated consents
-		var delegatedIDs []string
-		var delegErr error
-
-		if len(filters.UserIDs) > 0 {
-			// When delegation=true and userIds are provided, search by onBehalfOf
-			// This finds consents delegated on behalf of these users
-			allDelegatedIDs := make([]string, 0)
-			for _, userID := range filters.UserIDs {
-				ids, err := consentStore.GetDelegatedConsentIDsByOnBehalfOf(ctx, userID, filters.OrgID)
-				if err != nil {
-					logger.Error("Failed to get delegated consent IDs", log.Error(err))
-					return nil, serviceerror.CustomServiceError(ErrorInternalServerError, err.Error())
-				}
-				allDelegatedIDs = append(allDelegatedIDs, ids...)
-			}
-			delegatedIDs = allDelegatedIDs
-			// Clear UserIDs so the main search doesn't filter by auth resource user IDs
-			filters.UserIDs = nil
-		} else {
-			delegatedIDs, delegErr = consentStore.GetDelegatedConsentIDs(ctx, filters.OrgID)
-			if delegErr != nil {
-				logger.Error("Failed to get delegated consent IDs", log.Error(delegErr))
-				return nil, serviceerror.CustomServiceError(ErrorInternalServerError, delegErr.Error())
-			}
-		}
-
-		if len(delegatedIDs) == 0 {
-			return &model.ConsentDetailSearchResponse{
-				Data: []model.ConsentDetailResponse{},
-				Metadata: model.ConsentSearchMetadata{
-					Total:  0,
-					Limit:  filters.Limit,
-					Offset: filters.Offset,
-					Count:  0,
-				},
-			}, nil
-		}
-
-		// Add delegated consent IDs as a filter for the main search
-		filters.ConsentIDs = delegatedIDs
-	}
-
-	// Step 2: Search consents
 	consents, total, err := consentStore.Search(ctx, filters)
 	if err != nil {
 		logger.Error("Failed to search consents", log.Error(err))

@@ -44,6 +44,13 @@ func ValidateConsentCreateRequest(req model.ConsentAPIRequest, clientID, orgID s
 		return fmt.Errorf("orgID is required")
 	}
 
+	// Validate delegation if present
+	if req.Delegation != nil {
+		if req.Delegation.OnBehalfOf == "" {
+			return fmt.Errorf("delegation.onBehalfOf is required when delegation is present")
+		}
+	}
+
 	// Validate auth resources (Authorizations field)
 	for i, authReq := range req.Authorizations {
 		// Auth type is inferred as "delegate" when delegation is present,

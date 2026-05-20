@@ -266,7 +266,7 @@ func TestValidateConsentCreateRequest_DelegationPresent_WithAuthType(t *testing.
 	require.NoError(t, err, "Providing auth type with delegation present should not cause error")
 }
 
-// TestValidateConsentCreateRequest_DelegationWithEmptyFields tests delegation with empty fields
+// TestValidateConsentCreateRequest_DelegationWithEmptyFields tests delegation with empty optional fields
 func TestValidateConsentCreateRequest_DelegationWithEmptyFields(t *testing.T) {
 	req := model.ConsentAPIRequest{
 		Type: "food_delivery_consent",
@@ -289,5 +289,32 @@ func TestValidateConsentCreateRequest_DelegationWithEmptyFields(t *testing.T) {
 	}
 
 	err := ValidateConsentCreateRequest(req, "quickbite-app", "quickbite-org")
-	require.NoError(t, err, "Empty delegation fields should be accepted — consent manager stores as-is")
+	require.NoError(t, err, "Empty type and revocationPolicy should be accepted — onBehalfOf is present")
+}
+
+// TestValidateConsentCreateRequest_EmptyDelegationObject tests that empty delegation object is rejected
+func TestValidateConsentCreateRequest_EmptyDelegationObject(t *testing.T) {
+	req := model.ConsentAPIRequest{
+		Type: "food_delivery_consent",
+		Delegation: &model.DelegationRequest{
+			Type:             "",
+			RevocationPolicy: "",
+			OnBehalfOf:       "",
+		},
+		Purposes: []model.ConsentPurposeItem{
+			{
+				PurposeName: "food_delivery",
+				Elements: []model.ConsentElementApprovalItem{
+					{ElementName: "child_name", IsUserApproved: true},
+				},
+			},
+		},
+		Authorizations: []model.AuthorizationAPIRequest{
+			{UserID: "mother-111"},
+		},
+	}
+
+	err := ValidateConsentCreateRequest(req, "quickbite-app", "quickbite-org")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "delegation.onBehalfOf is required")
 }

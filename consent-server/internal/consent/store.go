@@ -323,8 +323,28 @@ func (s *store) Search(ctx context.Context, filters model.ConsentSearchFilters) 
 		whereConditions = append(whereConditions, fmt.Sprintf("CONSENT.CLIENT_ID IN (%s)", strings.Join(placeholders, ",")))
 	}
 
-	// Add userIds filter (via JOIN with CONSENT_AUTH_RESOURCE)
+	// Build JOIN clauses dynamically
 	joinClause := ""
+
+	// Add delegation filter (JOIN with CONSENT_DELEGATION)
+	if filters.IsDelegated != nil && *filters.IsDelegated {
+		joinClause += " INNER JOIN CONSENT_DELEGATION cd ON CONSENT.CONSENT_ID = cd.CONSENT_ID AND CONSENT.ORG_ID = cd.ORG_ID"
+
+		// When delegation=true and userIds are provided, search by onBehalfOf instead of auth resource
+		if len(filters.UserIDs) > 0 {
+			placeholders := make([]string, len(filters.UserIDs))
+			for i, userID := range filters.UserIDs {
+				placeholders[i] = "?"
+				args = append(args, userID)
+				countArgs = append(countArgs, userID)
+			}
+			whereConditions = append(whereConditions, fmt.Sprintf("cd.ON_BEHALF_OF IN (%s)", strings.Join(placeholders, ",")))
+			// Clear UserIDs so the auth resource JOIN is not added below
+			filters.UserIDs = nil
+		}
+	}
+
+	// Add userIds filter (via JOIN with CONSENT_AUTH_RESOURCE)
 	if len(filters.UserIDs) > 0 {
 		placeholders := make([]string, len(filters.UserIDs))
 		for i, userID := range filters.UserIDs {
@@ -332,7 +352,7 @@ func (s *store) Search(ctx context.Context, filters model.ConsentSearchFilters) 
 			args = append(args, userID)
 			countArgs = append(countArgs, userID)
 		}
-		joinClause = " INNER JOIN CONSENT_AUTH_RESOURCE car ON CONSENT.CONSENT_ID = car.CONSENT_ID AND CONSENT.ORG_ID = car.ORG_ID"
+		joinClause += " INNER JOIN CONSENT_AUTH_RESOURCE car ON CONSENT.CONSENT_ID = car.CONSENT_ID AND CONSENT.ORG_ID = car.ORG_ID"
 		whereConditions = append(whereConditions, fmt.Sprintf("car.USER_ID IN (%s)", strings.Join(placeholders, ",")))
 	}
 
