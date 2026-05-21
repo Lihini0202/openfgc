@@ -21,7 +21,9 @@ package consentelement
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/wso2/openfgc/internal/consentelement/model"
@@ -89,7 +91,12 @@ func (s *consentElementService) CreateElementsInBatch(ctx context.Context, reque
 }
 
 func (s *consentElementService) createSingleElement(ctx context.Context, req model.ConsentElementCreateRequest, orgID string) (*model.ElementVersion, *serviceerror.ServiceError) {
-	if svcErr := validateCreateRequest(req); svcErr != nil {
+	schemaStr, err := parseSchemaRaw(req.Schema)
+	if err != nil {
+		return nil, serviceerror.CustomServiceError(ErrorValidateElement, err.Error())
+	}
+
+	if svcErr := validateCreateRequest(req, schemaStr); svcErr != nil {
 		return nil, svcErr
 	}
 
@@ -113,10 +120,11 @@ func (s *consentElementService) createSingleElement(ctx context.Context, req mod
 		Name:        req.Name,
 		Namespace:   req.Namespace,
 		Type:        req.Type,
-		Version:     1,
+		VersionNum:  1,
+		Version:     "v1",
 		DisplayName: req.DisplayName,
 		Description: req.Description,
-		Schema:      req.Schema,
+		Schema:      schemaStr,
 		CreatedTime: time.Now().UnixMilli(),
 		OrgID:       orgID,
 		Properties:  req.Properties,
@@ -170,7 +178,14 @@ func (s *consentElementService) ListElementVersions(ctx context.Context, element
 	if err != nil {
 		return nil, serviceerror.CustomServiceError(ErrorReadElement, fmt.Sprintf("failed to list element versions: %v", err))
 	}
-	return &model.VersionListResponse{ElementID: elementID, Versions: versions}, nil
+
+	resp := &model.VersionListResponse{ElementID: elementID, Versions: versions}
+	if len(versions) > 0 {
+		resp.Name = versions[0].Name
+		resp.Namespace = versions[0].Namespace
+		resp.Type = versions[0].Type
+	}
+	return resp, nil
 }
 
 // ListElements returns paginated latest versions matching the given filters.
@@ -186,11 +201,18 @@ func (s *consentElementService) ListElements(ctx context.Context, orgID string, 
 	if err != nil {
 		return nil, serviceerror.CustomServiceError(ErrorReadElement, fmt.Sprintf("failed to list elements: %v", err))
 	}
-	return &model.ListResponse{Elements: versions, Total: total}, nil
+	return &model.ListResponse{
+		Data: versions,
+		Metadata: model.ListMetadata{
+			Total:  total,
+			Offset: filters.Offset,
+			Count:  len(versions),
+			Limit:  filters.Limit,
+		},
+	}, nil
 }
 
 // CreateElementVersion appends a new immutable version to an existing element.
-// Name, Namespace, and Type are inherited from the element and cannot change.
 func (s *consentElementService) CreateElementVersion(ctx context.Context, elementID string, req model.ElementVersionCreateRequest, orgID string) (*model.ElementVersion, *serviceerror.ServiceError) {
 	store := s.stores.ConsentElement
 
@@ -202,16 +224,23 @@ func (s *consentElementService) CreateElementVersion(ctx context.Context, elemen
 		return nil, serviceerror.CustomServiceError(ErrorElementNotFound, fmt.Sprintf("element '%s' not found", elementID))
 	}
 
+	schemaStr, err := parseSchemaRaw(req.Schema)
+	if err != nil {
+		return nil, serviceerror.CustomServiceError(ErrorValidateElement, err.Error())
+	}
+
+	nextVersionNum := latest.VersionNum + 1
 	elementVersion := &model.ElementVersion{
 		VersionID:   utils.GenerateUUID(),
 		ID:          elementID,
 		Name:        latest.Name,
 		Namespace:   latest.Namespace,
 		Type:        latest.Type,
-		Version:     latest.Version + 1,
+		VersionNum:  nextVersionNum,
+		Version:     fmt.Sprintf("v%d", nextVersionNum),
 		DisplayName: req.DisplayName,
 		Description: req.Description,
-		Schema:      req.Schema,
+		Schema:      schemaStr,
 		CreatedTime: time.Now().UnixMilli(),
 		OrgID:       orgID,
 		Properties:  req.Properties,
@@ -267,8 +296,29 @@ func (s *consentElementService) DeleteElementVersion(ctx context.Context, elemen
 	return nil
 }
 
+// parseSchemaRaw converts a json.RawMessage schema field to a *string for storage.
+// Accepts a JSON object (stored as-is) or a JSON string literal (unquoted to its value).
+// Returns nil for absent/null schema. Returns error for arrays, numbers, booleans.
+func parseSchemaRaw(raw json.RawMessage) (*string, error) {
+	if len(raw) == 0 || string(raw) == "null" {
+		return nil, nil
+	}
+	// JSON string literal → unquote to actual string value
+	var str string
+	if err := json.Unmarshal(raw, &str); err == nil {
+		return &str, nil
+	}
+	// JSON object → keep raw JSON as the stored string
+	trimmed := strings.TrimSpace(string(raw))
+	if len(trimmed) > 0 && trimmed[0] == '{' {
+		return &trimmed, nil
+	}
+	return nil, fmt.Errorf("schema must be a JSON object or a string value")
+}
+
 // validateCreateRequest validates a single element create request.
-func validateCreateRequest(req model.ConsentElementCreateRequest) *serviceerror.ServiceError {
+// schemaStr is the already-parsed schema string (nil if not provided).
+func validateCreateRequest(req model.ConsentElementCreateRequest, schemaStr *string) *serviceerror.ServiceError {
 	if req.Name == "" {
 		return &ErrorElementNameRequired
 	}
@@ -287,7 +337,7 @@ func validateCreateRequest(req model.ConsentElementCreateRequest) *serviceerror.
 		return serviceerror.CustomServiceError(ErrorInvalidElementType, fmt.Sprintf("invalid element type: %s", req.Type))
 	}
 	if elementTypeDef, err := validators.GetTypeRegistry().Get(req.Type); err == nil {
-		if verr := elementTypeDef.ValidateSchema(req.Schema); verr != nil {
+		if verr := elementTypeDef.ValidateSchema(schemaStr); verr != nil {
 			return serviceerror.CustomServiceError(ErrorValidateElement, verr.Message)
 		}
 		if errs := elementTypeDef.ValidateProperties(req.Properties); len(errs) > 0 {

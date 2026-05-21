@@ -133,7 +133,7 @@ func (s *store) getDBClient() (provider.DBClientInterface, error) {
 // CreateVersion inserts a new element version row and its properties within a transaction.
 func (s *store) CreateVersion(tx dbmodel.TxInterface, elementVersion *model.ElementVersion) error {
 	_, err := tx.Exec(QueryInsertElementVersion,
-		elementVersion.VersionID, elementVersion.ID, elementVersion.Name, elementVersion.Namespace, elementVersion.Type, elementVersion.Version,
+		elementVersion.VersionID, elementVersion.ID, elementVersion.Name, elementVersion.Namespace, elementVersion.Type, elementVersion.VersionNum,
 		elementVersion.DisplayName, elementVersion.Description, elementVersion.Schema, elementVersion.CreatedTime, elementVersion.OrgID,
 	)
 	if err != nil {
@@ -290,6 +290,10 @@ func (s *store) List(ctx context.Context, orgID string, filters model.ElementLis
 		if err := s.populateProperties(dbClient, versions, orgID); err != nil {
 			return nil, 0, err
 		}
+	} else {
+		for i := range versions {
+			versions[i].Schema = nil
+		}
 	}
 
 	return versions, total, nil
@@ -440,13 +444,15 @@ func mapToElementVersion(row map[string]interface{}) *model.ElementVersion {
 	if row == nil {
 		return nil
 	}
+	versionNum := getInt(row, "version")
 	return &model.ElementVersion{
 		VersionID:   getString(row, "version_id"),
 		ID:          getString(row, "id"),
 		Name:        getString(row, "name"),
 		Namespace:   getString(row, "namespace"),
 		Type:        getString(row, "type"),
-		Version:     getInt(row, "version"),
+		VersionNum:  versionNum,
+		Version:     fmt.Sprintf("v%d", versionNum),
 		DisplayName: getStringPtr(row, "display_name"),
 		Description: getStringPtr(row, "description"),
 		Schema:      getStringPtr(row, "element_schema"),

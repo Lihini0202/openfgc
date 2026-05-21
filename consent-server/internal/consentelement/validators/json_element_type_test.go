@@ -35,19 +35,19 @@ func TestJSONElementType_ValidateSchema(t *testing.T) {
 	// nil schema — required, must fail
 	require.NotNil(t, et.ValidateSchema(nil))
 
-	// invalid JSON
-	bad := "{not json"
-	require.NotNil(t, et.ValidateSchema(&bad))
-
-	// empty string is not valid JSON
+	// empty string — must fail
 	empty := ""
 	require.NotNil(t, et.ValidateSchema(&empty))
 
-	// valid JSON object
-	valid := `{"type":"string"}`
-	require.Nil(t, et.ValidateSchema(&valid))
+	// JSON object — accepted
+	jsonObj := `{"type":"string"}`
+	require.Nil(t, et.ValidateSchema(&jsonObj))
 
-	// valid JSON array
+	// plain string — accepted (format validation is done upstream by parseSchemaRaw)
+	plain := "email_address"
+	require.Nil(t, et.ValidateSchema(&plain))
+
+	// any non-empty value is accepted by the validator
 	arr := `["a","b"]`
 	require.Nil(t, et.ValidateSchema(&arr))
 }
@@ -59,4 +59,3 @@ func TestJSONElementType_ValidateProperties(t *testing.T) {
 	require.Nil(t, et.ValidateProperties(map[string]string{}))
 	require.Nil(t, et.ValidateProperties(map[string]string{"anyKey": "anyValue"}))
 }
-

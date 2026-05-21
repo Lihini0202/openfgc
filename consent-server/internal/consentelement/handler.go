@@ -23,6 +23,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/wso2/openfgc/internal/consentelement/model"
 	"github.com/wso2/openfgc/internal/system/constants"
@@ -104,7 +105,9 @@ func (h *consentElementHandler) listElements(w http.ResponseWriter, r *http.Requ
 		Limit:     100,
 	}
 	if versionStr := query.Get("version"); versionStr != "" {
-		if n, err := strconv.Atoi(versionStr); err == nil && n > 0 {
+		// Accept both "v2" and "2" for the query param
+		s := strings.TrimPrefix(versionStr, "v")
+		if n, err := strconv.Atoi(s); err == nil && n > 0 {
 			filters.Version = &n
 		}
 	}
@@ -117,6 +120,12 @@ func (h *consentElementHandler) listElements(w http.ResponseWriter, r *http.Requ
 		if n, err := strconv.Atoi(offsetStr); err == nil && n >= 0 {
 			filters.Offset = n
 		}
+	}
+
+	// version filter requires at least name or namespace to narrow results
+	if filters.Version != nil && filters.Name == "" && filters.Namespace == "" {
+		utils.SendError(w, r, &ErrorVersionRequiresNameOrNamespace)
+		return
 	}
 
 	result, svcErr := h.service.ListElements(r.Context(), orgID, filters)
@@ -143,8 +152,26 @@ func (h *consentElementHandler) listElementVersions(w http.ResponseWriter, r *ht
 		return
 	}
 
+	entries := make([]model.ElementVersionItem, len(result.Versions))
+	for i, v := range result.Versions {
+		entries[i] = model.ElementVersionItem{
+			Version:     v.Version,
+			DisplayName: v.DisplayName,
+			Description: v.Description,
+			Schema:      v.Schema,
+			Properties:  v.Properties,
+			CreatedTime: v.CreatedTime,
+		}
+	}
+
 	w.Header().Set(constants.HeaderContentType, "application/json")
-	json.NewEncoder(w).Encode(result)
+	json.NewEncoder(w).Encode(model.ElementVersionListResponse{
+		ElementID: result.ElementID,
+		Name:      result.Name,
+		Namespace: result.Namespace,
+		Type:      result.Type,
+		Versions:  entries,
+	})
 }
 
 // createElementVersion handles POST /consent-elements/{elementId}/versions — create new version.
@@ -172,7 +199,8 @@ func (h *consentElementHandler) createElementVersion(w http.ResponseWriter, r *h
 	json.NewEncoder(w).Encode(elem)
 }
 
-// getElementVersion handles GET /consent-elements/{elementId}/versions/{version} — specific version.
+// getElementVersion handles GET /consent-elements/{elementId}/versions/{version}.
+// version path param must be in vN format (e.g. v1, v2).
 func (h *consentElementHandler) getElementVersion(w http.ResponseWriter, r *http.Request) {
 	orgID := r.Header.Get(constants.HeaderOrgID)
 	if orgID == "" {
@@ -180,9 +208,9 @@ func (h *consentElementHandler) getElementVersion(w http.ResponseWriter, r *http
 		return
 	}
 
-	version, err := strconv.Atoi(r.PathValue("version"))
-	if err != nil || version < 1 {
-		utils.SendError(w, r, serviceerror.CustomServiceError(ErrorInvalidRequestBody, "version must be a positive integer"))
+	version, ok := parseVersionParam(r.PathValue("version"))
+	if !ok {
+		utils.SendError(w, r, serviceerror.CustomServiceError(ErrorInvalidRequestBody, "version must be in vN format (e.g. v1)"))
 		return
 	}
 
@@ -197,6 +225,7 @@ func (h *consentElementHandler) getElementVersion(w http.ResponseWriter, r *http
 }
 
 // deleteElementVersion handles DELETE /consent-elements/{elementId}/versions/{version}.
+// version path param must be in vN format (e.g. v1, v2).
 func (h *consentElementHandler) deleteElementVersion(w http.ResponseWriter, r *http.Request) {
 	orgID := r.Header.Get(constants.HeaderOrgID)
 	if orgID == "" {
@@ -204,9 +233,9 @@ func (h *consentElementHandler) deleteElementVersion(w http.ResponseWriter, r *h
 		return
 	}
 
-	version, err := strconv.Atoi(r.PathValue("version"))
-	if err != nil || version < 1 {
-		utils.SendError(w, r, serviceerror.CustomServiceError(ErrorInvalidRequestBody, "version must be a positive integer"))
+	version, ok := parseVersionParam(r.PathValue("version"))
+	if !ok {
+		utils.SendError(w, r, serviceerror.CustomServiceError(ErrorInvalidRequestBody, "version must be in vN format (e.g. v1)"))
 		return
 	}
 
@@ -216,4 +245,17 @@ func (h *consentElementHandler) deleteElementVersion(w http.ResponseWriter, r *h
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// parseVersionParam parses a vN-format version string (e.g. "v1", "v2") to its integer value.
+// Returns (n, true) on success, (0, false) on invalid input.
+func parseVersionParam(s string) (int, bool) {
+	if !strings.HasPrefix(s, "v") {
+		return 0, false
+	}
+	n, err := strconv.Atoi(strings.TrimPrefix(s, "v"))
+	if err != nil || n < 1 {
+		return 0, false
+	}
+	return n, true
 }

@@ -129,6 +129,13 @@ var (
 		Message:     "Element version is referenced by a purpose",
 		Description: "Cannot delete element version as it is referenced by one or more purpose versions",
 	}
+	// ErrorVersionRequiresNameOrNamespace is returned when version filter is used without name or namespace.
+	ErrorVersionRequiresNameOrNamespace = serviceerror.ServiceError{
+		Type:        serviceerror.ClientErrorType,
+		Code:        "CE-1017",
+		Message:     "Version filter requires name or namespace",
+		Description: "The 'version' parameter requires at least one of 'name' or 'namespace' to be specified",
+	}
 )
 
 // Server errors for consent element operations.

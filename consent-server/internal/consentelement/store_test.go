@@ -93,7 +93,8 @@ func TestMapToElementVersion(t *testing.T) {
 		require.Equal(t, "email", v.Name)
 		require.Equal(t, "default", v.Namespace)
 		require.Equal(t, "basic", v.Type)
-		require.Equal(t, 2, v.Version)
+		require.Equal(t, 2, v.VersionNum)
+		require.Equal(t, "v2", v.Version)
 		require.NotNil(t, v.DisplayName)
 		require.Equal(t, "Email Address", *v.DisplayName)
 		require.NotNil(t, v.Description)
@@ -123,7 +124,8 @@ func TestMapToElementVersion(t *testing.T) {
 		v := mapToElementVersion(map[string]interface{}{})
 		require.NotNil(t, v)
 		require.Equal(t, "", v.ID)
-		require.Equal(t, 0, v.Version)
+		require.Equal(t, 0, v.VersionNum)
+		require.Equal(t, "v0", v.Version)
 	})
 }
 

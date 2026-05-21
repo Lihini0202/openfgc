@@ -18,27 +18,23 @@
 
 package validators
 
-import (
-	"encoding/json"
-
-	"github.com/wso2/openfgc/internal/consentelement/model"
-)
+import "github.com/wso2/openfgc/internal/consentelement/model"
 
 // JSONElementType handles "json" consent elements.
-// Schema is required and must be a valid JSON string.
+// Schema is required and must be non-empty. It accepts either a JSON object
+// ({"type":"object"}) or a plain string value. Format validation (object vs string
+// vs disallowed types like arrays) is performed upstream by parseSchemaRaw before
+// the validator is called.
 type JSONElementType struct{}
 
 func (t *JSONElementType) GetType() string {
 	return model.ElementTypeJSON
 }
 
-// ValidateSchema requires a non-nil, valid JSON schema for json elements.
+// ValidateSchema requires a non-nil, non-empty schema for json elements.
 func (t *JSONElementType) ValidateSchema(schema *string) *ValidationError {
-	if schema == nil {
+	if schema == nil || *schema == "" {
 		return &ValidationError{Field: "schema", Message: "schema is required for json elements"}
-	}
-	if !json.Valid([]byte(*schema)) {
-		return &ValidationError{Field: "schema", Message: "schema must be valid JSON for json elements"}
 	}
 	return nil
 }

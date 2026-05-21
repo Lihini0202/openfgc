@@ -8,6 +8,7 @@
             "mode": "debug",
             "program": "${workspaceFolder}/consent-server/cmd/server",
             "cwd": "${workspaceFolder}/consent-server",
+            "envFile": "${workspaceFolder}/consent-server/.env",
             "console": "integratedTerminal"
         },
         {
