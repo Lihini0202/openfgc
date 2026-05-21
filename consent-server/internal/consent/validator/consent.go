@@ -46,7 +46,7 @@ func ValidateConsentCreateRequest(req model.ConsentAPIRequest, clientID, orgID s
 
 	// Validate delegation if present
 	if req.Delegation != nil {
-		if req.Delegation.OnBehalfOf == "" {
+		if strings.TrimSpace(req.Delegation.OnBehalfOf) == "" {
 			return fmt.Errorf("delegation.onBehalfOf is required when delegation is present")
 		}
 	}
