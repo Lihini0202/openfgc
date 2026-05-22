@@ -263,7 +263,7 @@ func (s *store) IsVersionReferencedByPurpose(ctx context.Context, versionID, org
 
 // List returns the latest version of each element matching the filters, with total count.
 // When filters.Details is false, Schema and Properties are not populated.
-func (s *store) List(ctx context.Context, orgID string, filters model.ElementListFilters) ([]model.ElementVersion, int, error) {
+func (s *store) List(ctx context.Context, orgID string, filters model.ElementListFilter) ([]model.ElementVersion, int, error) {
 	dbClient, err := s.getDBClient()
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to get database client: %w", err)
@@ -302,7 +302,7 @@ func (s *store) List(ctx context.Context, orgID string, filters model.ElementLis
 // buildListQuery constructs the count and data queries for List based on the provided filters.
 // When filters.Version is nil, results are limited to the latest version per element.
 // When filters.Version is set, that exact version is queried directly.
-func (s *store) buildListQuery(dbClient provider.DBClientInterface, orgID string, filters model.ElementListFilters) (countQ, dataQ dbmodel.DBQuery, dataArgs, countArgs []interface{}) {
+func (s *store) buildListQuery(dbClient provider.DBClientInterface, orgID string, filters model.ElementListFilter) (countQ, dataQ dbmodel.DBQuery, dataArgs, countArgs []interface{}) {
 	isVersionFiltered := filters.Version != nil
 
 	var sb strings.Builder
@@ -444,15 +444,13 @@ func mapToElementVersion(row map[string]interface{}) *model.ElementVersion {
 	if row == nil {
 		return nil
 	}
-	versionNum := getInt(row, "version")
 	return &model.ElementVersion{
 		VersionID:   getString(row, "version_id"),
 		ID:          getString(row, "id"),
 		Name:        getString(row, "name"),
 		Namespace:   getString(row, "namespace"),
 		Type:        getString(row, "type"),
-		VersionNum:  versionNum,
-		Version:     fmt.Sprintf("v%d", versionNum),
+		VersionNum:  getInt(row, "version"),
 		DisplayName: getStringPtr(row, "display_name"),
 		Description: getStringPtr(row, "description"),
 		Schema:      getStringPtr(row, "element_schema"),

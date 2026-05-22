@@ -83,7 +83,7 @@ type ConsentElementStore interface {
 
 	// List returns the latest version of each element matching the filters, with total count for pagination.
 	// When filters.Details is false, Schema and Properties are not populated.
-	List(ctx context.Context, orgID string, filters consentElementModel.ElementListFilters) ([]consentElementModel.ElementVersion, int, error)
+	List(ctx context.Context, orgID string, filters consentElementModel.ElementListFilter) ([]consentElementModel.ElementVersion, int, error)
 
 	// GetByNameAndNamespace returns the latest version of an element matching name+namespace, or nil if not found.
 	// Used for duplicate-name checks on element create.

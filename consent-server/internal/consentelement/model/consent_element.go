@@ -30,26 +30,28 @@ const (
 
 const DefaultNamespace = "default"
 
-// ElementVersion represents one version of a consent element — one row in the ELEMENT table.
-// All versions sharing the same ID belong to the same logical element.
-// VersionNum is the internal integer (1, 2, 3…); Version is the API-facing string ("v1", "v2", "v3"…).
+// =============================================================================
+// DB types — store layer only, db tags, no json tags
+// =============================================================================
+
+// ElementVersion is one row from the ELEMENT table.
+// Properties is populated separately from the ELEMENT_PROPERTY table.
 type ElementVersion struct {
-	VersionID   string            `json:"-" db:"VERSION_ID"`
-	ID          string            `json:"elementId" db:"ID"`
-	Name        string            `json:"name" db:"NAME"`
-	Namespace   string            `json:"namespace" db:"NAMESPACE"`
-	Type        string            `json:"type" db:"TYPE"`
-	VersionNum  int               `json:"-" db:"VERSION"`
-	Version     string            `json:"version" db:"-"`
-	DisplayName *string           `json:"displayName,omitempty" db:"DISPLAY_NAME"`
-	Description *string           `json:"description,omitempty" db:"DESCRIPTION"`
-	Schema      *string           `json:"schema,omitempty" db:"ELEMENT_SCHEMA"`
-	CreatedTime int64             `json:"createdTime" db:"CREATED_TIME"`
-	OrgID       string            `json:"-" db:"ORG_ID"`
-	Properties  map[string]string `json:"properties,omitempty" db:"-"`
+	VersionID   string            `db:"VERSION_ID"`
+	ID          string            `db:"ID"`
+	Name        string            `db:"NAME"`
+	Namespace   string            `db:"NAMESPACE"`
+	Type        string            `db:"TYPE"`
+	VersionNum  int               `db:"VERSION"`
+	DisplayName *string           `db:"DISPLAY_NAME"`
+	Description *string           `db:"DESCRIPTION"`
+	Schema      *string           `db:"ELEMENT_SCHEMA"`
+	CreatedTime int64             `db:"CREATED_TIME"`
+	OrgID       string            `db:"ORG_ID"`
+	Properties  map[string]string `db:"-"`
 }
 
-// ElementVersionProperty is one row in the ELEMENT_PROPERTY table.
+// ElementVersionProperty is one row from the ELEMENT_PROPERTY table.
 type ElementVersionProperty struct {
 	ElementVersionID string `db:"ELEMENT_VERSION_ID"`
 	Key              string `db:"ATT_KEY"`
@@ -57,20 +59,82 @@ type ElementVersionProperty struct {
 	OrgID            string `db:"ORG_ID"`
 }
 
-// ElementListFilters holds query parameters for GET /consent-elements.
-type ElementListFilters struct {
+// =============================================================================
+// Service input types — handler → service, no tags
+// =============================================================================
+
+// CreateElementInput is the input to the CreateElements service method.
+type CreateElementInput struct {
+	Name        string
+	Namespace   string
+	DisplayName *string
+	Description *string
+	Type        string
+	Schema      *string
+	Properties  map[string]string
+}
+
+// CreateElementVersionInput is the input to the CreateElementVersion service method.
+type CreateElementVersionInput struct {
+	DisplayName *string
+	Description *string
+	Schema      *string
+	Properties  map[string]string
+}
+
+// ElementListFilter holds query parameters for the ListElements service method.
+type ElementListFilter struct {
 	Name      string
 	Namespace string
 	Type      string
 	Version   *int
-	Details   bool // when true, populate Schema and Properties
+	Details   bool
 	Limit     int
 	Offset    int
 }
 
-// ConsentElementCreateRequest is one item in the POST /consent-elements batch request body.
+// =============================================================================
+// Service return types — service → handler, no tags
+// =============================================================================
+
+// CreateElementOutput is the output for one element in a batch create operation.
+type CreateElementOutput struct {
+	Status  string // "SUCCESS" or "FAILED"
+	Element *ElementVersion
+	Error   *string
+}
+
+// BatchCreateOutput is the return type from CreateElementsInBatch.
+type BatchCreateOutput struct {
+	Results []CreateElementOutput
+}
+
+// ElementListOutput is the return type from ListElements.
+type ElementListOutput struct {
+	Data   []ElementVersion
+	Total  int
+	Offset int
+	Count  int
+	Limit  int
+}
+
+// ElementVersionListOutput is the return type from ListElementVersions.
+// Common element fields are hoisted to the top level; Versions contains version-specific rows.
+type ElementVersionListOutput struct {
+	ElementID string
+	Name      string
+	Namespace string
+	Type      string
+	Versions  []ElementVersion
+}
+
+// =============================================================================
+// API request types — HTTP boundary, handler only, json tags, no db tags
+// =============================================================================
+
+// CreateElementRequest is one item in the POST /consent-elements batch request body.
 // Schema accepts either a JSON object ({"type":"object"}) or a plain string value.
-type ConsentElementCreateRequest struct {
+type CreateElementRequest struct {
 	Name        string            `json:"name"`
 	Namespace   string            `json:"namespace,omitempty"`
 	DisplayName *string           `json:"displayName,omitempty"`
@@ -80,53 +144,63 @@ type ConsentElementCreateRequest struct {
 	Properties  map[string]string `json:"properties,omitempty"`
 }
 
-// ElementVersionCreateRequest is the body for POST /consent-elements/{elementId}/versions.
+// CreateElementVersionRequest is the body for POST /consent-elements/{elementId}/versions.
 // Schema accepts either a JSON object or a plain string value.
-type ElementVersionCreateRequest struct {
+type CreateElementVersionRequest struct {
 	DisplayName *string           `json:"displayName,omitempty"`
 	Description *string           `json:"description,omitempty"`
 	Schema      json.RawMessage   `json:"schema,omitempty"`
 	Properties  map[string]string `json:"properties,omitempty"`
 }
 
-// BulkCreateResultItem is one entry in the BulkCreateResponse.Results slice.
-type BulkCreateResultItem struct {
-	Status  string          `json:"status"` // "SUCCESS" or "FAILED"
-	Element *ElementVersion `json:"element,omitempty"`
-	Error   *string         `json:"error,omitempty"`
+// =============================================================================
+// API response types — HTTP boundary, handler only, json tags, no db tags
+// =============================================================================
+
+// ElementResponse is the response body for GET /consent-elements/{elementId} and
+// GET /consent-elements/{elementId}/versions/{version}.
+// Also used as the item type in ElementListResponse; schema and properties are
+// omitted when the request did not include details=true.
+type ElementResponse struct {
+	ElementID   string            `json:"elementId"`
+	Name        string            `json:"name"`
+	Namespace   string            `json:"namespace"`
+	Type        string            `json:"type"`
+	Version     string            `json:"version"`
+	DisplayName *string           `json:"displayName,omitempty"`
+	Description *string           `json:"description,omitempty"`
+	Schema      *string           `json:"schema,omitempty"`
+	Properties  map[string]string `json:"properties,omitempty"`
+	CreatedTime int64             `json:"createdTime"`
 }
 
-// BulkCreateResponse is the response body for POST /consent-elements (HTTP 200).
-type BulkCreateResponse struct {
-	Results []BulkCreateResultItem `json:"results"`
-}
-
-// ListMetadata holds pagination metadata for list responses.
-type ListMetadata struct {
+// PageMetadata holds pagination metadata for list responses.
+type PageMetadata struct {
 	Total  int `json:"total"`
 	Offset int `json:"offset"`
 	Count  int `json:"count"`
 	Limit  int `json:"limit"`
 }
 
-// ListResponse is the response body for GET /consent-elements.
-type ListResponse struct {
-	Data     []ElementVersion `json:"data"`
-	Metadata ListMetadata     `json:"metadata"`
+// ElementListResponse is the response body for GET /consent-elements.
+type ElementListResponse struct {
+	Data     []ElementResponse `json:"data"`
+	Metadata PageMetadata      `json:"metadata"`
 }
 
-// VersionListResponse is the service return type for ListElementVersions.
-// Common element fields (Name, Namespace, Type) are hoisted to the top level; only
-// version-specific fields appear in each Versions entry.
-type VersionListResponse struct {
-	ElementID string           `json:"elementId"`
-	Name      string           `json:"name"`
-	Namespace string           `json:"namespace"`
-	Type      string           `json:"type"`
-	Versions  []ElementVersion `json:"versions"`
+// BatchResultItem is one entry in BatchCreateResponse.Results.
+type BatchResultItem struct {
+	Status  string           `json:"status"` // "SUCCESS" or "FAILED"
+	Element *ElementResponse `json:"element,omitempty"`
+	Error   *string          `json:"error,omitempty"`
 }
 
-// ElementVersionItem is one entry in the ElementVersionListResponse returned by the API.
+// BatchCreateResponse is the response body for POST /consent-elements.
+type BatchCreateResponse struct {
+	Results []BatchResultItem `json:"results"`
+}
+
+// ElementVersionItem is one version entry in ElementVersionListResponse.
 // Element-level fields (Name, Namespace, Type) are hoisted to the parent object.
 type ElementVersionItem struct {
 	Version     string            `json:"version"`
@@ -137,7 +211,7 @@ type ElementVersionItem struct {
 	CreatedTime int64             `json:"createdTime"`
 }
 
-// ElementVersionListResponse is the HTTP response body for GET /consent-elements/{elementId}/versions.
+// ElementVersionListResponse is the response body for GET /consent-elements/{elementId}/versions.
 type ElementVersionListResponse struct {
 	ElementID string               `json:"elementId"`
 	Name      string               `json:"name"`

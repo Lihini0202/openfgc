@@ -44,17 +44,14 @@ func stringPtr(s string) *string { return &s }
 func TestCreateElement_Success(t *testing.T) {
 	mockService := NewMockConsentElementService(t)
 
-	requests := []model.ConsentElementCreateRequest{
-		{Name: "email", Type: "basic"},
-	}
-	result := &model.BulkCreateResponse{
-		Results: []model.BulkCreateResultItem{
-			{Status: "SUCCESS", Element: &model.ElementVersion{ID: testElementID, Name: "email", Type: "basic", Version: "v1"}},
+	output := &model.BatchCreateOutput{
+		Results: []model.CreateElementOutput{
+			{Status: "SUCCESS", Element: &model.ElementVersion{ID: testElementID, Name: "email", Type: "basic", VersionNum: 1}},
 		},
 	}
-	mockService.On("CreateElementsInBatch", mock.Anything, requests, testOrgID).Return(result, nil)
+	mockService.On("CreateElementsInBatch", mock.Anything, mock.Anything, testOrgID).Return(output, nil)
 
-	body, _ := json.Marshal(requests)
+	body, _ := json.Marshal([]model.CreateElementRequest{{Name: "email", Type: "basic"}})
 	req := httptest.NewRequest(http.MethodPost, "/consent-elements", bytes.NewBuffer(body))
 	req.Header.Set(constants.HeaderOrgID, testOrgID)
 	rr := httptest.NewRecorder()
@@ -62,7 +59,7 @@ func TestCreateElement_Success(t *testing.T) {
 	newConsentElementHandler(mockService).createElements(rr, req)
 
 	require.Equal(t, http.StatusOK, rr.Code)
-	var resp model.BulkCreateResponse
+	var resp model.BatchCreateResponse
 	require.NoError(t, json.NewDecoder(rr.Body).Decode(&resp))
 	require.Len(t, resp.Results, 1)
 	require.Equal(t, "SUCCESS", resp.Results[0].Status)
@@ -70,7 +67,7 @@ func TestCreateElement_Success(t *testing.T) {
 
 func TestCreateElement_MissingOrgID(t *testing.T) {
 	mockService := NewMockConsentElementService(t)
-	body, _ := json.Marshal([]model.ConsentElementCreateRequest{{Name: "x", Type: "basic"}})
+	body, _ := json.Marshal([]model.CreateElementRequest{{Name: "x", Type: "basic"}})
 	req := httptest.NewRequest(http.MethodPost, "/consent-elements", bytes.NewBuffer(body))
 	rr := httptest.NewRecorder()
 
@@ -93,7 +90,7 @@ func TestCreateElement_InvalidJSON(t *testing.T) {
 
 func TestCreateElement_EmptyArray(t *testing.T) {
 	mockService := NewMockConsentElementService(t)
-	body, _ := json.Marshal([]model.ConsentElementCreateRequest{})
+	body, _ := json.Marshal([]model.CreateElementRequest{})
 	req := httptest.NewRequest(http.MethodPost, "/consent-elements", bytes.NewBuffer(body))
 	req.Header.Set(constants.HeaderOrgID, testOrgID)
 	rr := httptest.NewRecorder()
@@ -105,10 +102,9 @@ func TestCreateElement_EmptyArray(t *testing.T) {
 
 func TestCreateElement_ServiceError(t *testing.T) {
 	mockService := NewMockConsentElementService(t)
-	requests := []model.ConsentElementCreateRequest{{Name: "email", Type: "basic"}}
-	mockService.On("CreateElementsInBatch", mock.Anything, requests, testOrgID).Return(nil, &ErrorCreateElement)
+	mockService.On("CreateElementsInBatch", mock.Anything, mock.Anything, testOrgID).Return(nil, &ErrorCreateElement)
 
-	body, _ := json.Marshal(requests)
+	body, _ := json.Marshal([]model.CreateElementRequest{{Name: "email", Type: "basic"}})
 	req := httptest.NewRequest(http.MethodPost, "/consent-elements", bytes.NewBuffer(body))
 	req.Header.Set(constants.HeaderOrgID, testOrgID)
 	rr := httptest.NewRecorder()
@@ -123,7 +119,7 @@ func TestCreateElement_ServiceError(t *testing.T) {
 func TestGetElement_Success(t *testing.T) {
 	mockService := NewMockConsentElementService(t)
 
-	expected := &model.ElementVersion{ID: testElementID, Name: "email", Type: "basic", Version: "v1"}
+	expected := &model.ElementVersion{ID: testElementID, Name: "email", Type: "basic", VersionNum: 1}
 	mockService.On("GetElement", mock.Anything, testElementID, testOrgID).Return(expected, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/consent-elements/"+testElementID, nil)
@@ -134,9 +130,10 @@ func TestGetElement_Success(t *testing.T) {
 	newConsentElementHandler(mockService).getElement(rr, req)
 
 	require.Equal(t, http.StatusOK, rr.Code)
-	var resp model.ElementVersion
+	var resp model.ElementResponse
 	require.NoError(t, json.NewDecoder(rr.Body).Decode(&resp))
-	require.Equal(t, testElementID, resp.ID)
+	require.Equal(t, testElementID, resp.ElementID)
+	require.Equal(t, "v1", resp.Version)
 }
 
 func TestGetElement_MissingOrgID(t *testing.T) {
@@ -169,14 +166,11 @@ func TestGetElement_NotFound(t *testing.T) {
 func TestListElements_Success(t *testing.T) {
 	mockService := NewMockConsentElementService(t)
 
-	result := &model.ListResponse{
-		Data: []model.ElementVersion{
-			{ID: "e1", Name: "email", Type: "basic", Version: "v1"},
-			{ID: "e2", Name: "age", Type: "json", Version: "v1"},
-		},
-		Metadata: model.ListMetadata{Total: 2},
+	output := &model.ElementListOutput{
+		Data:  []model.ElementVersion{{ID: "e1", Name: "email", VersionNum: 1}, {ID: "e2", Name: "age", VersionNum: 1}},
+		Total: 2,
 	}
-	mockService.On("ListElements", mock.Anything, testOrgID, model.ElementListFilters{Limit: 100}).Return(result, nil)
+	mockService.On("ListElements", mock.Anything, testOrgID, model.ElementListFilter{Limit: 100}).Return(output, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/consent-elements", nil)
 	req.Header.Set(constants.HeaderOrgID, testOrgID)
@@ -185,7 +179,7 @@ func TestListElements_Success(t *testing.T) {
 	newConsentElementHandler(mockService).listElements(rr, req)
 
 	require.Equal(t, http.StatusOK, rr.Code)
-	var resp model.ListResponse
+	var resp model.ElementListResponse
 	require.NoError(t, json.NewDecoder(rr.Body).Decode(&resp))
 	require.Len(t, resp.Data, 2)
 	require.Equal(t, 2, resp.Metadata.Total)
@@ -203,7 +197,7 @@ func TestListElements_MissingOrgID(t *testing.T) {
 
 func TestListElements_ServiceError(t *testing.T) {
 	mockService := NewMockConsentElementService(t)
-	mockService.On("ListElements", mock.Anything, testOrgID, model.ElementListFilters{Limit: 100}).Return(nil, &ErrorReadElement)
+	mockService.On("ListElements", mock.Anything, testOrgID, model.ElementListFilter{Limit: 100}).Return(nil, &ErrorReadElement)
 
 	req := httptest.NewRequest(http.MethodGet, "/consent-elements", nil)
 	req.Header.Set(constants.HeaderOrgID, testOrgID)
@@ -218,8 +212,8 @@ func TestListElements_WithFilters(t *testing.T) {
 	mockService := NewMockConsentElementService(t)
 
 	v := 2
-	expected := model.ElementListFilters{Name: "em", Namespace: "ns1", Type: "basic", Version: &v, Details: true, Limit: 10, Offset: 5}
-	mockService.On("ListElements", mock.Anything, testOrgID, expected).Return(&model.ListResponse{}, nil)
+	expected := model.ElementListFilter{Name: "em", Namespace: "ns1", Type: "basic", Version: &v, Details: true, Limit: 10, Offset: 5}
+	mockService.On("ListElements", mock.Anything, testOrgID, expected).Return(&model.ElementListOutput{}, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/consent-elements?name=em&namespace=ns1&type=basic&version=2&details=true&limit=10&offset=5", nil)
 	req.Header.Set(constants.HeaderOrgID, testOrgID)
@@ -236,14 +230,14 @@ func TestListElements_WithFilters(t *testing.T) {
 func TestListElementVersions_Success(t *testing.T) {
 	mockService := NewMockConsentElementService(t)
 
-	result := &model.VersionListResponse{
+	output := &model.ElementVersionListOutput{
 		ElementID: testElementID,
 		Versions: []model.ElementVersion{
-			{ID: testElementID, Version: "v1"},
-			{ID: testElementID, Version: "v2"},
+			{ID: testElementID, VersionNum: 1},
+			{ID: testElementID, VersionNum: 2},
 		},
 	}
-	mockService.On("ListElementVersions", mock.Anything, testElementID, testOrgID).Return(result, nil)
+	mockService.On("ListElementVersions", mock.Anything, testElementID, testOrgID).Return(output, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/consent-elements/"+testElementID+"/versions", nil)
 	req.SetPathValue("elementId", testElementID)
@@ -253,10 +247,12 @@ func TestListElementVersions_Success(t *testing.T) {
 	newConsentElementHandler(mockService).listElementVersions(rr, req)
 
 	require.Equal(t, http.StatusOK, rr.Code)
-	var resp model.VersionListResponse
+	var resp model.ElementVersionListResponse
 	require.NoError(t, json.NewDecoder(rr.Body).Decode(&resp))
 	require.Equal(t, testElementID, resp.ElementID)
 	require.Len(t, resp.Versions, 2)
+	require.Equal(t, "v1", resp.Versions[0].Version)
+	require.Equal(t, "v2", resp.Versions[1].Version)
 }
 
 func TestListElementVersions_NotFound(t *testing.T) {
@@ -278,11 +274,11 @@ func TestListElementVersions_NotFound(t *testing.T) {
 func TestCreateElementVersion_Success(t *testing.T) {
 	mockService := NewMockConsentElementService(t)
 
-	vreq := model.ElementVersionCreateRequest{DisplayName: stringPtr("v2")}
-	created := &model.ElementVersion{ID: testElementID, Version: "v2", DisplayName: stringPtr("v2")}
-	mockService.On("CreateElementVersion", mock.Anything, testElementID, vreq, testOrgID).Return(created, nil)
+	input := model.CreateElementVersionInput{DisplayName: stringPtr("v2")}
+	created := &model.ElementVersion{ID: testElementID, VersionNum: 2, DisplayName: stringPtr("v2")}
+	mockService.On("CreateElementVersion", mock.Anything, testElementID, input, testOrgID).Return(created, nil)
 
-	body, _ := json.Marshal(vreq)
+	body, _ := json.Marshal(model.CreateElementVersionRequest{DisplayName: stringPtr("v2")})
 	req := httptest.NewRequest(http.MethodPost, "/consent-elements/"+testElementID+"/versions", bytes.NewBuffer(body))
 	req.SetPathValue("elementId", testElementID)
 	req.Header.Set(constants.HeaderOrgID, testOrgID)
@@ -291,7 +287,7 @@ func TestCreateElementVersion_Success(t *testing.T) {
 	newConsentElementHandler(mockService).createElementVersion(rr, req)
 
 	require.Equal(t, http.StatusCreated, rr.Code)
-	var resp model.ElementVersion
+	var resp model.ElementResponse
 	require.NoError(t, json.NewDecoder(rr.Body).Decode(&resp))
 	require.Equal(t, "v2", resp.Version)
 }
@@ -310,10 +306,10 @@ func TestCreateElementVersion_InvalidJSON(t *testing.T) {
 
 func TestCreateElementVersion_ServiceError(t *testing.T) {
 	mockService := NewMockConsentElementService(t)
-	vreq := model.ElementVersionCreateRequest{}
-	mockService.On("CreateElementVersion", mock.Anything, testElementID, vreq, testOrgID).Return(nil, &ErrorCreateElement)
+	input := model.CreateElementVersionInput{}
+	mockService.On("CreateElementVersion", mock.Anything, testElementID, input, testOrgID).Return(nil, &ErrorCreateElement)
 
-	body, _ := json.Marshal(vreq)
+	body, _ := json.Marshal(model.CreateElementVersionRequest{})
 	req := httptest.NewRequest(http.MethodPost, "/consent-elements/"+testElementID+"/versions", bytes.NewBuffer(body))
 	req.SetPathValue("elementId", testElementID)
 	req.Header.Set(constants.HeaderOrgID, testOrgID)
@@ -326,7 +322,7 @@ func TestCreateElementVersion_ServiceError(t *testing.T) {
 
 func TestCreateElementVersion_MissingOrgID(t *testing.T) {
 	mockService := NewMockConsentElementService(t)
-	body, _ := json.Marshal(model.ElementVersionCreateRequest{})
+	body, _ := json.Marshal(model.CreateElementVersionRequest{})
 	req := httptest.NewRequest(http.MethodPost, "/consent-elements/"+testElementID+"/versions", bytes.NewBuffer(body))
 	req.SetPathValue("elementId", testElementID)
 	rr := httptest.NewRecorder()
@@ -341,7 +337,7 @@ func TestCreateElementVersion_MissingOrgID(t *testing.T) {
 func TestGetElementVersion_Success(t *testing.T) {
 	mockService := NewMockConsentElementService(t)
 
-	expected := &model.ElementVersion{ID: testElementID, Version: "v2"}
+	expected := &model.ElementVersion{ID: testElementID, VersionNum: 2}
 	mockService.On("GetElementVersion", mock.Anything, testElementID, 2, testOrgID).Return(expected, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/consent-elements/"+testElementID+"/versions/v2", nil)
@@ -353,7 +349,7 @@ func TestGetElementVersion_Success(t *testing.T) {
 	newConsentElementHandler(mockService).getElementVersion(rr, req)
 
 	require.Equal(t, http.StatusOK, rr.Code)
-	var resp model.ElementVersion
+	var resp model.ElementResponse
 	require.NoError(t, json.NewDecoder(rr.Body).Decode(&resp))
 	require.Equal(t, "v2", resp.Version)
 }
@@ -405,9 +401,9 @@ func TestDeleteElementVersion_Success(t *testing.T) {
 
 func TestDeleteElementVersion_MissingOrgID(t *testing.T) {
 	mockService := NewMockConsentElementService(t)
-	req := httptest.NewRequest(http.MethodDelete, "/consent-elements/"+testElementID+"/versions/1", nil)
+	req := httptest.NewRequest(http.MethodDelete, "/consent-elements/"+testElementID+"/versions/v1", nil)
 	req.SetPathValue("elementId", testElementID)
-	req.SetPathValue("version", "1")
+	req.SetPathValue("version", "v1")
 	rr := httptest.NewRecorder()
 
 	newConsentElementHandler(mockService).deleteElementVersion(rr, req)

@@ -218,7 +218,7 @@ func (_m *ConsentElementStore) IsVersionReferencedByPurpose(ctx context.Context,
 }
 
 // List provides a mock function with given fields: ctx, orgID, filters
-func (_m *ConsentElementStore) List(ctx context.Context, orgID string, filters consentelementmodel.ElementListFilters) ([]consentelementmodel.ElementVersion, int, error) {
+func (_m *ConsentElementStore) List(ctx context.Context, orgID string, filters consentelementmodel.ElementListFilter) ([]consentelementmodel.ElementVersion, int, error) {
 	ret := _m.Called(ctx, orgID, filters)
 
 	if len(ret) == 0 {
@@ -228,10 +228,10 @@ func (_m *ConsentElementStore) List(ctx context.Context, orgID string, filters c
 	var r0 []consentelementmodel.ElementVersion
 	var r1 int
 	var r2 error
-	if rf, ok := ret.Get(0).(func(context.Context, string, consentelementmodel.ElementListFilters) ([]consentelementmodel.ElementVersion, int, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string, consentelementmodel.ElementListFilter) ([]consentelementmodel.ElementVersion, int, error)); ok {
 		return rf(ctx, orgID, filters)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, string, consentelementmodel.ElementListFilters) []consentelementmodel.ElementVersion); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string, consentelementmodel.ElementListFilter) []consentelementmodel.ElementVersion); ok {
 		r0 = rf(ctx, orgID, filters)
 	} else {
 		if ret.Get(0) != nil {
@@ -239,13 +239,13 @@ func (_m *ConsentElementStore) List(ctx context.Context, orgID string, filters c
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, string, consentelementmodel.ElementListFilters) int); ok {
+	if rf, ok := ret.Get(1).(func(context.Context, string, consentelementmodel.ElementListFilter) int); ok {
 		r1 = rf(ctx, orgID, filters)
 	} else {
 		r1 = ret.Get(1).(int)
 	}
 
-	if rf, ok := ret.Get(2).(func(context.Context, string, consentelementmodel.ElementListFilters) error); ok {
+	if rf, ok := ret.Get(2).(func(context.Context, string, consentelementmodel.ElementListFilter) error); ok {
 		r2 = rf(ctx, orgID, filters)
 	} else {
 		r2 = ret.Error(2)

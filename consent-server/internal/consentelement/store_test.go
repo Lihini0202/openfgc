@@ -94,7 +94,6 @@ func TestMapToElementVersion(t *testing.T) {
 		require.Equal(t, "default", v.Namespace)
 		require.Equal(t, "basic", v.Type)
 		require.Equal(t, 2, v.VersionNum)
-		require.Equal(t, "v2", v.Version)
 		require.NotNil(t, v.DisplayName)
 		require.Equal(t, "Email Address", *v.DisplayName)
 		require.NotNil(t, v.Description)
@@ -125,7 +124,6 @@ func TestMapToElementVersion(t *testing.T) {
 		require.NotNil(t, v)
 		require.Equal(t, "", v.ID)
 		require.Equal(t, 0, v.VersionNum)
-		require.Equal(t, "v0", v.Version)
 	})
 }
 
@@ -237,7 +235,7 @@ func TestBuildListQuery(t *testing.T) {
 
 	t.Run("no filters produces latest-version join", func(t *testing.T) {
 		dbClient := mockClientWithType(t, dbconst.DatabaseTypeMySQL)
-		_, dataQ, dataArgs, _ := s.buildListQuery(dbClient, orgID, model.ElementListFilters{Limit: 10, Offset: 0})
+		_, dataQ, dataArgs, _ := s.buildListQuery(dbClient, orgID, model.ElementListFilter{Limit: 10, Offset: 0})
 		require.Contains(t, dataQ.Query, "INNER JOIN")
 		require.Contains(t, dataQ.Query, "MAX_VERSION")
 		require.Contains(t, dataQ.Query, "LIMIT ? OFFSET ?")
@@ -250,7 +248,7 @@ func TestBuildListQuery(t *testing.T) {
 	t.Run("version filter queries directly without join", func(t *testing.T) {
 		dbClient := mockClientWithType(t, dbconst.DatabaseTypeMySQL)
 		version := 2
-		_, dataQ, dataArgs, _ := s.buildListQuery(dbClient, orgID, model.ElementListFilters{Limit: 5, Offset: 0, Version: &version})
+		_, dataQ, dataArgs, _ := s.buildListQuery(dbClient, orgID, model.ElementListFilter{Limit: 5, Offset: 0, Version: &version})
 		require.NotContains(t, dataQ.Query, "INNER JOIN")
 		require.Contains(t, dataQ.Query, "e.VERSION = ?")
 		require.Equal(t, 2, dataArgs[1])
@@ -258,31 +256,31 @@ func TestBuildListQuery(t *testing.T) {
 
 	t.Run("name filter adds LIKE clause", func(t *testing.T) {
 		dbClient := mockClientWithType(t, dbconst.DatabaseTypeMySQL)
-		_, dataQ, _, _ := s.buildListQuery(dbClient, orgID, model.ElementListFilters{Limit: 10, Name: "email"})
+		_, dataQ, _, _ := s.buildListQuery(dbClient, orgID, model.ElementListFilter{Limit: 10, Name: "email"})
 		require.Contains(t, dataQ.Query, "e.NAME LIKE ?")
 	})
 
 	t.Run("namespace filter adds equality clause", func(t *testing.T) {
 		dbClient := mockClientWithType(t, dbconst.DatabaseTypeMySQL)
-		_, dataQ, _, _ := s.buildListQuery(dbClient, orgID, model.ElementListFilters{Limit: 10, Namespace: "default"})
+		_, dataQ, _, _ := s.buildListQuery(dbClient, orgID, model.ElementListFilter{Limit: 10, Namespace: "default"})
 		require.Contains(t, dataQ.Query, "e.NAMESPACE = ?")
 	})
 
 	t.Run("type filter adds equality clause", func(t *testing.T) {
 		dbClient := mockClientWithType(t, dbconst.DatabaseTypeMySQL)
-		_, dataQ, _, _ := s.buildListQuery(dbClient, orgID, model.ElementListFilters{Limit: 10, Type: "basic"})
+		_, dataQ, _, _ := s.buildListQuery(dbClient, orgID, model.ElementListFilter{Limit: 10, Type: "basic"})
 		require.Contains(t, dataQ.Query, "e.TYPE = ?")
 	})
 
 	t.Run("count query wraps data query", func(t *testing.T) {
 		dbClient := mockClientWithType(t, dbconst.DatabaseTypeMySQL)
-		countQ, _, _, _ := s.buildListQuery(dbClient, orgID, model.ElementListFilters{Limit: 10})
+		countQ, _, _, _ := s.buildListQuery(dbClient, orgID, model.ElementListFilter{Limit: 10})
 		require.True(t, strings.HasPrefix(countQ.Query, "SELECT COUNT(*) AS cnt FROM ("))
 	})
 
 	t.Run("postgres query uses dollar placeholders", func(t *testing.T) {
 		dbClient := mockClientWithType(t, dbconst.DatabaseTypePostgres)
-		_, dataQ, _, _ := s.buildListQuery(dbClient, orgID, model.ElementListFilters{Limit: 10})
+		_, dataQ, _, _ := s.buildListQuery(dbClient, orgID, model.ElementListFilter{Limit: 10})
 		require.Contains(t, dataQ.PostgresQuery, "$1")
 	})
 }

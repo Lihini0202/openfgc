@@ -24,9 +24,71 @@ func (_m *MockConsentElementService) EXPECT() *MockConsentElementService_Expecte
 	return &MockConsentElementService_Expecter{mock: &_m.Mock}
 }
 
-// CreateElementVersion provides a mock function with given fields: ctx, elementID, req, orgID
-func (_m *MockConsentElementService) CreateElementVersion(ctx context.Context, elementID string, req model.ElementVersionCreateRequest, orgID string) (*model.ElementVersion, *serviceerror.ServiceError) {
-	ret := _m.Called(ctx, elementID, req, orgID)
+// CreateElementsInBatch provides a mock function with given fields: ctx, inputs, orgID
+func (_m *MockConsentElementService) CreateElementsInBatch(ctx context.Context, inputs []model.CreateElementInput, orgID string) (*model.BatchCreateOutput, *serviceerror.ServiceError) {
+	ret := _m.Called(ctx, inputs, orgID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for CreateElementsInBatch")
+	}
+
+	var r0 *model.BatchCreateOutput
+	var r1 *serviceerror.ServiceError
+	if rf, ok := ret.Get(0).(func(context.Context, []model.CreateElementInput, string) (*model.BatchCreateOutput, *serviceerror.ServiceError)); ok {
+		return rf(ctx, inputs, orgID)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, []model.CreateElementInput, string) *model.BatchCreateOutput); ok {
+		r0 = rf(ctx, inputs, orgID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*model.BatchCreateOutput)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, []model.CreateElementInput, string) *serviceerror.ServiceError); ok {
+		r1 = rf(ctx, inputs, orgID)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*serviceerror.ServiceError)
+		}
+	}
+
+	return r0, r1
+}
+
+// MockConsentElementService_CreateElementsInBatch_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'CreateElementsInBatch'
+type MockConsentElementService_CreateElementsInBatch_Call struct {
+	*mock.Call
+}
+
+// CreateElementsInBatch is a helper method to define mock.On call
+//   - ctx context.Context
+//   - inputs []model.CreateElementInput
+//   - orgID string
+func (_e *MockConsentElementService_Expecter) CreateElementsInBatch(ctx interface{}, inputs interface{}, orgID interface{}) *MockConsentElementService_CreateElementsInBatch_Call {
+	return &MockConsentElementService_CreateElementsInBatch_Call{Call: _e.mock.On("CreateElementsInBatch", ctx, inputs, orgID)}
+}
+
+func (_c *MockConsentElementService_CreateElementsInBatch_Call) Run(run func(ctx context.Context, inputs []model.CreateElementInput, orgID string)) *MockConsentElementService_CreateElementsInBatch_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].([]model.CreateElementInput), args[2].(string))
+	})
+	return _c
+}
+
+func (_c *MockConsentElementService_CreateElementsInBatch_Call) Return(_a0 *model.BatchCreateOutput, _a1 *serviceerror.ServiceError) *MockConsentElementService_CreateElementsInBatch_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *MockConsentElementService_CreateElementsInBatch_Call) RunAndReturn(run func(context.Context, []model.CreateElementInput, string) (*model.BatchCreateOutput, *serviceerror.ServiceError)) *MockConsentElementService_CreateElementsInBatch_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// CreateElementVersion provides a mock function with given fields: ctx, elementID, input, orgID
+func (_m *MockConsentElementService) CreateElementVersion(ctx context.Context, elementID string, input model.CreateElementVersionInput, orgID string) (*model.ElementVersion, *serviceerror.ServiceError) {
+	ret := _m.Called(ctx, elementID, input, orgID)
 
 	if len(ret) == 0 {
 		panic("no return value specified for CreateElementVersion")
@@ -34,19 +96,19 @@ func (_m *MockConsentElementService) CreateElementVersion(ctx context.Context, e
 
 	var r0 *model.ElementVersion
 	var r1 *serviceerror.ServiceError
-	if rf, ok := ret.Get(0).(func(context.Context, string, model.ElementVersionCreateRequest, string) (*model.ElementVersion, *serviceerror.ServiceError)); ok {
-		return rf(ctx, elementID, req, orgID)
+	if rf, ok := ret.Get(0).(func(context.Context, string, model.CreateElementVersionInput, string) (*model.ElementVersion, *serviceerror.ServiceError)); ok {
+		return rf(ctx, elementID, input, orgID)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, string, model.ElementVersionCreateRequest, string) *model.ElementVersion); ok {
-		r0 = rf(ctx, elementID, req, orgID)
+	if rf, ok := ret.Get(0).(func(context.Context, string, model.CreateElementVersionInput, string) *model.ElementVersion); ok {
+		r0 = rf(ctx, elementID, input, orgID)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*model.ElementVersion)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, string, model.ElementVersionCreateRequest, string) *serviceerror.ServiceError); ok {
-		r1 = rf(ctx, elementID, req, orgID)
+	if rf, ok := ret.Get(1).(func(context.Context, string, model.CreateElementVersionInput, string) *serviceerror.ServiceError); ok {
+		r1 = rf(ctx, elementID, input, orgID)
 	} else {
 		if ret.Get(1) != nil {
 			r1 = ret.Get(1).(*serviceerror.ServiceError)
@@ -64,15 +126,15 @@ type MockConsentElementService_CreateElementVersion_Call struct {
 // CreateElementVersion is a helper method to define mock.On call
 //   - ctx context.Context
 //   - elementID string
-//   - req model.ElementVersionCreateRequest
+//   - input model.CreateElementVersionInput
 //   - orgID string
-func (_e *MockConsentElementService_Expecter) CreateElementVersion(ctx interface{}, elementID interface{}, req interface{}, orgID interface{}) *MockConsentElementService_CreateElementVersion_Call {
-	return &MockConsentElementService_CreateElementVersion_Call{Call: _e.mock.On("CreateElementVersion", ctx, elementID, req, orgID)}
+func (_e *MockConsentElementService_Expecter) CreateElementVersion(ctx interface{}, elementID interface{}, input interface{}, orgID interface{}) *MockConsentElementService_CreateElementVersion_Call {
+	return &MockConsentElementService_CreateElementVersion_Call{Call: _e.mock.On("CreateElementVersion", ctx, elementID, input, orgID)}
 }
 
-func (_c *MockConsentElementService_CreateElementVersion_Call) Run(run func(ctx context.Context, elementID string, req model.ElementVersionCreateRequest, orgID string)) *MockConsentElementService_CreateElementVersion_Call {
+func (_c *MockConsentElementService_CreateElementVersion_Call) Run(run func(ctx context.Context, elementID string, input model.CreateElementVersionInput, orgID string)) *MockConsentElementService_CreateElementVersion_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(string), args[2].(model.ElementVersionCreateRequest), args[3].(string))
+		run(args[0].(context.Context), args[1].(string), args[2].(model.CreateElementVersionInput), args[3].(string))
 	})
 	return _c
 }
@@ -82,69 +144,7 @@ func (_c *MockConsentElementService_CreateElementVersion_Call) Return(_a0 *model
 	return _c
 }
 
-func (_c *MockConsentElementService_CreateElementVersion_Call) RunAndReturn(run func(context.Context, string, model.ElementVersionCreateRequest, string) (*model.ElementVersion, *serviceerror.ServiceError)) *MockConsentElementService_CreateElementVersion_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
-// CreateElementsInBatch provides a mock function with given fields: ctx, requests, orgID
-func (_m *MockConsentElementService) CreateElementsInBatch(ctx context.Context, requests []model.ConsentElementCreateRequest, orgID string) (*model.BulkCreateResponse, *serviceerror.ServiceError) {
-	ret := _m.Called(ctx, requests, orgID)
-
-	if len(ret) == 0 {
-		panic("no return value specified for CreateElementsInBatch")
-	}
-
-	var r0 *model.BulkCreateResponse
-	var r1 *serviceerror.ServiceError
-	if rf, ok := ret.Get(0).(func(context.Context, []model.ConsentElementCreateRequest, string) (*model.BulkCreateResponse, *serviceerror.ServiceError)); ok {
-		return rf(ctx, requests, orgID)
-	}
-	if rf, ok := ret.Get(0).(func(context.Context, []model.ConsentElementCreateRequest, string) *model.BulkCreateResponse); ok {
-		r0 = rf(ctx, requests, orgID)
-	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*model.BulkCreateResponse)
-		}
-	}
-
-	if rf, ok := ret.Get(1).(func(context.Context, []model.ConsentElementCreateRequest, string) *serviceerror.ServiceError); ok {
-		r1 = rf(ctx, requests, orgID)
-	} else {
-		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*serviceerror.ServiceError)
-		}
-	}
-
-	return r0, r1
-}
-
-// MockConsentElementService_CreateElementsInBatch_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'CreateElementsInBatch'
-type MockConsentElementService_CreateElementsInBatch_Call struct {
-	*mock.Call
-}
-
-// CreateElementsInBatch is a helper method to define mock.On call
-//   - ctx context.Context
-//   - requests []model.ConsentElementCreateRequest
-//   - orgID string
-func (_e *MockConsentElementService_Expecter) CreateElementsInBatch(ctx interface{}, requests interface{}, orgID interface{}) *MockConsentElementService_CreateElementsInBatch_Call {
-	return &MockConsentElementService_CreateElementsInBatch_Call{Call: _e.mock.On("CreateElementsInBatch", ctx, requests, orgID)}
-}
-
-func (_c *MockConsentElementService_CreateElementsInBatch_Call) Run(run func(ctx context.Context, requests []model.ConsentElementCreateRequest, orgID string)) *MockConsentElementService_CreateElementsInBatch_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].([]model.ConsentElementCreateRequest), args[2].(string))
-	})
-	return _c
-}
-
-func (_c *MockConsentElementService_CreateElementsInBatch_Call) Return(_a0 *model.BulkCreateResponse, _a1 *serviceerror.ServiceError) *MockConsentElementService_CreateElementsInBatch_Call {
-	_c.Call.Return(_a0, _a1)
-	return _c
-}
-
-func (_c *MockConsentElementService_CreateElementsInBatch_Call) RunAndReturn(run func(context.Context, []model.ConsentElementCreateRequest, string) (*model.BulkCreateResponse, *serviceerror.ServiceError)) *MockConsentElementService_CreateElementsInBatch_Call {
+func (_c *MockConsentElementService_CreateElementVersion_Call) RunAndReturn(run func(context.Context, string, model.CreateElementVersionInput, string) (*model.ElementVersion, *serviceerror.ServiceError)) *MockConsentElementService_CreateElementVersion_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -326,23 +326,23 @@ func (_c *MockConsentElementService_GetElementVersion_Call) RunAndReturn(run fun
 }
 
 // ListElementVersions provides a mock function with given fields: ctx, elementID, orgID
-func (_m *MockConsentElementService) ListElementVersions(ctx context.Context, elementID string, orgID string) (*model.VersionListResponse, *serviceerror.ServiceError) {
+func (_m *MockConsentElementService) ListElementVersions(ctx context.Context, elementID string, orgID string) (*model.ElementVersionListOutput, *serviceerror.ServiceError) {
 	ret := _m.Called(ctx, elementID, orgID)
 
 	if len(ret) == 0 {
 		panic("no return value specified for ListElementVersions")
 	}
 
-	var r0 *model.VersionListResponse
+	var r0 *model.ElementVersionListOutput
 	var r1 *serviceerror.ServiceError
-	if rf, ok := ret.Get(0).(func(context.Context, string, string) (*model.VersionListResponse, *serviceerror.ServiceError)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string, string) (*model.ElementVersionListOutput, *serviceerror.ServiceError)); ok {
 		return rf(ctx, elementID, orgID)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, string, string) *model.VersionListResponse); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string, string) *model.ElementVersionListOutput); ok {
 		r0 = rf(ctx, elementID, orgID)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*model.VersionListResponse)
+			r0 = ret.Get(0).(*model.ElementVersionListOutput)
 		}
 	}
 
@@ -377,38 +377,38 @@ func (_c *MockConsentElementService_ListElementVersions_Call) Run(run func(ctx c
 	return _c
 }
 
-func (_c *MockConsentElementService_ListElementVersions_Call) Return(_a0 *model.VersionListResponse, _a1 *serviceerror.ServiceError) *MockConsentElementService_ListElementVersions_Call {
+func (_c *MockConsentElementService_ListElementVersions_Call) Return(_a0 *model.ElementVersionListOutput, _a1 *serviceerror.ServiceError) *MockConsentElementService_ListElementVersions_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *MockConsentElementService_ListElementVersions_Call) RunAndReturn(run func(context.Context, string, string) (*model.VersionListResponse, *serviceerror.ServiceError)) *MockConsentElementService_ListElementVersions_Call {
+func (_c *MockConsentElementService_ListElementVersions_Call) RunAndReturn(run func(context.Context, string, string) (*model.ElementVersionListOutput, *serviceerror.ServiceError)) *MockConsentElementService_ListElementVersions_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // ListElements provides a mock function with given fields: ctx, orgID, filters
-func (_m *MockConsentElementService) ListElements(ctx context.Context, orgID string, filters model.ElementListFilters) (*model.ListResponse, *serviceerror.ServiceError) {
+func (_m *MockConsentElementService) ListElements(ctx context.Context, orgID string, filters model.ElementListFilter) (*model.ElementListOutput, *serviceerror.ServiceError) {
 	ret := _m.Called(ctx, orgID, filters)
 
 	if len(ret) == 0 {
 		panic("no return value specified for ListElements")
 	}
 
-	var r0 *model.ListResponse
+	var r0 *model.ElementListOutput
 	var r1 *serviceerror.ServiceError
-	if rf, ok := ret.Get(0).(func(context.Context, string, model.ElementListFilters) (*model.ListResponse, *serviceerror.ServiceError)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string, model.ElementListFilter) (*model.ElementListOutput, *serviceerror.ServiceError)); ok {
 		return rf(ctx, orgID, filters)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, string, model.ElementListFilters) *model.ListResponse); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string, model.ElementListFilter) *model.ElementListOutput); ok {
 		r0 = rf(ctx, orgID, filters)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*model.ListResponse)
+			r0 = ret.Get(0).(*model.ElementListOutput)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, string, model.ElementListFilters) *serviceerror.ServiceError); ok {
+	if rf, ok := ret.Get(1).(func(context.Context, string, model.ElementListFilter) *serviceerror.ServiceError); ok {
 		r1 = rf(ctx, orgID, filters)
 	} else {
 		if ret.Get(1) != nil {
@@ -427,24 +427,24 @@ type MockConsentElementService_ListElements_Call struct {
 // ListElements is a helper method to define mock.On call
 //   - ctx context.Context
 //   - orgID string
-//   - filters model.ElementListFilters
+//   - filters model.ElementListFilter
 func (_e *MockConsentElementService_Expecter) ListElements(ctx interface{}, orgID interface{}, filters interface{}) *MockConsentElementService_ListElements_Call {
 	return &MockConsentElementService_ListElements_Call{Call: _e.mock.On("ListElements", ctx, orgID, filters)}
 }
 
-func (_c *MockConsentElementService_ListElements_Call) Run(run func(ctx context.Context, orgID string, filters model.ElementListFilters)) *MockConsentElementService_ListElements_Call {
+func (_c *MockConsentElementService_ListElements_Call) Run(run func(ctx context.Context, orgID string, filters model.ElementListFilter)) *MockConsentElementService_ListElements_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(string), args[2].(model.ElementListFilters))
+		run(args[0].(context.Context), args[1].(string), args[2].(model.ElementListFilter))
 	})
 	return _c
 }
 
-func (_c *MockConsentElementService_ListElements_Call) Return(_a0 *model.ListResponse, _a1 *serviceerror.ServiceError) *MockConsentElementService_ListElements_Call {
+func (_c *MockConsentElementService_ListElements_Call) Return(_a0 *model.ElementListOutput, _a1 *serviceerror.ServiceError) *MockConsentElementService_ListElements_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *MockConsentElementService_ListElements_Call) RunAndReturn(run func(context.Context, string, model.ElementListFilters) (*model.ListResponse, *serviceerror.ServiceError)) *MockConsentElementService_ListElements_Call {
+func (_c *MockConsentElementService_ListElements_Call) RunAndReturn(run func(context.Context, string, model.ElementListFilter) (*model.ElementListOutput, *serviceerror.ServiceError)) *MockConsentElementService_ListElements_Call {
 	_c.Call.Return(run)
 	return _c
 }

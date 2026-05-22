@@ -21,6 +21,7 @@ package consentelement
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -49,7 +50,7 @@ func (h *consentElementHandler) createElements(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	var requests []model.ConsentElementCreateRequest
+	var requests []model.CreateElementRequest
 	if err := json.NewDecoder(r.Body).Decode(&requests); err != nil {
 		utils.SendError(w, r, serviceerror.CustomServiceError(ErrorInvalidRequestBody, err.Error()))
 		return
@@ -59,7 +60,12 @@ func (h *consentElementHandler) createElements(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	result, svcErr := h.service.CreateElementsInBatch(r.Context(), requests, orgID)
+	inputs := make([]model.CreateElementInput, len(requests))
+	for i, req := range requests {
+		inputs[i] = toCreateElementInput(req)
+	}
+
+	output, svcErr := h.service.CreateElementsInBatch(r.Context(), inputs, orgID)
 	if svcErr != nil {
 		utils.SendError(w, r, svcErr)
 		return
@@ -67,7 +73,7 @@ func (h *consentElementHandler) createElements(w http.ResponseWriter, r *http.Re
 
 	w.Header().Set(constants.HeaderContentType, "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(result)
+	json.NewEncoder(w).Encode(toBatchCreateResponse(output))
 }
 
 // getElement handles GET /consent-elements/{elementId} — returns latest version.
@@ -85,7 +91,7 @@ func (h *consentElementHandler) getElement(w http.ResponseWriter, r *http.Reques
 	}
 
 	w.Header().Set(constants.HeaderContentType, "application/json")
-	json.NewEncoder(w).Encode(elem)
+	json.NewEncoder(w).Encode(toElementResponse(elem))
 }
 
 // listElements handles GET /consent-elements — list elements with optional filters.
@@ -97,7 +103,7 @@ func (h *consentElementHandler) listElements(w http.ResponseWriter, r *http.Requ
 	}
 
 	query := r.URL.Query()
-	filters := model.ElementListFilters{
+	filters := model.ElementListFilter{
 		Name:      query.Get("name"),
 		Namespace: query.Get("namespace"),
 		Type:      query.Get("type"),
@@ -128,14 +134,14 @@ func (h *consentElementHandler) listElements(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	result, svcErr := h.service.ListElements(r.Context(), orgID, filters)
+	output, svcErr := h.service.ListElements(r.Context(), orgID, filters)
 	if svcErr != nil {
 		utils.SendError(w, r, svcErr)
 		return
 	}
 
 	w.Header().Set(constants.HeaderContentType, "application/json")
-	json.NewEncoder(w).Encode(result)
+	json.NewEncoder(w).Encode(toElementListResponse(output))
 }
 
 // listElementVersions handles GET /consent-elements/{elementId}/versions — all versions.
@@ -146,16 +152,16 @@ func (h *consentElementHandler) listElementVersions(w http.ResponseWriter, r *ht
 		return
 	}
 
-	result, svcErr := h.service.ListElementVersions(r.Context(), r.PathValue("elementId"), orgID)
+	output, svcErr := h.service.ListElementVersions(r.Context(), r.PathValue("elementId"), orgID)
 	if svcErr != nil {
 		utils.SendError(w, r, svcErr)
 		return
 	}
 
-	entries := make([]model.ElementVersionItem, len(result.Versions))
-	for i, v := range result.Versions {
+	entries := make([]model.ElementVersionItem, len(output.Versions))
+	for i, v := range output.Versions {
 		entries[i] = model.ElementVersionItem{
-			Version:     v.Version,
+			Version:     fmt.Sprintf("v%d", v.VersionNum),
 			DisplayName: v.DisplayName,
 			Description: v.Description,
 			Schema:      v.Schema,
@@ -166,10 +172,10 @@ func (h *consentElementHandler) listElementVersions(w http.ResponseWriter, r *ht
 
 	w.Header().Set(constants.HeaderContentType, "application/json")
 	json.NewEncoder(w).Encode(model.ElementVersionListResponse{
-		ElementID: result.ElementID,
-		Name:      result.Name,
-		Namespace: result.Namespace,
-		Type:      result.Type,
+		ElementID: output.ElementID,
+		Name:      output.Name,
+		Namespace: output.Namespace,
+		Type:      output.Type,
 		Versions:  entries,
 	})
 }
@@ -182,13 +188,20 @@ func (h *consentElementHandler) createElementVersion(w http.ResponseWriter, r *h
 		return
 	}
 
-	var req model.ElementVersionCreateRequest
+	var req model.CreateElementVersionRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		utils.SendError(w, r, serviceerror.CustomServiceError(ErrorInvalidRequestBody, err.Error()))
 		return
 	}
 
-	elem, svcErr := h.service.CreateElementVersion(r.Context(), r.PathValue("elementId"), req, orgID)
+	input := model.CreateElementVersionInput{
+		DisplayName: req.DisplayName,
+		Description: req.Description,
+		Schema:      schemaToString(req.Schema),
+		Properties:  req.Properties,
+	}
+
+	elem, svcErr := h.service.CreateElementVersion(r.Context(), r.PathValue("elementId"), input, orgID)
 	if svcErr != nil {
 		utils.SendError(w, r, svcErr)
 		return
@@ -196,7 +209,7 @@ func (h *consentElementHandler) createElementVersion(w http.ResponseWriter, r *h
 
 	w.Header().Set(constants.HeaderContentType, "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(elem)
+	json.NewEncoder(w).Encode(toElementResponse(elem))
 }
 
 // getElementVersion handles GET /consent-elements/{elementId}/versions/{version}.
@@ -221,7 +234,7 @@ func (h *consentElementHandler) getElementVersion(w http.ResponseWriter, r *http
 	}
 
 	w.Header().Set(constants.HeaderContentType, "application/json")
-	json.NewEncoder(w).Encode(elem)
+	json.NewEncoder(w).Encode(toElementResponse(elem))
 }
 
 // deleteElementVersion handles DELETE /consent-elements/{elementId}/versions/{version}.
@@ -258,4 +271,78 @@ func parseVersionParam(s string) (int, bool) {
 		return 0, false
 	}
 	return n, true
+}
+
+// toCreateElementInput converts an API create request to a service-layer input.
+func toCreateElementInput(req model.CreateElementRequest) model.CreateElementInput {
+	return model.CreateElementInput{
+		Name:        req.Name,
+		Namespace:   req.Namespace,
+		DisplayName: req.DisplayName,
+		Description: req.Description,
+		Type:        req.Type,
+		Schema:      schemaToString(req.Schema),
+		Properties:  req.Properties,
+	}
+}
+
+// toElementResponse converts a service-layer ElementVersion to an API response.
+func toElementResponse(v *model.ElementVersion) model.ElementResponse {
+	return model.ElementResponse{
+		ElementID:   v.ID,
+		Name:        v.Name,
+		Namespace:   v.Namespace,
+		Type:        v.Type,
+		Version:     fmt.Sprintf("v%d", v.VersionNum),
+		DisplayName: v.DisplayName,
+		Description: v.Description,
+		Schema:      v.Schema,
+		Properties:  v.Properties,
+		CreatedTime: v.CreatedTime,
+	}
+}
+
+// toBatchCreateResponse converts a service BatchCreateOutput to an API response.
+func toBatchCreateResponse(output *model.BatchCreateOutput) model.BatchCreateResponse {
+	items := make([]model.BatchResultItem, len(output.Results))
+	for i, r := range output.Results {
+		item := model.BatchResultItem{Status: r.Status, Error: r.Error}
+		if r.Element != nil {
+			resp := toElementResponse(r.Element)
+			item.Element = &resp
+		}
+		items[i] = item
+	}
+	return model.BatchCreateResponse{Results: items}
+}
+
+// toElementListResponse converts a service ElementListOutput to an API list response.
+func toElementListResponse(output *model.ElementListOutput) model.ElementListResponse {
+	items := make([]model.ElementResponse, len(output.Data))
+	for i := range output.Data {
+		items[i] = toElementResponse(&output.Data[i])
+	}
+	return model.ElementListResponse{
+		Data: items,
+		Metadata: model.PageMetadata{
+			Total:  output.Total,
+			Offset: output.Offset,
+			Count:  output.Count,
+			Limit:  output.Limit,
+		},
+	}
+}
+
+// schemaToString normalizes a json.RawMessage schema to a *string for the service layer.
+// Plain JSON string values are unwrapped (quotes removed). JSON objects/arrays are kept as-is.
+func schemaToString(raw json.RawMessage) *string {
+	if len(raw) == 0 {
+		return nil
+	}
+	var s string
+	if err := json.Unmarshal(raw, &s); err == nil {
+		return &s
+	}
+	str := string(raw)
+	return &str
 }
