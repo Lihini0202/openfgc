@@ -25,7 +25,7 @@ import (
 	authResourceModel "github.com/wso2/openfgc/internal/authresource/model"
 	consentModel "github.com/wso2/openfgc/internal/consent/model"
 	consentElementModel "github.com/wso2/openfgc/internal/consentelement/model"
-	consentConsentPurposeModel "github.com/wso2/openfgc/internal/consentpurpose/model"
+	purposeModel "github.com/wso2/openfgc/internal/consentpurpose/model"
 	dbmodel "github.com/wso2/openfgc/internal/system/database/model"
 )
 
@@ -103,16 +103,54 @@ type ConsentElementStore interface {
 	IsVersionReferencedByPurpose(ctx context.Context, versionID, orgID string) (bool, error)
 }
 
-// ConsentPurposeStore defines the interface for purpose data operations
+// ConsentPurposeStore defines the interface for purpose data operations.
+// Each logical purpose is identified by an ID and has one or more immutable versions.
+// Version 1 is created when the purpose is first created; subsequent versions are added via CreateVersion.
 type ConsentPurposeStore interface {
-	CreatePurpose(tx dbmodel.TxInterface, purpose *consentConsentPurposeModel.ConsentPurpose) error
-	GetPurposeByID(ctx context.Context, purposeID, orgID string) (*consentConsentPurposeModel.ConsentPurpose, error)
-	ListPurposes(ctx context.Context, orgID, name string, clientIDs []string, elementNames []string, offset, limit int) ([]consentConsentPurposeModel.ConsentPurpose, int, error)
-	UpdatePurpose(tx dbmodel.TxInterface, purpose *consentConsentPurposeModel.ConsentPurpose) error
+	// CreateVersion inserts a new purpose version (PURPOSE row + PURPOSE_PROPERTY rows).
+	// Element mappings are linked separately via LinkElementVersion.
+	CreateVersion(tx dbmodel.TxInterface, version *purposeModel.PurposeVersion) error
+
+	// GetLatestVersion returns the highest-numbered version of a purpose, with properties and elements.
+	// Returns nil if not found.
+	GetLatestVersion(ctx context.Context, purposeID, orgID string) (*purposeModel.PurposeVersion, error)
+
+	// GetVersion returns a specific version by version number, with properties and elements.
+	// Returns nil if not found.
+	GetVersion(ctx context.Context, purposeID string, version int, orgID string) (*purposeModel.PurposeVersion, error)
+
+	// GetVersionByID returns a purpose version by its VERSION_ID, with properties and elements.
+	// Returns nil if not found.
+	GetVersionByID(ctx context.Context, purposeVersionID, orgID string) (*purposeModel.PurposeVersion, error)
+
+	// ListVersions returns all versions of one purpose ordered by version number ascending, with properties and elements.
+	ListVersions(ctx context.Context, purposeID, orgID string) ([]purposeModel.PurposeVersion, error)
+
+	// PurposeExists reports whether any version of the purpose exists.
+	PurposeExists(ctx context.Context, purposeID, orgID string) (bool, error)
+
+	// DeleteVersion deletes a specific version row.
+	// PURPOSE_PROPERTY and PURPOSE_ELEMENT_MAPPING rows cascade automatically.
+	DeleteVersion(tx dbmodel.TxInterface, purposeVersionID, orgID string) error
+
+	// DeletePurpose deletes all versions of a purpose. Called when the last version is removed.
 	DeletePurpose(tx dbmodel.TxInterface, purposeID, orgID string) error
-	CheckPurposeNameExists(ctx context.Context, name, clientID, orgID string, excludePurposeID *string) (bool, error)
-	LinkElementToPurpose(tx dbmodel.TxInterface, purposeID, elementID, orgID string, isMandatory bool) error
-	GetPurposeElements(ctx context.Context, purposeID, orgID string) ([]consentConsentPurposeModel.PurposeElement, error)
-	DeletePurposeElements(tx dbmodel.TxInterface, purposeID, orgID string) error
-	IsElementUsedInPurposes(ctx context.Context, elementID, orgID string) (bool, error)
+
+	// LinkElementVersion creates a mapping from a purpose version to an element version.
+	LinkElementVersion(tx dbmodel.TxInterface, purposeVersionID, elementVersionID, orgID string, mandatory bool) error
+
+	// GetVersionElements returns all element refs for a specific purpose version.
+	GetVersionElements(ctx context.Context, purposeVersionID, orgID string) ([]purposeModel.PurposeMappedElement, error)
+
+	// IsElementVersionUsed reports whether any purpose version references this element version.
+	// Returns true → caller must reject the element version delete with 409 Conflict.
+	IsElementVersionUsed(ctx context.Context, elementVersionID, orgID string) (bool, error)
+
+	// IsVersionUsedInConsents reports whether any consent references this purpose version.
+	// Returns true → caller must reject the purpose version delete with 409 Conflict.
+	IsVersionUsedInConsents(ctx context.Context, purposeVersionID, orgID string) (bool, error)
+
+	// List returns the latest version of each purpose matching the filters, with total count for pagination.
+	// When filters.Details is false, Properties and Elements are not populated.
+	List(ctx context.Context, orgID string, filters purposeModel.PurposeListFilter) ([]purposeModel.PurposeVersion, int, error)
 }

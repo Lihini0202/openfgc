@@ -16,29 +16,61 @@ type MockConsentPurposeService struct {
 	mock.Mock
 }
 
-// CreatePurpose provides a mock function with given fields: ctx, req, orgID, clientID
-func (_m *MockConsentPurposeService) CreatePurpose(ctx context.Context, req model.CreateRequest, orgID string, clientID string) (*model.ConsentPurpose, *serviceerror.ServiceError) {
-	ret := _m.Called(ctx, req, orgID, clientID)
+// CreatePurpose provides a mock function with given fields: ctx, input, orgID
+func (_m *MockConsentPurposeService) CreatePurpose(ctx context.Context, input model.CreatePurposeInput, orgID string) (*model.PurposeOutput, *serviceerror.ServiceError) {
+	ret := _m.Called(ctx, input, orgID)
 
 	if len(ret) == 0 {
 		panic("no return value specified for CreatePurpose")
 	}
 
-	var r0 *model.ConsentPurpose
+	var r0 *model.PurposeOutput
 	var r1 *serviceerror.ServiceError
-	if rf, ok := ret.Get(0).(func(context.Context, model.CreateRequest, string, string) (*model.ConsentPurpose, *serviceerror.ServiceError)); ok {
-		return rf(ctx, req, orgID, clientID)
+	if rf, ok := ret.Get(0).(func(context.Context, model.CreatePurposeInput, string) (*model.PurposeOutput, *serviceerror.ServiceError)); ok {
+		return rf(ctx, input, orgID)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, model.CreateRequest, string, string) *model.ConsentPurpose); ok {
-		r0 = rf(ctx, req, orgID, clientID)
+	if rf, ok := ret.Get(0).(func(context.Context, model.CreatePurposeInput, string) *model.PurposeOutput); ok {
+		r0 = rf(ctx, input, orgID)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*model.ConsentPurpose)
+			r0 = ret.Get(0).(*model.PurposeOutput)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, model.CreateRequest, string, string) *serviceerror.ServiceError); ok {
-		r1 = rf(ctx, req, orgID, clientID)
+	if rf, ok := ret.Get(1).(func(context.Context, model.CreatePurposeInput, string) *serviceerror.ServiceError); ok {
+		r1 = rf(ctx, input, orgID)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*serviceerror.ServiceError)
+		}
+	}
+
+	return r0, r1
+}
+
+// CreatePurposeVersion provides a mock function with given fields: ctx, purposeID, input, orgID
+func (_m *MockConsentPurposeService) CreatePurposeVersion(ctx context.Context, purposeID string, input model.CreatePurposeVersionInput, orgID string) (*model.PurposeOutput, *serviceerror.ServiceError) {
+	ret := _m.Called(ctx, purposeID, input, orgID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for CreatePurposeVersion")
+	}
+
+	var r0 *model.PurposeOutput
+	var r1 *serviceerror.ServiceError
+	if rf, ok := ret.Get(0).(func(context.Context, string, model.CreatePurposeVersionInput, string) (*model.PurposeOutput, *serviceerror.ServiceError)); ok {
+		return rf(ctx, purposeID, input, orgID)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, string, model.CreatePurposeVersionInput, string) *model.PurposeOutput); ok {
+		r0 = rf(ctx, purposeID, input, orgID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*model.PurposeOutput)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, string, model.CreatePurposeVersionInput, string) *serviceerror.ServiceError); ok {
+		r1 = rf(ctx, purposeID, input, orgID)
 	} else {
 		if ret.Get(1) != nil {
 			r1 = ret.Get(1).(*serviceerror.ServiceError)
@@ -68,24 +100,44 @@ func (_m *MockConsentPurposeService) DeletePurpose(ctx context.Context, purposeI
 	return r0
 }
 
+// DeletePurposeVersion provides a mock function with given fields: ctx, purposeID, version, orgID
+func (_m *MockConsentPurposeService) DeletePurposeVersion(ctx context.Context, purposeID string, version int, orgID string) *serviceerror.ServiceError {
+	ret := _m.Called(ctx, purposeID, version, orgID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for DeletePurposeVersion")
+	}
+
+	var r0 *serviceerror.ServiceError
+	if rf, ok := ret.Get(0).(func(context.Context, string, int, string) *serviceerror.ServiceError); ok {
+		r0 = rf(ctx, purposeID, version, orgID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*serviceerror.ServiceError)
+		}
+	}
+
+	return r0
+}
+
 // GetPurpose provides a mock function with given fields: ctx, purposeID, orgID
-func (_m *MockConsentPurposeService) GetPurpose(ctx context.Context, purposeID string, orgID string) (*model.ConsentPurpose, *serviceerror.ServiceError) {
+func (_m *MockConsentPurposeService) GetPurpose(ctx context.Context, purposeID string, orgID string) (*model.PurposeOutput, *serviceerror.ServiceError) {
 	ret := _m.Called(ctx, purposeID, orgID)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetPurpose")
 	}
 
-	var r0 *model.ConsentPurpose
+	var r0 *model.PurposeOutput
 	var r1 *serviceerror.ServiceError
-	if rf, ok := ret.Get(0).(func(context.Context, string, string) (*model.ConsentPurpose, *serviceerror.ServiceError)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string, string) (*model.PurposeOutput, *serviceerror.ServiceError)); ok {
 		return rf(ctx, purposeID, orgID)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, string, string) *model.ConsentPurpose); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string, string) *model.PurposeOutput); ok {
 		r0 = rf(ctx, purposeID, orgID)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*model.ConsentPurpose)
+			r0 = ret.Get(0).(*model.PurposeOutput)
 		}
 	}
 
@@ -100,68 +152,93 @@ func (_m *MockConsentPurposeService) GetPurpose(ctx context.Context, purposeID s
 	return r0, r1
 }
 
-// ListPurposes provides a mock function with given fields: ctx, orgID, name, clientIDs, elementNames, offset, limit
-func (_m *MockConsentPurposeService) ListPurposes(ctx context.Context, orgID string, name string, clientIDs []string, elementNames []string, offset int, limit int) ([]model.ConsentPurpose, int, *serviceerror.ServiceError) {
-	ret := _m.Called(ctx, orgID, name, clientIDs, elementNames, offset, limit)
+// GetPurposeVersion provides a mock function with given fields: ctx, purposeID, version, orgID
+func (_m *MockConsentPurposeService) GetPurposeVersion(ctx context.Context, purposeID string, version int, orgID string) (*model.PurposeOutput, *serviceerror.ServiceError) {
+	ret := _m.Called(ctx, purposeID, version, orgID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetPurposeVersion")
+	}
+
+	var r0 *model.PurposeOutput
+	var r1 *serviceerror.ServiceError
+	if rf, ok := ret.Get(0).(func(context.Context, string, int, string) (*model.PurposeOutput, *serviceerror.ServiceError)); ok {
+		return rf(ctx, purposeID, version, orgID)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, string, int, string) *model.PurposeOutput); ok {
+		r0 = rf(ctx, purposeID, version, orgID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*model.PurposeOutput)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, string, int, string) *serviceerror.ServiceError); ok {
+		r1 = rf(ctx, purposeID, version, orgID)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*serviceerror.ServiceError)
+		}
+	}
+
+	return r0, r1
+}
+
+// GetPurposeVersions provides a mock function with given fields: ctx, purposeID, orgID
+func (_m *MockConsentPurposeService) GetPurposeVersions(ctx context.Context, purposeID string, orgID string) (*model.PurposeVersionListOutput, *serviceerror.ServiceError) {
+	ret := _m.Called(ctx, purposeID, orgID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetPurposeVersions")
+	}
+
+	var r0 *model.PurposeVersionListOutput
+	var r1 *serviceerror.ServiceError
+	if rf, ok := ret.Get(0).(func(context.Context, string, string) (*model.PurposeVersionListOutput, *serviceerror.ServiceError)); ok {
+		return rf(ctx, purposeID, orgID)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, string, string) *model.PurposeVersionListOutput); ok {
+		r0 = rf(ctx, purposeID, orgID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*model.PurposeVersionListOutput)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, string, string) *serviceerror.ServiceError); ok {
+		r1 = rf(ctx, purposeID, orgID)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*serviceerror.ServiceError)
+		}
+	}
+
+	return r0, r1
+}
+
+// ListPurposes provides a mock function with given fields: ctx, orgID, filters
+func (_m *MockConsentPurposeService) ListPurposes(ctx context.Context, orgID string, filters model.PurposeListFilter) (*model.PurposeListOutput, *serviceerror.ServiceError) {
+	ret := _m.Called(ctx, orgID, filters)
 
 	if len(ret) == 0 {
 		panic("no return value specified for ListPurposes")
 	}
 
-	var r0 []model.ConsentPurpose
-	var r1 int
-	var r2 *serviceerror.ServiceError
-	if rf, ok := ret.Get(0).(func(context.Context, string, string, []string, []string, int, int) ([]model.ConsentPurpose, int, *serviceerror.ServiceError)); ok {
-		return rf(ctx, orgID, name, clientIDs, elementNames, offset, limit)
-	}
-	if rf, ok := ret.Get(0).(func(context.Context, string, string, []string, []string, int, int) []model.ConsentPurpose); ok {
-		r0 = rf(ctx, orgID, name, clientIDs, elementNames, offset, limit)
-	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]model.ConsentPurpose)
-		}
-	}
-
-	if rf, ok := ret.Get(1).(func(context.Context, string, string, []string, []string, int, int) int); ok {
-		r1 = rf(ctx, orgID, name, clientIDs, elementNames, offset, limit)
-	} else {
-		r1 = ret.Get(1).(int)
-	}
-
-	if rf, ok := ret.Get(2).(func(context.Context, string, string, []string, []string, int, int) *serviceerror.ServiceError); ok {
-		r2 = rf(ctx, orgID, name, clientIDs, elementNames, offset, limit)
-	} else {
-		if ret.Get(2) != nil {
-			r2 = ret.Get(2).(*serviceerror.ServiceError)
-		}
-	}
-
-	return r0, r1, r2
-}
-
-// UpdatePurpose provides a mock function with given fields: ctx, purposeID, req, orgID, clientID
-func (_m *MockConsentPurposeService) UpdatePurpose(ctx context.Context, purposeID string, req model.UpdateRequest, orgID string, clientID string) (*model.ConsentPurpose, *serviceerror.ServiceError) {
-	ret := _m.Called(ctx, purposeID, req, orgID, clientID)
-
-	if len(ret) == 0 {
-		panic("no return value specified for UpdatePurpose")
-	}
-
-	var r0 *model.ConsentPurpose
+	var r0 *model.PurposeListOutput
 	var r1 *serviceerror.ServiceError
-	if rf, ok := ret.Get(0).(func(context.Context, string, model.UpdateRequest, string, string) (*model.ConsentPurpose, *serviceerror.ServiceError)); ok {
-		return rf(ctx, purposeID, req, orgID, clientID)
+	if rf, ok := ret.Get(0).(func(context.Context, string, model.PurposeListFilter) (*model.PurposeListOutput, *serviceerror.ServiceError)); ok {
+		return rf(ctx, orgID, filters)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, string, model.UpdateRequest, string, string) *model.ConsentPurpose); ok {
-		r0 = rf(ctx, purposeID, req, orgID, clientID)
+	if rf, ok := ret.Get(0).(func(context.Context, string, model.PurposeListFilter) *model.PurposeListOutput); ok {
+		r0 = rf(ctx, orgID, filters)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*model.ConsentPurpose)
+			r0 = ret.Get(0).(*model.PurposeListOutput)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, string, model.UpdateRequest, string, string) *serviceerror.ServiceError); ok {
-		r1 = rf(ctx, purposeID, req, orgID, clientID)
+	if rf, ok := ret.Get(1).(func(context.Context, string, model.PurposeListFilter) *serviceerror.ServiceError); ok {
+		r1 = rf(ctx, orgID, filters)
 	} else {
 		if ret.Get(1) != nil {
 			r1 = ret.Get(1).(*serviceerror.ServiceError)

@@ -17,45 +17,17 @@ type ConsentPurposeStore struct {
 	mock.Mock
 }
 
-// CheckPurposeNameExists provides a mock function with given fields: ctx, name, clientID, orgID, excludePurposeID
-func (_m *ConsentPurposeStore) CheckPurposeNameExists(ctx context.Context, name string, clientID string, orgID string, excludePurposeID *string) (bool, error) {
-	ret := _m.Called(ctx, name, clientID, orgID, excludePurposeID)
+// CreateVersion provides a mock function with given fields: tx, version
+func (_m *ConsentPurposeStore) CreateVersion(tx model.TxInterface, version *consentpurposemodel.PurposeVersion) error {
+	ret := _m.Called(tx, version)
 
 	if len(ret) == 0 {
-		panic("no return value specified for CheckPurposeNameExists")
-	}
-
-	var r0 bool
-	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, string, string, string, *string) (bool, error)); ok {
-		return rf(ctx, name, clientID, orgID, excludePurposeID)
-	}
-	if rf, ok := ret.Get(0).(func(context.Context, string, string, string, *string) bool); ok {
-		r0 = rf(ctx, name, clientID, orgID, excludePurposeID)
-	} else {
-		r0 = ret.Get(0).(bool)
-	}
-
-	if rf, ok := ret.Get(1).(func(context.Context, string, string, string, *string) error); ok {
-		r1 = rf(ctx, name, clientID, orgID, excludePurposeID)
-	} else {
-		r1 = ret.Error(1)
-	}
-
-	return r0, r1
-}
-
-// CreatePurpose provides a mock function with given fields: tx, purpose
-func (_m *ConsentPurposeStore) CreatePurpose(tx model.TxInterface, purpose *consentpurposemodel.ConsentPurpose) error {
-	ret := _m.Called(tx, purpose)
-
-	if len(ret) == 0 {
-		panic("no return value specified for CreatePurpose")
+		panic("no return value specified for CreateVersion")
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(model.TxInterface, *consentpurposemodel.ConsentPurpose) error); ok {
-		r0 = rf(tx, purpose)
+	if rf, ok := ret.Get(0).(func(model.TxInterface, *consentpurposemodel.PurposeVersion) error); ok {
+		r0 = rf(tx, version)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -81,17 +53,17 @@ func (_m *ConsentPurposeStore) DeletePurpose(tx model.TxInterface, purposeID str
 	return r0
 }
 
-// DeletePurposeElements provides a mock function with given fields: tx, purposeID, orgID
-func (_m *ConsentPurposeStore) DeletePurposeElements(tx model.TxInterface, purposeID string, orgID string) error {
-	ret := _m.Called(tx, purposeID, orgID)
+// DeleteVersion provides a mock function with given fields: tx, purposeVersionID, orgID
+func (_m *ConsentPurposeStore) DeleteVersion(tx model.TxInterface, purposeVersionID string, orgID string) error {
+	ret := _m.Called(tx, purposeVersionID, orgID)
 
 	if len(ret) == 0 {
-		panic("no return value specified for DeletePurposeElements")
+		panic("no return value specified for DeleteVersion")
 	}
 
 	var r0 error
 	if rf, ok := ret.Get(0).(func(model.TxInterface, string, string) error); ok {
-		r0 = rf(tx, purposeID, orgID)
+		r0 = rf(tx, purposeVersionID, orgID)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -99,24 +71,24 @@ func (_m *ConsentPurposeStore) DeletePurposeElements(tx model.TxInterface, purpo
 	return r0
 }
 
-// GetPurposeByID provides a mock function with given fields: ctx, purposeID, orgID
-func (_m *ConsentPurposeStore) GetPurposeByID(ctx context.Context, purposeID string, orgID string) (*consentpurposemodel.ConsentPurpose, error) {
+// GetLatestVersion provides a mock function with given fields: ctx, purposeID, orgID
+func (_m *ConsentPurposeStore) GetLatestVersion(ctx context.Context, purposeID string, orgID string) (*consentpurposemodel.PurposeVersion, error) {
 	ret := _m.Called(ctx, purposeID, orgID)
 
 	if len(ret) == 0 {
-		panic("no return value specified for GetPurposeByID")
+		panic("no return value specified for GetLatestVersion")
 	}
 
-	var r0 *consentpurposemodel.ConsentPurpose
+	var r0 *consentpurposemodel.PurposeVersion
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, string, string) (*consentpurposemodel.ConsentPurpose, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string, string) (*consentpurposemodel.PurposeVersion, error)); ok {
 		return rf(ctx, purposeID, orgID)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, string, string) *consentpurposemodel.ConsentPurpose); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string, string) *consentpurposemodel.PurposeVersion); ok {
 		r0 = rf(ctx, purposeID, orgID)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*consentpurposemodel.ConsentPurpose)
+			r0 = ret.Get(0).(*consentpurposemodel.PurposeVersion)
 		}
 	}
 
@@ -129,29 +101,29 @@ func (_m *ConsentPurposeStore) GetPurposeByID(ctx context.Context, purposeID str
 	return r0, r1
 }
 
-// GetPurposeElements provides a mock function with given fields: ctx, purposeID, orgID
-func (_m *ConsentPurposeStore) GetPurposeElements(ctx context.Context, purposeID string, orgID string) ([]consentpurposemodel.PurposeElement, error) {
-	ret := _m.Called(ctx, purposeID, orgID)
+// GetVersion provides a mock function with given fields: ctx, purposeID, version, orgID
+func (_m *ConsentPurposeStore) GetVersion(ctx context.Context, purposeID string, version int, orgID string) (*consentpurposemodel.PurposeVersion, error) {
+	ret := _m.Called(ctx, purposeID, version, orgID)
 
 	if len(ret) == 0 {
-		panic("no return value specified for GetPurposeElements")
+		panic("no return value specified for GetVersion")
 	}
 
-	var r0 []consentpurposemodel.PurposeElement
+	var r0 *consentpurposemodel.PurposeVersion
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, string, string) ([]consentpurposemodel.PurposeElement, error)); ok {
-		return rf(ctx, purposeID, orgID)
+	if rf, ok := ret.Get(0).(func(context.Context, string, int, string) (*consentpurposemodel.PurposeVersion, error)); ok {
+		return rf(ctx, purposeID, version, orgID)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, string, string) []consentpurposemodel.PurposeElement); ok {
-		r0 = rf(ctx, purposeID, orgID)
+	if rf, ok := ret.Get(0).(func(context.Context, string, int, string) *consentpurposemodel.PurposeVersion); ok {
+		r0 = rf(ctx, purposeID, version, orgID)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]consentpurposemodel.PurposeElement)
+			r0 = ret.Get(0).(*consentpurposemodel.PurposeVersion)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, string, string) error); ok {
-		r1 = rf(ctx, purposeID, orgID)
+	if rf, ok := ret.Get(1).(func(context.Context, string, int, string) error); ok {
+		r1 = rf(ctx, purposeID, version, orgID)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -159,27 +131,87 @@ func (_m *ConsentPurposeStore) GetPurposeElements(ctx context.Context, purposeID
 	return r0, r1
 }
 
-// IsElementUsedInPurposes provides a mock function with given fields: ctx, elementID, orgID
-func (_m *ConsentPurposeStore) IsElementUsedInPurposes(ctx context.Context, elementID string, orgID string) (bool, error) {
-	ret := _m.Called(ctx, elementID, orgID)
+// GetVersionByID provides a mock function with given fields: ctx, purposeVersionID, orgID
+func (_m *ConsentPurposeStore) GetVersionByID(ctx context.Context, purposeVersionID string, orgID string) (*consentpurposemodel.PurposeVersion, error) {
+	ret := _m.Called(ctx, purposeVersionID, orgID)
 
 	if len(ret) == 0 {
-		panic("no return value specified for IsElementUsedInPurposes")
+		panic("no return value specified for GetVersionByID")
+	}
+
+	var r0 *consentpurposemodel.PurposeVersion
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, string, string) (*consentpurposemodel.PurposeVersion, error)); ok {
+		return rf(ctx, purposeVersionID, orgID)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, string, string) *consentpurposemodel.PurposeVersion); ok {
+		r0 = rf(ctx, purposeVersionID, orgID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*consentpurposemodel.PurposeVersion)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, string, string) error); ok {
+		r1 = rf(ctx, purposeVersionID, orgID)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// GetVersionElements provides a mock function with given fields: ctx, purposeVersionID, orgID
+func (_m *ConsentPurposeStore) GetVersionElements(ctx context.Context, purposeVersionID string, orgID string) ([]consentpurposemodel.PurposeMappedElement, error) {
+	ret := _m.Called(ctx, purposeVersionID, orgID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetVersionElements")
+	}
+
+	var r0 []consentpurposemodel.PurposeMappedElement
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, string, string) ([]consentpurposemodel.PurposeMappedElement, error)); ok {
+		return rf(ctx, purposeVersionID, orgID)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, string, string) []consentpurposemodel.PurposeMappedElement); ok {
+		r0 = rf(ctx, purposeVersionID, orgID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]consentpurposemodel.PurposeMappedElement)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, string, string) error); ok {
+		r1 = rf(ctx, purposeVersionID, orgID)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// IsElementVersionUsed provides a mock function with given fields: ctx, elementVersionID, orgID
+func (_m *ConsentPurposeStore) IsElementVersionUsed(ctx context.Context, elementVersionID string, orgID string) (bool, error) {
+	ret := _m.Called(ctx, elementVersionID, orgID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for IsElementVersionUsed")
 	}
 
 	var r0 bool
 	var r1 error
 	if rf, ok := ret.Get(0).(func(context.Context, string, string) (bool, error)); ok {
-		return rf(ctx, elementID, orgID)
+		return rf(ctx, elementVersionID, orgID)
 	}
 	if rf, ok := ret.Get(0).(func(context.Context, string, string) bool); ok {
-		r0 = rf(ctx, elementID, orgID)
+		r0 = rf(ctx, elementVersionID, orgID)
 	} else {
 		r0 = ret.Get(0).(bool)
 	}
 
 	if rf, ok := ret.Get(1).(func(context.Context, string, string) error); ok {
-		r1 = rf(ctx, elementID, orgID)
+		r1 = rf(ctx, elementVersionID, orgID)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -187,17 +219,45 @@ func (_m *ConsentPurposeStore) IsElementUsedInPurposes(ctx context.Context, elem
 	return r0, r1
 }
 
-// LinkElementToPurpose provides a mock function with given fields: tx, purposeID, elementID, orgID, isMandatory
-func (_m *ConsentPurposeStore) LinkElementToPurpose(tx model.TxInterface, purposeID string, elementID string, orgID string, isMandatory bool) error {
-	ret := _m.Called(tx, purposeID, elementID, orgID, isMandatory)
+// IsVersionUsedInConsents provides a mock function with given fields: ctx, purposeVersionID, orgID
+func (_m *ConsentPurposeStore) IsVersionUsedInConsents(ctx context.Context, purposeVersionID string, orgID string) (bool, error) {
+	ret := _m.Called(ctx, purposeVersionID, orgID)
 
 	if len(ret) == 0 {
-		panic("no return value specified for LinkElementToPurpose")
+		panic("no return value specified for IsVersionUsedInConsents")
+	}
+
+	var r0 bool
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, string, string) (bool, error)); ok {
+		return rf(ctx, purposeVersionID, orgID)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, string, string) bool); ok {
+		r0 = rf(ctx, purposeVersionID, orgID)
+	} else {
+		r0 = ret.Get(0).(bool)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, string, string) error); ok {
+		r1 = rf(ctx, purposeVersionID, orgID)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// LinkElementVersion provides a mock function with given fields: tx, purposeVersionID, elementVersionID, orgID, mandatory
+func (_m *ConsentPurposeStore) LinkElementVersion(tx model.TxInterface, purposeVersionID string, elementVersionID string, orgID string, mandatory bool) error {
+	ret := _m.Called(tx, purposeVersionID, elementVersionID, orgID, mandatory)
+
+	if len(ret) == 0 {
+		panic("no return value specified for LinkElementVersion")
 	}
 
 	var r0 error
 	if rf, ok := ret.Get(0).(func(model.TxInterface, string, string, string, bool) error); ok {
-		r0 = rf(tx, purposeID, elementID, orgID, isMandatory)
+		r0 = rf(tx, purposeVersionID, elementVersionID, orgID, mandatory)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -205,36 +265,36 @@ func (_m *ConsentPurposeStore) LinkElementToPurpose(tx model.TxInterface, purpos
 	return r0
 }
 
-// ListPurposes provides a mock function with given fields: ctx, orgID, name, clientIDs, elementNames, offset, limit
-func (_m *ConsentPurposeStore) ListPurposes(ctx context.Context, orgID string, name string, clientIDs []string, elementNames []string, offset int, limit int) ([]consentpurposemodel.ConsentPurpose, int, error) {
-	ret := _m.Called(ctx, orgID, name, clientIDs, elementNames, offset, limit)
+// List provides a mock function with given fields: ctx, orgID, filters
+func (_m *ConsentPurposeStore) List(ctx context.Context, orgID string, filters consentpurposemodel.PurposeListFilter) ([]consentpurposemodel.PurposeVersion, int, error) {
+	ret := _m.Called(ctx, orgID, filters)
 
 	if len(ret) == 0 {
-		panic("no return value specified for ListPurposes")
+		panic("no return value specified for List")
 	}
 
-	var r0 []consentpurposemodel.ConsentPurpose
+	var r0 []consentpurposemodel.PurposeVersion
 	var r1 int
 	var r2 error
-	if rf, ok := ret.Get(0).(func(context.Context, string, string, []string, []string, int, int) ([]consentpurposemodel.ConsentPurpose, int, error)); ok {
-		return rf(ctx, orgID, name, clientIDs, elementNames, offset, limit)
+	if rf, ok := ret.Get(0).(func(context.Context, string, consentpurposemodel.PurposeListFilter) ([]consentpurposemodel.PurposeVersion, int, error)); ok {
+		return rf(ctx, orgID, filters)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, string, string, []string, []string, int, int) []consentpurposemodel.ConsentPurpose); ok {
-		r0 = rf(ctx, orgID, name, clientIDs, elementNames, offset, limit)
+	if rf, ok := ret.Get(0).(func(context.Context, string, consentpurposemodel.PurposeListFilter) []consentpurposemodel.PurposeVersion); ok {
+		r0 = rf(ctx, orgID, filters)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]consentpurposemodel.ConsentPurpose)
+			r0 = ret.Get(0).([]consentpurposemodel.PurposeVersion)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, string, string, []string, []string, int, int) int); ok {
-		r1 = rf(ctx, orgID, name, clientIDs, elementNames, offset, limit)
+	if rf, ok := ret.Get(1).(func(context.Context, string, consentpurposemodel.PurposeListFilter) int); ok {
+		r1 = rf(ctx, orgID, filters)
 	} else {
 		r1 = ret.Get(1).(int)
 	}
 
-	if rf, ok := ret.Get(2).(func(context.Context, string, string, []string, []string, int, int) error); ok {
-		r2 = rf(ctx, orgID, name, clientIDs, elementNames, offset, limit)
+	if rf, ok := ret.Get(2).(func(context.Context, string, consentpurposemodel.PurposeListFilter) error); ok {
+		r2 = rf(ctx, orgID, filters)
 	} else {
 		r2 = ret.Error(2)
 	}
@@ -242,22 +302,62 @@ func (_m *ConsentPurposeStore) ListPurposes(ctx context.Context, orgID string, n
 	return r0, r1, r2
 }
 
-// UpdatePurpose provides a mock function with given fields: tx, purpose
-func (_m *ConsentPurposeStore) UpdatePurpose(tx model.TxInterface, purpose *consentpurposemodel.ConsentPurpose) error {
-	ret := _m.Called(tx, purpose)
+// ListVersions provides a mock function with given fields: ctx, purposeID, orgID
+func (_m *ConsentPurposeStore) ListVersions(ctx context.Context, purposeID string, orgID string) ([]consentpurposemodel.PurposeVersion, error) {
+	ret := _m.Called(ctx, purposeID, orgID)
 
 	if len(ret) == 0 {
-		panic("no return value specified for UpdatePurpose")
+		panic("no return value specified for ListVersions")
 	}
 
-	var r0 error
-	if rf, ok := ret.Get(0).(func(model.TxInterface, *consentpurposemodel.ConsentPurpose) error); ok {
-		r0 = rf(tx, purpose)
+	var r0 []consentpurposemodel.PurposeVersion
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, string, string) ([]consentpurposemodel.PurposeVersion, error)); ok {
+		return rf(ctx, purposeID, orgID)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, string, string) []consentpurposemodel.PurposeVersion); ok {
+		r0 = rf(ctx, purposeID, orgID)
 	} else {
-		r0 = ret.Error(0)
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]consentpurposemodel.PurposeVersion)
+		}
 	}
 
-	return r0
+	if rf, ok := ret.Get(1).(func(context.Context, string, string) error); ok {
+		r1 = rf(ctx, purposeID, orgID)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// PurposeExists provides a mock function with given fields: ctx, purposeID, orgID
+func (_m *ConsentPurposeStore) PurposeExists(ctx context.Context, purposeID string, orgID string) (bool, error) {
+	ret := _m.Called(ctx, purposeID, orgID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for PurposeExists")
+	}
+
+	var r0 bool
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, string, string) (bool, error)); ok {
+		return rf(ctx, purposeID, orgID)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, string, string) bool); ok {
+		r0 = rf(ctx, purposeID, orgID)
+	} else {
+		r0 = ret.Get(0).(bool)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, string, string) error); ok {
+		r1 = rf(ctx, purposeID, orgID)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
 }
 
 // NewConsentPurposeStore creates a new instance of ConsentPurposeStore. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.

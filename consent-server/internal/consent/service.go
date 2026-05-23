@@ -26,6 +26,7 @@ import (
 	authmodel "github.com/wso2/openfgc/internal/authresource/model"
 	"github.com/wso2/openfgc/internal/consent/model"
 	"github.com/wso2/openfgc/internal/consent/validator"
+	purposemodel "github.com/wso2/openfgc/internal/consentpurpose/model"
 	"github.com/wso2/openfgc/internal/system/config"
 	dbmodel "github.com/wso2/openfgc/internal/system/database/model"
 	"github.com/wso2/openfgc/internal/system/error/serviceerror"
@@ -1419,7 +1420,7 @@ func (s *consentService) getResolvedConsentPurposes(
 		purposeName := mapping.PurposeName
 
 		// Fetch all elements in this purpose from database
-		purposeElements, err := purposeStore.GetPurposeElements(ctx, purposeID, orgID)
+		pv, err := purposeStore.GetLatestVersion(ctx, purposeID, orgID)
 		if err != nil {
 			logger.Error("Failed to fetch elements for purpose",
 				log.String("purpose_name", purposeName),
@@ -1427,6 +1428,7 @@ func (s *consentService) getResolvedConsentPurposes(
 				log.Error(err))
 			return nil, fmt.Errorf("failed to fetch elements for purpose '%s': %w", purposeName, err)
 		}
+		purposeElements := pv.Elements
 
 		// Initialize purpose with all elements having default values
 		purposesMap[purposeName] = &model.ConsentPurposeItem{
@@ -1439,10 +1441,10 @@ func (s *consentService) getResolvedConsentPurposes(
 			purposesMap[purposeName].Elements = append(
 				purposesMap[purposeName].Elements,
 				model.ConsentElementApprovalItem{
-					ElementName:    elem.ElementName,
-					IsUserApproved: false,            // Default: not approved
-					Value:          nil,              // Default: no value
-					IsMandatory:    elem.IsMandatory, // From purpose definition
+					ElementName:    elem.Name,
+					IsUserApproved: false,           // Default: not approved
+					Value:          nil,             // Default: no value
+					IsMandatory:    elem.Mandatory,  // From purpose definition
 				},
 			)
 		}
@@ -1556,7 +1558,12 @@ func (s *consentService) validatePurposes(
 	for _, requestedIndividualPurpose := range purposes {
 		// Fetch purpose metadata by name for this client
 		// Note: Using limit=1 since purpose names should be unique per client
-		retrievedPurposes, _, err := purposeStore.ListPurposes(ctx, orgID, requestedIndividualPurpose.PurposeName, []string{clientID}, nil, 0, 1)
+		retrievedPurposes, _, err := purposeStore.List(ctx, orgID, purposemodel.PurposeListFilter{
+			GroupIDs:    []string{clientID},
+			PurposeName: requestedIndividualPurpose.PurposeName,
+			Details:     true,
+			Limit:       1,
+		})
 		if err != nil {
 			logger.Error("Failed to fetch purpose from database",
 				log.String("purpose_name", requestedIndividualPurpose.PurposeName),
@@ -1597,7 +1604,7 @@ func (s *consentService) validatePurposes(
 		// This is used to validate that user-provided elements actually belong to this purpose
 		validElementNames := make(map[string]bool)
 		for _, elem := range purposeElementsFromDB {
-			validElementNames[elem.ElementName] = true
+			validElementNames[elem.Name] = true
 		}
 
 		// Step 5: Validate that all requested elements belong to this purpose
@@ -1616,25 +1623,25 @@ func (s *consentService) validatePurposes(
 		allElements := make([]model.ConsentElementApprovalCreateRequest, 0, len(purposeElementsFromDB))
 
 		for _, dbElement := range purposeElementsFromDB {
-			if requestedElement, found := requestedElementsMap[dbElement.ElementName]; found {
+			if requestedElement, found := requestedElementsMap[dbElement.Name]; found {
 				// Element was explicitly provided in request - use user's approval status
 				requestedElement.ElementID = dbElement.ElementID
-				requestedElement.IsMandatory = dbElement.IsMandatory
+				requestedElement.IsMandatory = dbElement.Mandatory
 				allElements = append(allElements, requestedElement)
 				logger.Debug("Using requested element approval",
-					log.String("element", dbElement.ElementName),
+					log.String("element", dbElement.Name),
 					log.Bool("approved", requestedElement.IsUserApproved))
 			} else {
 				// Element was NOT in request - auto-fill with isUserApproved=false
 				allElements = append(allElements, model.ConsentElementApprovalCreateRequest{
 					ElementID:      dbElement.ElementID,
-					ElementName:    dbElement.ElementName,
+					ElementName:    dbElement.Name,
 					IsUserApproved: false, // Not approved since user didn't provide it
 					Value:          nil,
-					IsMandatory:    dbElement.IsMandatory,
+					IsMandatory:    dbElement.Mandatory,
 				})
 				logger.Debug("Auto-filling missing element",
-					log.String("element", dbElement.ElementName),
+					log.String("element", dbElement.Name),
 					log.Bool("approved", false))
 			}
 		}

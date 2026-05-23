@@ -20,6 +20,7 @@ package consentpurpose
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -30,237 +31,394 @@ import (
 	"github.com/wso2/openfgc/internal/system/utils"
 )
 
-// consentPurposeHandler handles HTTP requests for consent purposes
+// consentPurposeHandler handles HTTP requests for consent purposes.
 type consentPurposeHandler struct {
 	service ConsentPurposeService
 }
 
-// newConsentPurposeHandler creates a new consent purpose handler
+// newConsentPurposeHandler creates a new consent purpose handler.
 func newConsentPurposeHandler(service ConsentPurposeService) *consentPurposeHandler {
-	return &consentPurposeHandler{
-		service: service,
-	}
+	return &consentPurposeHandler{service: service}
 }
 
-// createPurpose handles POST /consent-purposes
-func (h *consentPurposeHandler) createPurpose(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	orgID := r.Header.Get(constants.HeaderOrgID)
-	clientID := r.Header.Get(constants.HeaderTPPClientID)
+// =============================================================================
+// Handlers
+// =============================================================================
 
-	// Validate required headers
+// createPurpose handles POST /consent-purposes.
+// The group-id header is optional; when absent the purpose is org-level (groupId = orgId).
+func (h *consentPurposeHandler) createPurpose(w http.ResponseWriter, r *http.Request) {
+	orgID := r.Header.Get(constants.HeaderOrgID)
 	if orgID == "" {
 		utils.SendError(w, r, serviceerror.CustomServiceError(ErrorOrgIDRequired, "org-id header is required"))
 		return
 	}
-	if clientID == "" {
-		utils.SendError(w, r, serviceerror.CustomServiceError(ErrorClientIDRequired, "TPP-client-id header is required"))
-		return
+
+	groupID := r.Header.Get(constants.HeaderGroupID)
+	if groupID == "" {
+		groupID = orgID // org-level purpose
 	}
 
-	// Decode request
-	var req model.CreateRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	var req model.CreatePurposeRequest
+	if err := utils.DecodeJSONBody(r, &req); err != nil {
 		utils.SendError(w, r, serviceerror.CustomServiceError(ErrorInvalidRequestBody, "invalid request body"))
 		return
 	}
 
-	// Create consent purpose
-	purpose, serviceErr := h.service.CreatePurpose(ctx, req, orgID, clientID)
-	if serviceErr != nil {
-		utils.SendError(w, r, serviceErr)
+	input := model.CreatePurposeInput{
+		Name:        req.Name,
+		GroupID:     groupID,
+		DisplayName: req.DisplayName,
+		Description: req.Description,
+		Properties:  req.Properties,
+		Elements:    toElementRefs(req.Elements),
+	}
+
+	pv, svcErr := h.service.CreatePurpose(r.Context(), input, orgID)
+	if svcErr != nil {
+		utils.SendError(w, r, svcErr)
 		return
 	}
 
-	// Return response
-	response := purpose.ToResponse()
 	w.Header().Set(constants.HeaderContentType, constants.ContentTypeJSON)
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(response)
+	json.NewEncoder(w).Encode(purposeToResponse(pv))
 }
 
-// getPurpose handles GET /consent-purposes/{purposeId}
+// getPurpose handles GET /consent-purposes/{purposeId} — returns the latest version.
 func (h *consentPurposeHandler) getPurpose(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
 	orgID := r.Header.Get(constants.HeaderOrgID)
+	if orgID == "" {
+		utils.SendError(w, r, serviceerror.CustomServiceError(ErrorOrgIDRequired, "org-id header is required"))
+		return
+	}
+
 	purposeID := r.PathValue("purposeId")
 
-	// Validate required headers
-	if orgID == "" {
-		utils.SendError(w, r, serviceerror.CustomServiceError(ErrorOrgIDRequired, "org-id header is required"))
+	pv, svcErr := h.service.GetPurpose(r.Context(), purposeID, orgID)
+	if svcErr != nil {
+		utils.SendError(w, r, svcErr)
 		return
 	}
 
-	if purposeID == "" {
-		utils.SendError(w, r, serviceerror.CustomServiceError(ErrorPurposeIDRequired, "purposeId is required"))
-		return
-	}
-
-	// Get consent purpose
-	purpose, serviceErr := h.service.GetPurpose(ctx, purposeID, orgID)
-	if serviceErr != nil {
-		utils.SendError(w, r, serviceErr)
-		return
-	}
-
-	// Return response
-	response := purpose.ToResponse()
 	w.Header().Set(constants.HeaderContentType, constants.ContentTypeJSON)
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(response)
+	json.NewEncoder(w).Encode(purposeToResponse(pv))
 }
 
-// listPurposes handles GET /consent-purposes
+// listPurposes handles GET /consent-purposes.
 func (h *consentPurposeHandler) listPurposes(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
 	orgID := r.Header.Get(constants.HeaderOrgID)
-
-	// Validate required headers
 	if orgID == "" {
 		utils.SendError(w, r, serviceerror.CustomServiceError(ErrorOrgIDRequired, "org-id header is required"))
 		return
 	}
 
-	// Parse query parameters
-	queryParams := r.URL.Query()
+	q := r.URL.Query()
 
-	// Parse name filter
-	name := strings.TrimSpace(queryParams.Get("name"))
-
-	// Parse clientIds (comma-separated)
-	var clientIDs []string
-	if clientIDsParam := queryParams.Get("clientIds"); clientIDsParam != "" {
-		split := strings.Split(clientIDsParam, ",")
-		// Trim spaces and filter out empty strings
-		for i := range split {
-			trimmed := strings.TrimSpace(split[i])
-			if trimmed != "" {
-				clientIDs = append(clientIDs, trimmed)
+	var groupIDs []string
+	if raw := q.Get("groupIds"); raw != "" {
+		for _, g := range strings.Split(raw, ",") {
+			if t := strings.TrimSpace(g); t != "" {
+				groupIDs = append(groupIDs, t)
 			}
 		}
 	}
 
-	// Parse elementNames (comma-separated) - filter purposes by element names they contain
-	var elementNames []string
-	if elementNamesParam := queryParams.Get("elementNames"); elementNamesParam != "" {
-		split := strings.Split(elementNamesParam, ",")
-		// Trim spaces and filter out empty strings
-		for i := range split {
-			trimmed := strings.TrimSpace(split[i])
-			if trimmed != "" {
-				elementNames = append(elementNames, trimmed)
-			}
+	var purposeVersion *int
+	if raw := q.Get("purposeVersion"); raw != "" {
+		if v, err := strconv.Atoi(raw); err == nil && v > 0 {
+			purposeVersion = &v
 		}
 	}
 
-	// Parse pagination parameters
+	var elementVersion *int
+	if raw := q.Get("elementVersion"); raw != "" {
+		if v, err := strconv.Atoi(raw); err == nil && v > 0 {
+			elementVersion = &v
+		}
+	}
+
 	limit := 100
-	if limitParam := queryParams.Get("limit"); limitParam != "" {
-		if l, err := strconv.Atoi(limitParam); err == nil && l > 0 && l <= 100 {
+	if raw := q.Get("limit"); raw != "" {
+		if l, err := strconv.Atoi(raw); err == nil && l > 0 && l <= 100 {
 			limit = l
 		}
 	}
-
 	offset := 0
-	if offsetParam := queryParams.Get("offset"); offsetParam != "" {
-		if o, err := strconv.Atoi(offsetParam); err == nil && o >= 0 {
+	if raw := q.Get("offset"); raw != "" {
+		if o, err := strconv.Atoi(raw); err == nil && o >= 0 {
 			offset = o
 		}
 	}
 
-	// List consent purposes
-	purposes, total, serviceErr := h.service.ListPurposes(ctx, orgID, name, clientIDs, elementNames, offset, limit)
-	if serviceErr != nil {
-		utils.SendError(w, r, serviceErr)
+	purposeName := strings.TrimSpace(q.Get("purposeName"))
+	elementName := strings.TrimSpace(q.Get("elementName"))
+	elementNamespace := strings.TrimSpace(q.Get("elementNamespace"))
+
+	if purposeVersion != nil && purposeName == "" {
+		utils.SendError(w, r, serviceerror.CustomServiceError(ErrorInvalidQueryParams,
+			"purposeVersion requires purposeName to also be specified"))
+		return
+	}
+	if elementVersion != nil && elementName == "" && elementNamespace == "" {
+		utils.SendError(w, r, serviceerror.CustomServiceError(ErrorInvalidQueryParams,
+			"elementVersion requires at least one of elementName or elementNamespace to also be specified"))
 		return
 	}
 
-	// Convert to response format
-	responses := make([]model.Response, 0, len(purposes))
-	for _, purpose := range purposes {
-		responses = append(responses, purpose.ToResponse())
+	filters := model.PurposeListFilter{
+		GroupIDs:         groupIDs,
+		PurposeName:      purposeName,
+		PurposeVersion:   purposeVersion,
+		ElementName:      elementName,
+		ElementNamespace: elementNamespace,
+		ElementVersion:   elementVersion,
+		Details:          q.Get("details") == "true",
+		Limit:            limit,
+		Offset:           offset,
 	}
 
-	// Build response with pagination metadata
-	response := model.ListResponse{
-		Data: responses,
-		Metadata: model.PaginationMetadata{
-			Total:  total,
-			Offset: offset,
-			Count:  len(responses),
-			Limit:  limit,
+	out, svcErr := h.service.ListPurposes(r.Context(), orgID, filters)
+	if svcErr != nil {
+		utils.SendError(w, r, svcErr)
+		return
+	}
+
+	items := make([]model.PurposeResponse, 0, len(out.Data))
+	for i := range out.Data {
+		items = append(items, purposeToResponse(&out.Data[i]))
+	}
+
+	resp := model.PurposeListResponse{
+		Data: items,
+		Metadata: model.PageMetadata{
+			Total:  out.Total,
+			Offset: out.Offset,
+			Count:  out.Count,
+			Limit:  out.Limit,
 		},
 	}
 
 	w.Header().Set(constants.HeaderContentType, constants.ContentTypeJSON)
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(response)
+	json.NewEncoder(w).Encode(resp)
 }
 
-// updatePurpose handles PUT /consent-purposes/{purposeId}
-func (h *consentPurposeHandler) updatePurpose(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
+// listPurposeVersions handles GET /consent-purposes/{purposeId}/versions.
+func (h *consentPurposeHandler) listPurposeVersions(w http.ResponseWriter, r *http.Request) {
 	orgID := r.Header.Get(constants.HeaderOrgID)
-	clientID := r.Header.Get(constants.HeaderTPPClientID)
-	purposeID := r.PathValue("purposeId")
-
-	// Validate required headers and parameters
 	if orgID == "" {
 		utils.SendError(w, r, serviceerror.CustomServiceError(ErrorOrgIDRequired, "org-id header is required"))
 		return
 	}
-	if clientID == "" {
-		utils.SendError(w, r, serviceerror.CustomServiceError(ErrorClientIDRequired, "TPP-client-id header is required"))
-		return
-	}
-	if purposeID == "" {
-		utils.SendError(w, r, serviceerror.CustomServiceError(ErrorPurposeIDRequired, "purposeId is required"))
+
+	purposeID := r.PathValue("purposeId")
+
+	out, svcErr := h.service.GetPurposeVersions(r.Context(), purposeID, orgID)
+	if svcErr != nil {
+		utils.SendError(w, r, svcErr)
 		return
 	}
 
-	// Decode request
-	var req model.UpdateRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	versionItems := make([]model.PurposeVersionItem, 0, len(out.Versions))
+	for i := range out.Versions {
+		versionItems = append(versionItems, purposeToItem(&out.Versions[i]))
+	}
+
+	resp := model.PurposeVersionListResponse{
+		PurposeID: out.PurposeID,
+		Name:      out.Name,
+		GroupID:   out.GroupID,
+		Versions:  versionItems,
+	}
+
+	w.Header().Set(constants.HeaderContentType, constants.ContentTypeJSON)
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(resp)
+}
+
+// createPurposeVersion handles POST /consent-purposes/{purposeId}/versions.
+func (h *consentPurposeHandler) createPurposeVersion(w http.ResponseWriter, r *http.Request) {
+	orgID := r.Header.Get(constants.HeaderOrgID)
+	if orgID == "" {
+		utils.SendError(w, r, serviceerror.CustomServiceError(ErrorOrgIDRequired, "org-id header is required"))
+		return
+	}
+
+	purposeID := r.PathValue("purposeId")
+
+	var req model.CreatePurposeVersionRequest
+	if err := utils.DecodeJSONBody(r, &req); err != nil {
 		utils.SendError(w, r, serviceerror.CustomServiceError(ErrorInvalidRequestBody, "invalid request body"))
 		return
 	}
 
-	// Update consent purpose
-	purpose, serviceErr := h.service.UpdatePurpose(ctx, purposeID, req, orgID, clientID)
-	if serviceErr != nil {
-		utils.SendError(w, r, serviceErr)
+	input := model.CreatePurposeVersionInput{
+		DisplayName: req.DisplayName,
+		Description: req.Description,
+		Properties:  req.Properties,
+		Elements:    toElementRefs(req.Elements),
+	}
+
+	pv, svcErr := h.service.CreatePurposeVersion(r.Context(), purposeID, input, orgID)
+	if svcErr != nil {
+		utils.SendError(w, r, svcErr)
 		return
 	}
 
-	// Return response
-	response := purpose.ToResponse()
 	w.Header().Set(constants.HeaderContentType, constants.ContentTypeJSON)
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(response)
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(purposeToResponse(pv))
 }
 
-// deletePurpose handles DELETE /consent-purposes/{purposeId}
-func (h *consentPurposeHandler) deletePurpose(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
+// getPurposeVersion handles GET /consent-purposes/{purposeId}/versions/{version}.
+func (h *consentPurposeHandler) getPurposeVersion(w http.ResponseWriter, r *http.Request) {
 	orgID := r.Header.Get(constants.HeaderOrgID)
-	purposeID := r.PathValue("purposeId")
-
-	// Validate required headers and parameters
 	if orgID == "" {
 		utils.SendError(w, r, serviceerror.CustomServiceError(ErrorOrgIDRequired, "org-id header is required"))
 		return
 	}
-	if purposeID == "" {
-		utils.SendError(w, r, serviceerror.CustomServiceError(ErrorPurposeIDRequired, "purposeId is required"))
+
+	purposeID := r.PathValue("purposeId")
+	versionNum, err := parseVersionParam(r.PathValue("version"))
+	if err != nil {
+		utils.SendError(w, r, serviceerror.CustomServiceError(ErrorInvalidVersionFormat, err.Error()))
 		return
 	}
 
-	// Delete consent purpose
-	if serviceErr := h.service.DeletePurpose(ctx, purposeID, orgID); serviceErr != nil {
-		utils.SendError(w, r, serviceErr)
+	pv, svcErr := h.service.GetPurposeVersion(r.Context(), purposeID, versionNum, orgID)
+	if svcErr != nil {
+		utils.SendError(w, r, svcErr)
 		return
 	}
 
-	// Return no content
+	w.Header().Set(constants.HeaderContentType, constants.ContentTypeJSON)
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(purposeToResponse(pv))
+}
+
+// deletePurposeVersion handles DELETE /consent-purposes/{purposeId}/versions/{version}.
+func (h *consentPurposeHandler) deletePurposeVersion(w http.ResponseWriter, r *http.Request) {
+	orgID := r.Header.Get(constants.HeaderOrgID)
+	if orgID == "" {
+		utils.SendError(w, r, serviceerror.CustomServiceError(ErrorOrgIDRequired, "org-id header is required"))
+		return
+	}
+
+	purposeID := r.PathValue("purposeId")
+	versionNum, err := parseVersionParam(r.PathValue("version"))
+	if err != nil {
+		utils.SendError(w, r, serviceerror.CustomServiceError(ErrorInvalidVersionFormat, err.Error()))
+		return
+	}
+
+	if svcErr := h.service.DeletePurposeVersion(r.Context(), purposeID, versionNum, orgID); svcErr != nil {
+		utils.SendError(w, r, svcErr)
+		return
+	}
+
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// deletePurpose handles DELETE /consent-purposes/{purposeId}.
+func (h *consentPurposeHandler) deletePurpose(w http.ResponseWriter, r *http.Request) {
+	orgID := r.Header.Get(constants.HeaderOrgID)
+	if orgID == "" {
+		utils.SendError(w, r, serviceerror.CustomServiceError(ErrorOrgIDRequired, "org-id header is required"))
+		return
+	}
+
+	purposeID := r.PathValue("purposeId")
+
+	if svcErr := h.service.DeletePurpose(r.Context(), purposeID, orgID); svcErr != nil {
+		utils.SendError(w, r, svcErr)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// =============================================================================
+// Mapping helpers
+// =============================================================================
+
+// purposeToResponse maps a PurposeOutput to its API response shape.
+func purposeToResponse(p *model.PurposeOutput) model.PurposeResponse {
+	resp := model.PurposeResponse{
+		PurposeID:   p.ID,
+		Name:        p.Name,
+		GroupID:     p.GroupID,
+		Version:     fmt.Sprintf("v%d", p.VersionNum),
+		DisplayName: p.DisplayName,
+		Description: p.Description,
+		Properties:  p.Properties,
+		CreatedTime: p.CreatedTime,
+	}
+	if len(p.Elements) > 0 {
+		elems := make([]model.PurposeElementResponse, 0, len(p.Elements))
+		for _, e := range p.Elements {
+			elems = append(elems, model.PurposeElementResponse{
+				ElementID: e.ElementID,
+				Name:      e.Name,
+				Namespace: e.Namespace,
+				Version:   fmt.Sprintf("v%d", e.VersionNum),
+				Mandatory: e.Mandatory,
+			})
+		}
+		resp.Elements = elems
+	}
+	return resp
+}
+
+// purposeToItem maps a PurposeOutput to the compact version-list item shape.
+func purposeToItem(p *model.PurposeOutput) model.PurposeVersionItem {
+	item := model.PurposeVersionItem{
+		Version:     fmt.Sprintf("v%d", p.VersionNum),
+		DisplayName: p.DisplayName,
+		Description: p.Description,
+		Properties:  p.Properties,
+		CreatedTime: p.CreatedTime,
+	}
+	if len(p.Elements) > 0 {
+		elems := make([]model.PurposeElementResponse, 0, len(p.Elements))
+		for _, e := range p.Elements {
+			elems = append(elems, model.PurposeElementResponse{
+				ElementID: e.ElementID,
+				Name:      e.Name,
+				Namespace: e.Namespace,
+				Version:   fmt.Sprintf("v%d", e.VersionNum),
+				Mandatory: e.Mandatory,
+			})
+		}
+		item.Elements = elems
+	}
+	return item
+}
+
+// toElementRefs converts API request element refs to service input element refs.
+func toElementRefs(reqs []model.ElementRefRequest) []model.ElementRef {
+	refs := make([]model.ElementRef, 0, len(reqs))
+	for _, r := range reqs {
+		refs = append(refs, model.ElementRef{
+			Name:      r.Name,
+			Namespace: r.Namespace,
+			Version:   r.Version,
+			Mandatory: r.Mandatory,
+		})
+	}
+	return refs
+}
+
+// parseVersionParam parses a version path segment (e.g. "v2") and returns the integer value.
+// Returns an error if the format is invalid.
+func parseVersionParam(v string) (int, error) {
+	if len(v) < 2 || v[0] != 'v' {
+		return 0, fmt.Errorf("version must be in the format vN (e.g. v1, v2), got '%s'", v)
+	}
+	n, err := strconv.Atoi(v[1:])
+	if err != nil || n < 1 {
+		return 0, fmt.Errorf("version must be in the format vN (e.g. v1, v2), got '%s'", v)
+	}
+	return n, nil
 }

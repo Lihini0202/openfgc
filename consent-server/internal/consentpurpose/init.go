@@ -37,20 +37,17 @@ func Initialize(mux *http.ServeMux, registry *stores.StoreRegistry) ConsentPurpo
 	return service
 }
 
-// registerRoutes registers all consent purpose routes
+// registerRoutes registers all consent purpose routes.
 func registerRoutes(mux *http.ServeMux, handler *consentPurposeHandler) {
-	// POST /api/v1/consent-purposes - Create consent purpose
-	mux.HandleFunc("POST "+constants.APIBasePath+"/consent-purposes", handler.createPurpose)
+	base := constants.APIBasePath + "/consent-purposes"
 
-	// GET /api/v1/consent-purposes/{purposeId} - Get consent purpose by ID
-	mux.HandleFunc("GET "+constants.APIBasePath+"/consent-purposes/{purposeId}", handler.getPurpose)
+	mux.HandleFunc("POST "+base, handler.createPurpose)
+	mux.HandleFunc("GET "+base, handler.listPurposes)
+	mux.HandleFunc("GET "+base+"/{purposeId}", handler.getPurpose)
+	mux.HandleFunc("DELETE "+base+"/{purposeId}", handler.deletePurpose)
 
-	// GET /api/v1/consent-purposes - List consent purposes
-	mux.HandleFunc("GET "+constants.APIBasePath+"/consent-purposes", handler.listPurposes)
-
-	// PUT /api/v1/consent-purposes/{purposeId} - Update consent purpose
-	mux.HandleFunc("PUT "+constants.APIBasePath+"/consent-purposes/{purposeId}", handler.updatePurpose)
-
-	// DELETE /api/v1/consent-purposes/{purposeId} - Delete consent purpose
-	mux.HandleFunc("DELETE "+constants.APIBasePath+"/consent-purposes/{purposeId}", handler.deletePurpose)
+	mux.HandleFunc("GET "+base+"/{purposeId}/versions", handler.listPurposeVersions)
+	mux.HandleFunc("POST "+base+"/{purposeId}/versions", handler.createPurposeVersion)
+	mux.HandleFunc("GET "+base+"/{purposeId}/versions/{version}", handler.getPurposeVersion)
+	mux.HandleFunc("DELETE "+base+"/{purposeId}/versions/{version}", handler.deletePurposeVersion)
 }
