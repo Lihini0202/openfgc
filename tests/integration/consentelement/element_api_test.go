@@ -220,6 +220,20 @@ func (ts *ElementAPITestSuite) mustCreateVersion(orgID, elementID string, req Cr
 	return resp
 }
 
+// mustCreatePurposeForElement creates a minimal consent purpose that references the named element.
+// The server auto-resolves the element to its latest version.
+// Used when tests need a purpose to hold a reference to an element version before testing
+// deletion protection (DELETE should return 409 CE-4090 while that reference exists).
+func (ts *ElementAPITestSuite) mustCreatePurposeForElement(orgID, purposeName, elementName string) {
+	body := map[string]any{
+		"name":     purposeName,
+		"elements": []map[string]any{{"name": elementName}},
+	}
+	status, _ := ts.doRequest(http.MethodPost, "/api/v1/consent-purposes", orgID, body)
+	ts.Require().Equal(http.StatusCreated, status,
+		"mustCreatePurposeForElement: unexpected status creating purpose '%s'", purposeName)
+}
+
 // mustDeleteVersion deletes a specific version and fails if it doesn't return 204.
 func (ts *ElementAPITestSuite) mustDeleteVersion(orgID, elementID, version string) {
 	status := ts.doDeleteVersion(orgID, elementID, version)

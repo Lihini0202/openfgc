@@ -19,332 +19,333 @@
 package consentpurpose
 
 import (
-	"bytes"
 	"encoding/json"
 	"net/http"
-	"strings"
-
-	"github.com/stretchr/testify/require"
 )
 
-// ======================================
-// POST /consent-purposes Tests
-// ======================================
+// TestCreatePurpose covers POST /consent-purposes.
+//
+// Element verification contract:
+//   - When no version is specified in the request, the response must return the
+//     resolved version (always "v1" for a freshly created element).
+//   - When a version is pinned (e.g. "v1"), the response must echo that exact version.
+//   - Every element in the response must have a non-empty elementId, the correct name,
+//     namespace ("default" when not specified), version string, and mandatory flag.
+func (ts *PurposeAPITestSuite) TestCreatePurpose() {
+	type testCase struct {
+		name string
 
-// TestCreatePurpose_SinglePurpose_Success tests creating a purpose with one purpose
-func (ts *PurposeAPITestSuite) TestCreatePurpose_SinglePurpose_Success() {
-	t := ts.T()
+		// buildBody creates any required elements and returns the full request body.
+		// Used for happy-path cases that need real elements in scope.
+		buildBody func(orgID string) any
 
-	payload := PurposeCreateRequest{
-		Name:        "test_single_purpose",
-		Description: "Purpose with single purpose",
-		Elements: []PurposeElement{
-			{Name: "test_email", IsMandatory: true},
+		// rawBody is used for validation/error cases that fail before any element
+		// look-up (malformed JSON, version parse errors, org-id missing, etc.).
+		rawBody string
+
+		// setup runs before buildBody; use for pre-conditions beyond the body itself
+		// (e.g. a purpose that already exists to test duplicate detection).
+		setup func(orgID string)
+
+		groupID       string // group-id header value; "" = omit (server defaults to orgId)
+		omitOrgID     bool
+		wantStatus    int
+		wantErrorCode string
+		checkResult   func(orgID string, resp *PurposeResponse)
+	}
+
+	cases := []testCase{
+		// -----------------------------------------------------------------------
+		// group-id behaviour
+		// -----------------------------------------------------------------------
+		{
+			name: "missing group-id → groupId stored as orgId (org-level purpose)",
+			buildBody: func(orgID string) any {
+				ts.mustCreateElement(orgID, "cp-org-elem", "basic")
+				return CreatePurposeRequest{
+					Name:     "cp-org-level",
+					Elements: []ElementRefRequest{{Name: "cp-org-elem"}},
+				}
+			},
+			wantStatus: http.StatusCreated,
+			checkResult: func(orgID string, resp *PurposeResponse) {
+				ts.assertPurposeResponse(resp, "cp-org-level")
+				ts.Equal("v1", resp.Version)
+				ts.Equal(orgID, resp.GroupID,
+					"when group-id header is absent, groupId must equal orgId")
+				ts.Require().Len(resp.Elements, 1)
+				ts.assertPurposeElement(resp.Elements[0], "cp-org-elem", "default", "v1", false)
+			},
+		},
+		{
+			name:    "explicit group-id header — stored and returned as groupId",
+			groupID: "my-group",
+			buildBody: func(orgID string) any {
+				ts.mustCreateElement(orgID, "cp-grp-elem", "basic")
+				return CreatePurposeRequest{
+					Name:     "cp-grouped",
+					Elements: []ElementRefRequest{{Name: "cp-grp-elem", Mandatory: true}},
+				}
+			},
+			wantStatus: http.StatusCreated,
+			checkResult: func(_ string, resp *PurposeResponse) {
+				ts.assertPurposeResponse(resp, "cp-grouped")
+				ts.Equal("my-group", resp.GroupID)
+				ts.Require().Len(resp.Elements, 1)
+				ts.assertPurposeElement(resp.Elements[0], "cp-grp-elem", "default", "v1", true)
+			},
+		},
+
+		// -----------------------------------------------------------------------
+		// Element version resolution
+		// -----------------------------------------------------------------------
+		{
+			name: "element version not specified → server resolves to latest (v1)",
+			buildBody: func(orgID string) any {
+				ts.mustCreateElement(orgID, "cp-auto-ver-elem", "basic")
+				return CreatePurposeRequest{
+					Name: "cp-auto-ver",
+					Elements: []ElementRefRequest{
+						{Name: "cp-auto-ver-elem"}, // no Version field → use latest
+					},
+				}
+			},
+			wantStatus: http.StatusCreated,
+			checkResult: func(_ string, resp *PurposeResponse) {
+				ts.Require().Len(resp.Elements, 1)
+				ts.assertPurposeElement(resp.Elements[0], "cp-auto-ver-elem", "default", "v1", false)
+			},
+		},
+		{
+			name: "element pinned to v1 when v2 also exists — response confirms v1",
+			buildBody: func(orgID string) any {
+				elemID := ts.mustCreateElement(orgID, "cp-pin-elem", "basic")
+				// Create v2 so "latest" would be v2 — the pin must override it.
+				ts.doRequest(http.MethodPost,
+					"/api/v1/consent-elements/"+elemID+"/versions",
+					orgID, map[string]string{})
+				return CreatePurposeRequest{
+					Name: "cp-pinned",
+					Elements: []ElementRefRequest{
+						{Name: "cp-pin-elem", Version: ptr("v1"), Mandatory: true},
+					},
+				}
+			},
+			wantStatus: http.StatusCreated,
+			checkResult: func(_ string, resp *PurposeResponse) {
+				ts.Require().Len(resp.Elements, 1)
+				ts.assertPurposeElement(resp.Elements[0], "cp-pin-elem", "default", "v1", true)
+			},
+		},
+		{
+			name: "no version specified — always resolves to current latest (v2 after element is upgraded)",
+			buildBody: func(orgID string) any {
+				// Start with v1 only; bind a first purpose to establish v1 usage.
+				elemID := ts.mustCreateElement(orgID, "cp-up-elem", "basic")
+				ts.mustCreatePurposeWith(orgID, "", CreatePurposeRequest{
+					Name:     "cp-up-setup",
+					Elements: []ElementRefRequest{{Name: "cp-up-elem"}}, // resolves to v1
+				})
+				// Upgrade the element to v2.
+				ts.doRequest(http.MethodPost,
+					"/api/v1/consent-elements/"+elemID+"/versions",
+					orgID, map[string]string{})
+				// New purpose created without version — must bind to v2, not v1.
+				return CreatePurposeRequest{
+					Name:     "cp-up-after",
+					Elements: []ElementRefRequest{{Name: "cp-up-elem"}},
+				}
+			},
+			wantStatus: http.StatusCreated,
+			checkResult: func(_ string, resp *PurposeResponse) {
+				ts.Require().Len(resp.Elements, 1)
+				ts.assertPurposeElement(resp.Elements[0], "cp-up-elem", "default", "v2", false)
+			},
+		},
+
+		// -----------------------------------------------------------------------
+		// Multiple elements
+		// -----------------------------------------------------------------------
+		{
+			name: "multiple elements — all returned with correct name, namespace, version, mandatory",
+			buildBody: func(orgID string) any {
+				ts.mustCreateElement(orgID, "cp-multi-email", "basic")
+				ts.mustCreateElement(orgID, "cp-multi-phone", "basic")
+				ts.mustCreateElement(orgID, "cp-multi-addr", "basic")
+				return CreatePurposeRequest{
+					Name: "cp-multi-elem",
+					Elements: []ElementRefRequest{
+						{Name: "cp-multi-email", Mandatory: true},
+						{Name: "cp-multi-phone", Mandatory: false},
+						{Name: "cp-multi-addr", Mandatory: true},
+					},
+				}
+			},
+			wantStatus: http.StatusCreated,
+			checkResult: func(_ string, resp *PurposeResponse) {
+				ts.assertPurposeResponse(resp, "cp-multi-elem")
+				ts.Require().Len(resp.Elements, 3, "all three elements must be returned")
+				// Index by name for order-independent assertions.
+				byName := make(map[string]PurposeElementResponse, len(resp.Elements))
+				for _, e := range resp.Elements {
+					byName[e.Name] = e
+				}
+				ts.assertPurposeElement(byName["cp-multi-email"], "cp-multi-email", "default", "v1", true)
+				ts.assertPurposeElement(byName["cp-multi-phone"], "cp-multi-phone", "default", "v1", false)
+				ts.assertPurposeElement(byName["cp-multi-addr"], "cp-multi-addr", "default", "v1", true)
+			},
+		},
+
+		// -----------------------------------------------------------------------
+		// Optional metadata fields
+		// -----------------------------------------------------------------------
+		{
+			name: "displayName, description, properties — all round-trip correctly",
+			buildBody: func(orgID string) any {
+				ts.mustCreateElement(orgID, "cp-rich-elem", "basic")
+				return CreatePurposeRequest{
+					Name:        "cp-rich",
+					DisplayName: ptr("Rich Purpose"),
+					Description: ptr("A fully populated purpose"),
+					Properties:  map[string]string{"env": "test", "tier": "gold"},
+					Elements:    []ElementRefRequest{{Name: "cp-rich-elem"}},
+				}
+			},
+			wantStatus: http.StatusCreated,
+			checkResult: func(_ string, resp *PurposeResponse) {
+				ts.assertPurposeResponse(resp, "cp-rich")
+				ts.Require().NotNil(resp.DisplayName)
+				ts.Equal("Rich Purpose", *resp.DisplayName)
+				ts.Require().NotNil(resp.Description)
+				ts.Equal("A fully populated purpose", *resp.Description)
+				ts.Equal("test", resp.Properties["env"])
+				ts.Equal("gold", resp.Properties["tier"])
+				ts.Require().Len(resp.Elements, 1)
+				ts.assertPurposeElement(resp.Elements[0], "cp-rich-elem", "default", "v1", false)
+			},
+		},
+
+		// -----------------------------------------------------------------------
+		// Duplicate / conflict
+		// -----------------------------------------------------------------------
+		{
+			name: "same name + same groupId → 409 CP-4041",
+			setup: func(orgID string) {
+				ts.mustCreatePurpose(orgID, "cp-dup")
+			},
+			// Name check fires before element validation — any valid element name is fine.
+			rawBody:       `{"name":"cp-dup","elements":[{"name":"any"}]}`,
+			wantStatus:    http.StatusConflict,
+			wantErrorCode: "CP-4041",
+		},
+		{
+			name: "same name + different groupId → 201 allowed",
+			setup: func(orgID string) {
+				ts.mustCreatePurposeWith(orgID, "grp-a", CreatePurposeRequest{Name: "cp-shared-name"})
+			},
+			groupID: "grp-b",
+			buildBody: func(orgID string) any {
+				ts.mustCreateElement(orgID, "cp-shared-elem2", "basic")
+				return CreatePurposeRequest{
+					Name:     "cp-shared-name",
+					Elements: []ElementRefRequest{{Name: "cp-shared-elem2"}},
+				}
+			},
+			wantStatus: http.StatusCreated,
+			checkResult: func(_ string, resp *PurposeResponse) {
+				ts.assertPurposeResponse(resp, "cp-shared-name")
+				ts.Equal("grp-b", resp.GroupID)
+				ts.Require().Len(resp.Elements, 1)
+			},
+		},
+
+		// -----------------------------------------------------------------------
+		// Element validation errors
+		// -----------------------------------------------------------------------
+		{
+			name:          "no elements field at all → 400 CP-4003 (at least one required)",
+			rawBody:       `{"name":"cp-no-elems"}`,
+			wantStatus:    http.StatusBadRequest,
+			wantErrorCode: "CP-4003",
+		},
+		{
+			name:          "empty elements array → 400 CP-4003 (at least one required)",
+			rawBody:       `{"name":"cp-empty-elems","elements":[]}`,
+			wantStatus:    http.StatusBadRequest,
+			wantErrorCode: "CP-4003",
+		},
+		{
+			name:          "element name that does not exist → 400 CP-4003",
+			rawBody:       `{"name":"cp-missing-elem","elements":[{"name":"no-such-element-xyz"}]}`,
+			wantStatus:    http.StatusBadRequest,
+			wantErrorCode: "CP-4003",
+		},
+		{
+			name:          "element version in invalid format → 400 CP-4001",
+			rawBody:       `{"name":"cp-bad-ver","elements":[{"name":"e","version":"abc"}]}`,
+			wantStatus:    http.StatusBadRequest,
+			wantErrorCode: "CP-4001",
+		},
+		{
+			name:          "element version v0 (must be ≥ v1) → 400 CP-4001",
+			rawBody:       `{"name":"cp-ver-zero","elements":[{"name":"e","version":"v0"}]}`,
+			wantStatus:    http.StatusBadRequest,
+			wantErrorCode: "CP-4001",
+		},
+
+		// -----------------------------------------------------------------------
+		// Header validation errors
+		// -----------------------------------------------------------------------
+		{
+			name:          "missing org-id header → 400 CP-4004",
+			omitOrgID:     true,
+			rawBody:       `{"name":"cp-no-org","elements":[{"name":"e"}]}`,
+			wantStatus:    http.StatusBadRequest,
+			wantErrorCode: "CP-4004",
+		},
+		{
+			name:          "malformed JSON body → 400 CP-4001",
+			rawBody:       `{bad json`,
+			wantStatus:    http.StatusBadRequest,
+			wantErrorCode: "CP-4001",
 		},
 	}
 
-	resp, body := ts.createPurpose(payload)
-	require.Equal(t, http.StatusCreated, resp.StatusCode, "Failed to create purpose: %s", body)
+	for _, tc := range cases {
+		tc := tc
+		ts.Run(tc.name, func() {
+			orgID := freshOrgID()
 
-	var purposeResp PurposeResponse
-	err := json.Unmarshal(body, &purposeResp)
-	require.NoError(t, err)
+			if tc.setup != nil {
+				tc.setup(orgID)
+			}
 
-	require.NotEmpty(t, purposeResp.ID, "Purpose ID should not be empty")
-	require.Equal(t, "test_single_purpose", purposeResp.Name)
-	require.NotNil(t, purposeResp.Description)
-	require.Equal(t, "Purpose with single purpose", *purposeResp.Description)
-	require.Equal(t, testClientID, purposeResp.ClientID)
-	require.Len(t, purposeResp.Elements, 1)
-	require.Equal(t, "test_email", purposeResp.Elements[0].Name)
-	require.True(t, purposeResp.Elements[0].IsMandatory)
-	require.NotZero(t, purposeResp.CreatedTime)
-	require.NotZero(t, purposeResp.UpdatedTime)
+			requestOrgID := orgID
+			if tc.omitOrgID {
+				requestOrgID = ""
+			}
 
-	ts.trackPurpose(purposeResp.ID)
-}
+			// Dynamic builder takes priority; rawBody is the fallback for static bodies.
+			var reqBody any
+			if tc.buildBody != nil {
+				reqBody = tc.buildBody(orgID)
+			} else {
+				reqBody = tc.rawBody
+			}
 
-// TestCreatePurpose_MultiplePurposes_Success tests creating a purpose with multiple purposes
-func (ts *PurposeAPITestSuite) TestCreatePurpose_MultiplePurposes_Success() {
-	t := ts.T()
+			status, body := ts.doCreatePurposeFull(requestOrgID, tc.groupID, reqBody)
+			ts.Require().Equal(tc.wantStatus, status)
 
-	payload := PurposeCreateRequest{
-		Name:        "test_multi_purpose",
-		Description: "Purpose with multiple purposes",
-		Elements: []PurposeElement{
-			{Name: "test_email", IsMandatory: true},
-			{Name: "test_phone", IsMandatory: true},
-			{Name: "test_address", IsMandatory: false},
-		},
-	}
+			if tc.wantErrorCode != "" {
+				ts.assertAPIError(body, tc.wantErrorCode)
+				return
+			}
 
-	resp, body := ts.createPurpose(payload)
-	require.Equal(t, http.StatusCreated, resp.StatusCode, "Failed to create purpose: %s", body)
-
-	var purposeResp PurposeResponse
-	err := json.Unmarshal(body, &purposeResp)
-	require.NoError(t, err)
-
-	require.Equal(t, "test_multi_purpose", purposeResp.Name)
-	require.Len(t, purposeResp.Elements, 3)
-
-	// Verify all purposes are present
-	purposeMap := make(map[string]bool)
-	for _, p := range purposeResp.Elements {
-		purposeMap[p.Name] = p.IsMandatory
-	}
-	require.True(t, purposeMap["test_email"])
-	require.True(t, purposeMap["test_phone"])
-	require.False(t, purposeMap["test_address"])
-
-	ts.trackPurpose(purposeResp.ID)
-}
-
-// TestCreatePurpose_NoDescription_Success tests creating without description
-func (ts *PurposeAPITestSuite) TestCreatePurpose_NoDescription_Success() {
-	t := ts.T()
-
-	payload := PurposeCreateRequest{
-		Name: "test_no_description",
-		Elements: []PurposeElement{
-			{Name: "test_email", IsMandatory: true},
-		},
-	}
-
-	resp, body := ts.createPurpose(payload)
-	require.Equal(t, http.StatusCreated, resp.StatusCode, "Failed to create purpose: %s", body)
-
-	var purposeResp PurposeResponse
-	err := json.Unmarshal(body, &purposeResp)
-	require.NoError(t, err)
-
-	require.Equal(t, "test_no_description", purposeResp.Name)
-	// Description can be nil or empty
-	ts.trackPurpose(purposeResp.ID)
-}
-
-// TestCreatePurpose_AllOptionalPurposes_Success tests creating with all optional purposes
-func (ts *PurposeAPITestSuite) TestCreatePurpose_AllOptionalPurposes_Success() {
-	t := ts.T()
-
-	payload := PurposeCreateRequest{
-		Name:        "test_all_optional",
-		Description: "All purposes are optional",
-		Elements: []PurposeElement{
-			{Name: "test_email", IsMandatory: false},
-			{Name: "test_phone", IsMandatory: false},
-		},
-	}
-
-	resp, body := ts.createPurpose(payload)
-	require.Equal(t, http.StatusCreated, resp.StatusCode, "Failed to create purpose: %s", body)
-
-	var purposeResp PurposeResponse
-	err := json.Unmarshal(body, &purposeResp)
-	require.NoError(t, err)
-
-	for _, p := range purposeResp.Elements {
-		require.False(t, p.IsMandatory, "All purposes should be optional")
-	}
-
-	ts.trackPurpose(purposeResp.ID)
-}
-
-// TestCreatePurpose_DuplicateName_SameClient_Fails tests duplicate name for same client
-func (ts *PurposeAPITestSuite) TestCreatePurpose_DuplicateName_SameClient_Fails() {
-	t := ts.T()
-
-	payload := PurposeCreateRequest{
-		Name:        "test_duplicate_name",
-		Description: "First purpose",
-		Elements: []PurposeElement{
-			{Name: "test_email", IsMandatory: true},
-		},
-	}
-
-	// Create first purpose
-	resp, body := ts.createPurpose(payload)
-	require.Equal(t, http.StatusCreated, resp.StatusCode)
-	var purposeResp PurposeResponse
-	json.Unmarshal(body, &purposeResp)
-	ts.trackPurpose(purposeResp.ID)
-
-	// Try to create another with same name
-	payload.Description = "Second purpose"
-	resp, body = ts.createPurpose(payload)
-	require.Equal(t, http.StatusConflict, resp.StatusCode, "Should reject duplicate name: %s", body)
-
-	var errResp ErrorResponse
-	err := json.Unmarshal(body, &errResp)
-	require.NoError(t, err)
-	// Message could be "already exists", "Conflict", or "duplicate"
-	msg := strings.ToLower(errResp.Message)
-	require.True(t,
-		strings.Contains(msg, "already exists") || strings.Contains(msg, "conflict") || strings.Contains(msg, "duplicate"),
-		"Expected conflict/duplicate error message, got: %s", errResp.Message)
-}
-
-// TestCreatePurpose_InvalidPurposeName_Fails tests creating with non-existent purpose
-func (ts *PurposeAPITestSuite) TestCreatePurpose_InvalidPurposeName_Fails() {
-	t := ts.T()
-
-	payload := PurposeCreateRequest{
-		Name:        "test_invalid_purpose",
-		Description: "Purpose with invalid purpose",
-		Elements: []PurposeElement{
-			{Name: "non_existent_purpose_xyz", IsMandatory: true},
-		},
-	}
-
-	resp, body := ts.createPurpose(payload)
-	require.Equal(t, http.StatusBadRequest, resp.StatusCode, "Should reject invalid purpose: %s", body)
-
-	var errResp ErrorResponse
-	err := json.Unmarshal(body, &errResp)
-	require.NoError(t, err)
-	require.Contains(t, errResp.Description, "does not exist")
-}
-
-// TestCreatePurpose_EmptyName_Fails tests creating with empty name
-func (ts *PurposeAPITestSuite) TestCreatePurpose_EmptyName_Fails() {
-	t := ts.T()
-
-	payload := PurposeCreateRequest{
-		Name:        "",
-		Description: "Empty name test",
-		Elements: []PurposeElement{
-			{Name: "test_email", IsMandatory: true},
-		},
-	}
-
-	resp, body := ts.createPurpose(payload)
-	require.Equal(t, http.StatusBadRequest, resp.StatusCode, "Should reject empty name: %s", body)
-}
-
-// TestCreatePurpose_NoPurposes_Fails tests creating without any purposes
-func (ts *PurposeAPITestSuite) TestCreatePurpose_NoPurposes_Fails() {
-	t := ts.T()
-
-	payload := PurposeCreateRequest{
-		Name:        "test_no_purposes",
-		Description: "Purpose with no purposes",
-		Elements:    []PurposeElement{},
-	}
-
-	resp, body := ts.createPurpose(payload)
-	require.Equal(t, http.StatusBadRequest, resp.StatusCode, "Should reject purpose with no purposes: %s", body)
-}
-
-// TestCreatePurpose_DuplicateElementInPurpose_Fails tests duplicate element within same purpose
-func (ts *PurposeAPITestSuite) TestCreatePurpose_DuplicateElementInPurpose_Fails() {
-	t := ts.T()
-
-	payload := PurposeCreateRequest{
-		Name:        "test_duplicate_purpose_in",
-		Description: "Purpose with duplicate purpose",
-		Elements: []PurposeElement{
-			{Name: "test_email", IsMandatory: true},
-			{Name: "test_email", IsMandatory: false}, // Duplicate
-		},
-	}
-
-	resp, body := ts.createPurpose(payload)
-	require.Equal(t, http.StatusBadRequest, resp.StatusCode, "Should reject duplicate purposes: %s", body)
-
-	var errResp ErrorResponse
-	err := json.Unmarshal(body, &errResp)
-	require.NoError(t, err)
-	require.Contains(t, errResp.Description, "duplicate")
-}
-
-// TestCreatePurpose_MissingOrgIDHeader_Fails tests missing org-id header
-func (ts *PurposeAPITestSuite) TestCreatePurpose_MissingOrgIDHeader_Fails() {
-	t := ts.T()
-
-	payload := PurposeCreateRequest{
-		Name:        "test_missing_orgid",
-		Description: "Test missing header",
-		Elements: []PurposeElement{
-			{Name: "test_email", IsMandatory: true},
-		},
-	}
-
-	reqBody, _ := json.Marshal(payload)
-	httpReq, _ := http.NewRequest("POST", testServerURL+"/api/v1/consent-purposes",
-		bytes.NewBuffer(reqBody))
-	// Deliberately omit org-id header
-	httpReq.Header.Set("TPP-client-id", testClientID)
-	httpReq.Header.Set("Content-Type", "application/json")
-
-	client := &http.Client{}
-	resp, err := client.Do(httpReq)
-	require.NoError(t, err)
-	defer resp.Body.Close()
-
-	require.Equal(t, http.StatusBadRequest, resp.StatusCode, "Should reject missing org-id")
-}
-
-// TestCreatePurpose_MissingClientIDHeader_Fails tests missing TPP-client-id header
-func (ts *PurposeAPITestSuite) TestCreatePurpose_MissingClientIDHeader_Fails() {
-	t := ts.T()
-
-	payload := PurposeCreateRequest{
-		Name:        "test_missing_clientid",
-		Description: "Test missing header",
-		Elements: []PurposeElement{
-			{Name: "test_email", IsMandatory: true},
-		},
-	}
-
-	reqBody, _ := json.Marshal(payload)
-	httpReq, _ := http.NewRequest("POST", testServerURL+"/api/v1/consent-purposes",
-		bytes.NewBuffer(reqBody))
-	httpReq.Header.Set("org-id", testOrgID)
-	// Deliberately omit TPP-client-id header
-	httpReq.Header.Set("Content-Type", "application/json")
-
-	client := &http.Client{}
-	resp, err := client.Do(httpReq)
-	require.NoError(t, err)
-	defer resp.Body.Close()
-
-	require.Equal(t, http.StatusBadRequest, resp.StatusCode, "Should reject missing TPP-client-id")
-}
-
-// TestCreatePurpose_InvalidJSON_Fails tests malformed JSON
-func (ts *PurposeAPITestSuite) TestCreatePurpose_InvalidJSON_Fails() {
-	t := ts.T()
-
-	resp, body := ts.createPurpose("{invalid json}")
-	require.Equal(t, http.StatusBadRequest, resp.StatusCode, "Should reject invalid JSON: %s", body)
-}
-
-// TestCreatePurpose_LongName_Success tests creating with a long name
-func (ts *PurposeAPITestSuite) TestCreatePurpose_LongName_Success() {
-	t := ts.T()
-
-	// Create a name that's exactly 200 characters
-	longName := "test_very_long_name_"
-	for len(longName) < 200 {
-		longName += "a"
-	}
-	longName = longName[:200] // Ensure exactly 200 chars
-
-	payload := PurposeCreateRequest{
-		Name:        longName, // Use the 200 char name
-		Description: "Long name test",
-		Elements: []PurposeElement{
-			{Name: "test_email", IsMandatory: true},
-		},
-	}
-
-	resp, body := ts.createPurpose(payload)
-	// Should succeed if within database limits, otherwise fail gracefully
-	if resp.StatusCode == http.StatusCreated {
-		var purposeResp PurposeResponse
-		json.Unmarshal(body, &purposeResp)
-		ts.trackPurpose(purposeResp.ID)
-	} else {
-		require.Contains(t, []int{http.StatusBadRequest, http.StatusInternalServerError}, resp.StatusCode)
+			var resp PurposeResponse
+			ts.Require().NoError(json.Unmarshal(body, &resp), "unmarshal PurposeResponse: %s", body)
+			if tc.checkResult != nil {
+				tc.checkResult(orgID, &resp)
+			}
+		})
 	}
 }

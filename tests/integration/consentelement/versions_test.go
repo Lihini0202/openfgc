@@ -410,6 +410,16 @@ func (ts *ElementAPITestSuite) TestDeleteElementVersion() {
 			},
 		},
 		{
+			name: "version referenced by a purpose — 409 CE-4090",
+			setup: func(orgID string) (string, string) {
+				id := ts.mustCreateElement(orgID, "dv-in-use", "basic")
+				ts.mustCreatePurposeForElement(orgID, "dv-purpose-guard", "dv-in-use")
+				return id, "v1"
+			},
+			wantStatus:    http.StatusConflict,
+			wantErrorCode: "CE-4090",
+		},
+		{
 			name: "non-existent version — 404 CE-1016",
 			setup: func(orgID string) (string, string) {
 				id := ts.mustCreateElement(orgID, "dv-no-v99", "basic")
