@@ -363,7 +363,8 @@ func (ts *PurposeAPITestSuite) assertPurposeResponse(p *PurposeResponse, wantNam
 	ts.Require().NotEmpty(p.PurposeID, "purposeId must not be empty")
 	ts.Require().NotEmpty(p.GroupID, "groupId must not be empty")
 	ts.Require().NotEmpty(p.Version, "version must not be empty (expected 'v1', 'v2', …)")
-	ts.Require().Greater(p.CreatedTime, int64(0), "createdTime must be a positive Unix timestamp")
+	// 946684800000 = 2000-01-01 in Unix milliseconds — ensures millis, not seconds.
+	ts.Require().Greater(p.CreatedTime, int64(946684800000), "createdTime must be a Unix millisecond timestamp")
 	ts.Equal(wantName, p.Name, "name mismatch")
 }
 

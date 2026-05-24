@@ -103,7 +103,7 @@ func (s *consentPurposeService) CreatePurpose(ctx context.Context, input model.C
 
 	purposeID := utils.GenerateUUID()
 	versionID := utils.GenerateUUID()
-	now := time.Now().Unix()
+	now := time.Now().UnixMilli()
 
 	pv := &model.PurposeVersion{
 		VersionID:   versionID,
@@ -157,7 +157,7 @@ func (s *consentPurposeService) CreatePurposeVersion(ctx context.Context, purpos
 	}
 
 	versionID := utils.GenerateUUID()
-	now := time.Now().Unix()
+	now := time.Now().UnixMilli()
 
 	pv := &model.PurposeVersion{
 		VersionID:   versionID,
