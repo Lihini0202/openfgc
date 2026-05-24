@@ -29,39 +29,88 @@ import (
 	dbmodel "github.com/wso2/openfgc/internal/system/database/model"
 )
 
-// ConsentStore defines the interface for consent data operations
+// ConsentStore defines the interface for consent data operations.
 type ConsentStore interface {
-	GetByID(ctx context.Context, consentID, orgID string) (*consentModel.Consent, error)
-	Search(ctx context.Context, filters consentModel.ConsentSearchFilters) ([]consentModel.Consent, int, error)
-	GetAttributesByConsentID(ctx context.Context, consentID, orgID string) ([]consentModel.ConsentAttribute, error)
-	GetAttributesByConsentIDs(ctx context.Context, consentIDs []string, orgID string) (map[string]map[string]string, error)
-	FindConsentIDsByAttributeKey(ctx context.Context, key, orgID string) ([]string, error)
-	FindConsentIDsByAttribute(ctx context.Context, key, value, orgID string) ([]string, error)
+	// Create inserts a new CONSENT row within a transaction.
 	Create(tx dbmodel.TxInterface, consent *consentModel.Consent) error
+	// Update overwrites the mutable fields of an existing consent within a transaction.
 	Update(tx dbmodel.TxInterface, consent *consentModel.Consent) error
+	// UpdateStatus changes CURRENT_STATUS and UPDATED_TIME for a consent within a transaction.
+	// Returns an error if no row was matched (consent not found).
 	UpdateStatus(tx dbmodel.TxInterface, consentID, orgID, status string, updatedTime int64) error
+	// GetByID returns the CONSENT row for the given ID, or nil if not found.
+	GetByID(ctx context.Context, consentID, orgID string) (*consentModel.Consent, error)
+	// Search returns consents matching the filters along with the total count for pagination.
+	Search(ctx context.Context, filters consentModel.ConsentSearchFilter) ([]consentModel.Consent, int, error)
+
+	// CreateAttributes inserts one or more CONSENT_ATTRIBUTE rows within a transaction.
 	CreateAttributes(tx dbmodel.TxInterface, attributes []consentModel.ConsentAttribute) error
+	// DeleteAttributesByConsentID removes all attributes for a consent within a transaction.
 	DeleteAttributesByConsentID(tx dbmodel.TxInterface, consentID, orgID string) error
+	// GetAttributesByConsentID returns all attributes for a single consent.
+	GetAttributesByConsentID(ctx context.Context, consentID, orgID string) ([]consentModel.ConsentAttribute, error)
+	// GetAttributesByConsentIDs returns attributes for multiple consents in one query,
+	// keyed by consent ID then attribute key.
+	GetAttributesByConsentIDs(ctx context.Context, consentIDs []string, orgID string) (map[string]map[string]string, error)
+	// GetConsentIDsByAttributeKey returns all consent IDs that carry the given attribute key.
+	GetConsentIDsByAttributeKey(ctx context.Context, key, orgID string) ([]string, error)
+	// GetConsentIDsByAttribute returns all consent IDs that carry the given key-value attribute pair.
+	GetConsentIDsByAttribute(ctx context.Context, key, value, orgID string) ([]string, error)
+
+	// CreateStatusAudit inserts a CONSENT_STATUS_AUDIT row within a transaction.
 	CreateStatusAudit(tx dbmodel.TxInterface, audit *consentModel.ConsentStatusAudit) error
 
-	CreateConsentPurposeMapping(tx dbmodel.TxInterface, consentID, purposeID, orgID string) error
-	CreatePurposeElementApproval(tx dbmodel.TxInterface, approval *consentModel.ConsentElementApprovalRecord) error
-	GetConsentPurposeMappingsByConsentID(ctx context.Context, consentID, orgID string) ([]consentModel.ConsentPurposeMapping, error)
-	GetPurposeElementApprovalsByConsentID(ctx context.Context, consentID, orgID string) ([]consentModel.ConsentElementApprovalRecord, error)
-	DeleteConsentPurposeMappingsByConsentID(tx dbmodel.TxInterface, consentID, orgID string) error
-	DeletePurposeElementApprovalsByConsentID(tx dbmodel.TxInterface, consentID, orgID string) error
-	CheckPurposeUsedInConsents(ctx context.Context, purposeID, orgID string) (bool, error)
+	// LinkPurposeVersionToConsent records that a consent was created against a specific purpose version.
+	LinkPurposeVersionToConsent(tx dbmodel.TxInterface, consentID, purposeVersionID, orgID string) error
+	// DeletePurposesByConsentID removes all purpose-version links for a consent within a transaction.
+	DeletePurposesByConsentID(tx dbmodel.TxInterface, consentID, orgID string) error
+	// GetPurposesByConsentID returns purpose rows joined with PURPOSE metadata for a consent.
+	GetPurposesByConsentID(ctx context.Context, consentID, orgID string) ([]consentModel.ConsentPurposeRow, error)
+	// IsPurposeUsedInConsents reports whether any version of a logical purpose is referenced by any consent.
+	// Returns true → caller must reject the purpose delete with 409 Conflict.
+	IsPurposeUsedInConsents(ctx context.Context, purposeID, orgID string) (bool, error)
+
+	// CreateElementApproval records a user's approval state for one element within a purpose version.
+	CreateElementApproval(tx dbmodel.TxInterface, approval *consentModel.ConsentElementApproval) error
+	// DeleteElementApprovalsByConsentID removes all element approvals for a consent within a transaction.
+	DeleteElementApprovalsByConsentID(tx dbmodel.TxInterface, consentID, orgID string) error
+	// GetElementApprovalsByConsentID returns approval rows joined with ELEMENT metadata for a consent.
+	GetElementApprovalsByConsentID(ctx context.Context, consentID, orgID string) ([]consentModel.ConsentApprovalRow, error)
 }
 
-// AuthResourceStore defines the interface for authorization resource data operations
+// AuthResourceStore defines the interface for authorization resource data operations.
+// Auth resources are stored in the CONSENT_AUTH_RESOURCE table and are always scoped to
+// a consent (consentID) and an organization (orgID).
 type AuthResourceStore interface {
-	GetByID(ctx context.Context, authID, orgID string) (*authResourceModel.AuthResource, error)
-	GetByConsentID(ctx context.Context, consentID, orgID string) ([]authResourceModel.AuthResource, error)
-	GetByConsentIDs(ctx context.Context, consentIDs []string, orgID string) ([]authResourceModel.AuthResource, error)
+	// Create inserts a new CONSENT_AUTH_RESOURCE row within a transaction.
 	Create(tx dbmodel.TxInterface, authResource *authResourceModel.AuthResource) error
+
+	// Update overwrites AUTH_STATUS, USER_ID, RESOURCES, and UPDATED_TIME for an existing
+	// auth resource within a transaction. AUTH_ID and ORG_ID are used as the key.
 	Update(tx dbmodel.TxInterface, authResource *authResourceModel.AuthResource) error
+
+	// DeleteByConsentID removes all auth resource rows for a consent within a transaction.
+	// Called when a consent is being replaced (e.g., full update that replaces authorizations).
 	DeleteByConsentID(tx dbmodel.TxInterface, consentID, orgID string) error
+
+	// UpdateAllStatusByConsentID sets AUTH_STATUS and UPDATED_TIME for every auth resource
+	// belonging to a consent within a transaction.
+	// Used during consent revocation and expiry to bulk-update statuses in one statement.
 	UpdateAllStatusByConsentID(tx dbmodel.TxInterface, consentID, orgID, status string, updatedTime int64) error
+
+	// GetByID returns the CONSENT_AUTH_RESOURCE row for the given AUTH_ID, or nil if not found.
+	// The caller is responsible for verifying that the returned resource belongs to the
+	// expected consentID — ownership is not checked inside the store.
+	GetByID(ctx context.Context, authID, orgID string) (*authResourceModel.AuthResource, error)
+
+	// GetByConsentID returns all auth resource rows for a consent.
+	// Used when deriving the aggregate consent status from individual auth statuses.
+	GetByConsentID(ctx context.Context, consentID, orgID string) ([]authResourceModel.AuthResource, error)
+
+	// GetByConsentIDs returns auth resource rows for multiple consents in one query.
+	// Used for batch-loading auth resources during consent list/search responses.
+	// Returns an empty slice (not an error) when consentIDs is empty.
+	GetByConsentIDs(ctx context.Context, consentIDs []string, orgID string) ([]authResourceModel.AuthResource, error)
 }
 
 // ConsentElementStore defines the interface for consent element data operations.

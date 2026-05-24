@@ -20,474 +20,456 @@ package consent
 
 import (
 	"context"
-	"strings"
+	"errors"
 	"testing"
 
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+
+	authmodel "github.com/wso2/openfgc/internal/authresource/model"
 	"github.com/wso2/openfgc/internal/consent/model"
+	"github.com/wso2/openfgc/internal/system/config"
+	"github.com/wso2/openfgc/internal/system/stores"
+	"github.com/wso2/openfgc/tests/mocks/stores/interfacesmock"
 )
 
-func TestValidateConsentTypeLength(t *testing.T) {
-	// Test that consent type validation catches types that are too long
-	longType := strings.Repeat("a", 65)
+// =============================================================================
+// Test helpers
+// =============================================================================
 
-	require.Greater(t, len(longType), 64, "Test setup: type should be longer than 64 chars")
+const (
+	testOrgID     = "org-001"
+	testConsentID = "consent-001"
+)
+
+var errStoreConsent = errors.New("store error")
+
+func newConsentSvc(t *testing.T, cs *interfacesmock.ConsentStore, as *interfacesmock.AuthResourceStore) *consentService {
+	t.Helper()
+	return &consentService{stores: &stores.StoreRegistry{
+		Consent:      cs,
+		AuthResource: as,
+	}}
 }
 
-func TestValidateConsentTypeRequired(t *testing.T) {
-	// Test that empty consent type is caught
-	emptyType := ""
-
-	require.Empty(t, emptyType, "Type should be empty for this test")
+func makeTestConsent(id, orgID, status string) *model.Consent {
+	return &model.Consent{
+		ConsentID:     id,
+		OrgID:         orgID,
+		GroupID:       "group-001",
+		ConsentType:   "GENERAL",
+		CurrentStatus: status,
+		CreatedTime:   1000,
+		UpdatedTime:   1000,
+	}
 }
 
-func TestValidatePurposesStructure(t *testing.T) {
-	// Test that purposes array structure is validated
-	purposes := []model.ConsentPurposeItem{
-		{
-			PurposeName: "purpose-1",
-			Elements: []model.ConsentElementApprovalItem{
-				{ElementName: "element-1", IsUserApproved: true},
+func makeTestConfig() *config.Config {
+	return &config.Config{
+		Server: config.ServerConfig{Port: 9090},
+		Database: config.DatabasesConfig{
+			Consent: config.DatabaseConfig{
+				Type:     "sqlite",
+				Path:     ":memory:",
+				Hostname: "localhost",
+				Database: "consent_mgt",
+			},
+		},
+		Consent: config.ConsentConfig{
+			StatusMappings: config.ConsentStatusMappings{
+				ActiveStatus:   "ACTIVE",
+				ExpiredStatus:  "EXPIRED",
+				RevokedStatus:  "REVOKED",
+				CreatedStatus:  "CREATED",
+				RejectedStatus: "REJECTED",
+			},
+			AuthStatusMappings: config.AuthStatusMappings{
+				ApprovedState:      "APPROVED",
+				RejectedState:      "REJECTED",
+				CreatedState:       "CREATED",
+				SystemExpiredState: "SYSTEM_EXPIRED",
+				SystemRevokedState: "SYSTEM_REVOKED",
 			},
 		},
 	}
-
-	require.NotNil(t, purposes, "Purposes should be defined")
-	require.Len(t, purposes, 1, "Should have one purpose")
 }
 
-func TestValidateAuthorizationsRequired(t *testing.T) {
-	// Test that at least one authorization is required
-	emptyAuths := []model.AuthorizationAPIRequest{}
+// =============================================================================
+// parseVersionString
+// =============================================================================
 
-	require.Empty(t, emptyAuths, "Authorizations should be empty for validation test")
+func TestParseVersionString_Valid(t *testing.T) {
+	n, err := parseVersionString("v1")
+	require.NoError(t, err)
+	require.Equal(t, 1, n)
 }
 
-func TestConsentAPIRequestStructure(t *testing.T) {
-	// Test creating a valid ConsentAPIRequest structure
-	req := model.ConsentAPIRequest{
-		Type: "accounts",
-		Purposes: []model.ConsentPurposeItem{
-			{
-				PurposeName: "purpose-1",
-				Elements: []model.ConsentElementApprovalItem{
-					{ElementName: "element-1", IsUserApproved: true},
-				},
-			},
-		},
-		Authorizations: []model.AuthorizationAPIRequest{
-			{Type: "accounts"},
-		},
-	}
-
-	require.Equal(t, "accounts", req.Type)
-	require.Len(t, req.Purposes, 1)
-	require.Len(t, req.Authorizations, 1)
+func TestParseVersionString_LargerNumber(t *testing.T) {
+	n, err := parseVersionString("v42")
+	require.NoError(t, err)
+	require.Equal(t, 42, n)
 }
 
-func TestConsentRevokeRequestStructure(t *testing.T) {
-	// Test creating a valid revoke request
-	req := model.ConsentRevokeRequest{
-		ActionBy:         "admin",
-		RevocationReason: "User requested",
-	}
-
-	require.Equal(t, "admin", req.ActionBy)
-	require.Equal(t, "User requested", req.RevocationReason)
+func TestParseVersionString_EmptyString(t *testing.T) {
+	_, err := parseVersionString("")
+	require.Error(t, err)
 }
 
-func TestValidateRequestStructure(t *testing.T) {
-	// Test creating a valid validate request
-	req := model.ValidateRequest{
-		ConsentID: "consent-123",
-	}
-
-	require.Equal(t, "consent-123", req.ConsentID)
-	require.NotEmpty(t, req.ConsentID, "ConsentID should not be empty")
+func TestParseVersionString_NoPrefix(t *testing.T) {
+	_, err := parseVersionString("1")
+	require.Error(t, err)
 }
 
-func TestConsentResponseStructure(t *testing.T) {
-	// Test ConsentResponse model structure
-	resp := model.ConsentResponse{
-		ConsentID:     "consent-123",
-		ConsentType:   "accounts",
-		CurrentStatus: "active",
-		CreatedTime:   1234567890,
-		UpdatedTime:   1234567890,
-	}
-
-	require.Equal(t, "consent-123", resp.ConsentID)
-	require.Equal(t, "accounts", resp.ConsentType)
-	require.Equal(t, "active", resp.CurrentStatus)
+func TestParseVersionString_Zero(t *testing.T) {
+	_, err := parseVersionString("v0")
+	require.Error(t, err)
 }
 
-func TestConsentSearchFiltersDefaults(t *testing.T) {
-	// Test search filters with default pagination
-	filters := model.ConsentSearchFilters{
-		OrgID:  "org-1",
-		Limit:  10,
-		Offset: 0,
-	}
-
-	require.Equal(t, "org-1", filters.OrgID)
-	require.Equal(t, 10, filters.Limit)
-	require.Equal(t, 0, filters.Offset)
+func TestParseVersionString_Negative(t *testing.T) {
+	_, err := parseVersionString("v-1")
+	require.Error(t, err)
 }
 
-func TestValidateDuplicatePurposes(t *testing.T) {
-	// Test detection of duplicate purposes
-	purposes := []model.ConsentPurposeItem{
-		{
-			PurposeName: "purpose-1",
-			Elements: []model.ConsentElementApprovalItem{
-				{ElementName: "element-1", IsUserApproved: true},
-			},
-		},
-		{
-			PurposeName: "purpose-1", // duplicate
-			Elements: []model.ConsentElementApprovalItem{
-				{ElementName: "element-1", IsUserApproved: true},
-			},
-		},
-	}
-
-	seen := make(map[string]bool)
-	hasDuplicate := false
-
-	for _, p := range purposes {
-		if seen[p.PurposeName] {
-			hasDuplicate = true
-			break
-		}
-		seen[p.PurposeName] = true
-	}
-
-	require.True(t, hasDuplicate, "Should detect duplicate purpose IDs")
+func TestParseVersionString_NonNumeric(t *testing.T) {
+	_, err := parseVersionString("vabc")
+	require.Error(t, err)
 }
 
-func TestContextPropagation(t *testing.T) {
-	// Test that context is properly created
-	ctx := context.Background()
-	require.NotNil(t, ctx, "Context should not be nil")
+// =============================================================================
+// formatVersion
+// =============================================================================
+
+func TestFormatVersion_One(t *testing.T) {
+	require.Equal(t, "v1", formatVersion(1))
 }
 
-func TestConsentAttributeStructure(t *testing.T) {
-	// Test ConsentAttribute model
-	attr := model.ConsentAttribute{
-		ConsentID: "consent-123",
-		AttKey:    "key1",
-		AttValue:  "value1",
-		OrgID:     "org-1",
-	}
-
-	require.Equal(t, "consent-123", attr.ConsentID)
-	require.Equal(t, "key1", attr.AttKey)
-	require.Equal(t, "value1", attr.AttValue)
+func TestFormatVersion_Three(t *testing.T) {
+	require.Equal(t, "v3", formatVersion(3))
 }
 
-func TestConsentStatusAuditStructure(t *testing.T) {
-	// Test ConsentStatusAudit model
-	reason := "test reason"
-	actionBy := "admin"
-	audit := model.ConsentStatusAudit{
-		StatusAuditID:  "audit-1",
-		ConsentID:      "consent-123",
-		CurrentStatus:  "active",
-		ActionTime:     1234567890,
-		Reason:         &reason,
-		ActionBy:       &actionBy,
-		PreviousStatus: nil,
-		OrgID:          "org-1",
-	}
-
-	require.Equal(t, "audit-1", audit.StatusAuditID)
-	require.Equal(t, "consent-123", audit.ConsentID)
-	require.NotNil(t, audit.Reason)
-	require.Equal(t, "test reason", *audit.Reason)
+func TestFormatVersion_LargeNumber(t *testing.T) {
+	require.Equal(t, "v100", formatVersion(100))
 }
 
-func TestAuthorizationAPIRequestStructure(t *testing.T) {
-	// Test AuthorizationAPIRequest model
-	req := model.AuthorizationAPIRequest{
-		Type:   "accounts",
-		Status: "approved",
-		UserID: "user-123",
-	}
+// =============================================================================
+// valueToString
+// =============================================================================
 
-	require.Equal(t, "accounts", req.Type)
-	require.Equal(t, "approved", req.Status)
-	require.Equal(t, "user-123", req.UserID)
+func TestValueToString_Nil(t *testing.T) {
+	require.Equal(t, "", valueToString(nil))
 }
 
-func TestConsentDetailResponseStructure(t *testing.T) {
-	// Test ConsentDetailResponse model
-	resp := model.ConsentDetailResponse{
-		ID:        "consent-123",
-		Type:      "accounts",
-		Status:    "active",
-		ClientID:  "client-1",
-		Frequency: 1,
-	}
-
-	require.Equal(t, "consent-123", resp.ID)
-	require.Equal(t, "accounts", resp.Type)
-	require.Equal(t, 1, resp.Frequency)
+func TestValueToString_String(t *testing.T) {
+	require.Equal(t, "hello", valueToString("hello"))
 }
 
-func TestConsentSearchMetadataStructure(t *testing.T) {
-	// Test ConsentSearchMetadata model
-	metadata := model.ConsentSearchMetadata{
-		Total:  100,
-		Limit:  10,
-		Offset: 0,
-		Count:  10,
-	}
-
-	require.Equal(t, 100, metadata.Total)
-	require.Equal(t, 10, metadata.Limit)
-	require.Equal(t, 10, metadata.Count)
+func TestValueToString_EmptyString(t *testing.T) {
+	require.Equal(t, "", valueToString(""))
 }
 
-func TestConsentElementApprovalItemStructure(t *testing.T) {
-	// Test ConsentElementApprovalItem model
-	item := model.ConsentElementApprovalItem{
-		ElementName:    "element-1",
-		IsUserApproved: true,
-		Value:          "test-value",
-		IsMandatory:    false,
-	}
-
-	require.Equal(t, "element-1", item.ElementName)
-	require.True(t, item.IsUserApproved)
-	require.Equal(t, "test-value", item.Value)
+func TestValueToString_Int(t *testing.T) {
+	result := valueToString(42)
+	require.Equal(t, "42", result)
 }
 
-func TestConsentPurposeItemValidation(t *testing.T) {
-	// Test ConsentPurposeItem validation requirements
-	item := model.ConsentPurposeItem{
-		PurposeName: "purpose-1",
-		Elements: []model.ConsentElementApprovalItem{
-			{ElementName: "element-1", IsUserApproved: true},
-		},
-	}
-
-	require.NotEmpty(t, item.PurposeName, "PurposeName should not be empty")
-	require.NotEmpty(t, item.Elements, "Elements should not be empty")
-	require.Len(t, item.Elements, 1, "Should have exactly one element")
+func TestValueToString_Map(t *testing.T) {
+	m := map[string]interface{}{"key": "value"}
+	result := valueToString(m)
+	require.Contains(t, result, `"key"`)
+	require.Contains(t, result, `"value"`)
 }
 
-func TestMultipleAuthorizationsValidation(t *testing.T) {
-	// Test handling of multiple authorizations
-	req := model.ConsentAPIRequest{
-		Type: "accounts",
-		Purposes: []model.ConsentPurposeItem{
-			{
-				PurposeName: "purpose-1",
-				Elements: []model.ConsentElementApprovalItem{
-					{ElementName: "element-1", IsUserApproved: true},
-				},
-			},
-		},
-		Authorizations: []model.AuthorizationAPIRequest{
-			{Type: "accounts", UserID: "user-1"},
-			{Type: "payments", UserID: "user-2"},
-		},
-	}
-
-	require.Len(t, req.Authorizations, 2)
-	require.Equal(t, "user-1", req.Authorizations[0].UserID)
-	require.Equal(t, "user-2", req.Authorizations[1].UserID)
+func TestValueToString_Bool(t *testing.T) {
+	require.Equal(t, "true", valueToString(true))
 }
 
-func TestConsentWithAttributesStructure(t *testing.T) {
-	// Test consent with attributes
-	attributes := map[string]string{
-		"key1": "value1",
-		"key2": "value2",
-	}
+// =============================================================================
+// authResourceToOutput
+// =============================================================================
 
-	req := model.ConsentAPIRequest{
-		Type:       "accounts",
-		Attributes: attributes,
-		Purposes: []model.ConsentPurposeItem{
-			{
-				PurposeName: "purpose-1",
-				Elements: []model.ConsentElementApprovalItem{
-					{ElementName: "element-1", IsUserApproved: true},
-				},
-			},
-		},
-		Authorizations: []model.AuthorizationAPIRequest{
-			{Type: "accounts"},
-		},
+func TestAuthResourceToOutput_NoResources(t *testing.T) {
+	ar := authmodel.AuthResource{
+		AuthID:      "auth-001",
+		ConsentID:   testConsentID,
+		AuthType:    "default",
+		AuthStatus:  "APPROVED",
+		UpdatedTime: 1000,
+		OrgID:       testOrgID,
 	}
-
-	require.Len(t, req.Attributes, 2)
-	require.Equal(t, "value1", req.Attributes["key1"])
+	out := authResourceToOutput(ar)
+	require.Equal(t, "auth-001", out.AuthID)
+	require.Equal(t, testConsentID, out.ConsentID)
+	require.Equal(t, "default", out.AuthType)
+	require.Equal(t, "APPROVED", out.AuthStatus)
+	require.Equal(t, int64(1000), out.UpdatedTime)
+	require.Equal(t, testOrgID, out.OrgID)
+	require.Nil(t, out.Resources)
 }
 
-func TestConsentSearchFiltersWithMultipleStatuses(t *testing.T) {
-	// Test search filters with multiple consent statuses
-	filters := model.ConsentSearchFilters{
-		OrgID:           "org-1",
-		ConsentStatuses: []string{"active", "rejected"},
-		ConsentTypes:    []string{"accounts", "payments"},
-		Limit:           20,
-		Offset:          10,
+func TestAuthResourceToOutput_WithJSONResources(t *testing.T) {
+	jsonStr := `{"scope":"read"}`
+	ar := authmodel.AuthResource{
+		AuthID:    "auth-002",
+		ConsentID: testConsentID,
+		OrgID:     testOrgID,
+		Resources: &jsonStr,
 	}
-
-	require.Len(t, filters.ConsentStatuses, 2)
-	require.Len(t, filters.ConsentTypes, 2)
-	require.Contains(t, filters.ConsentStatuses, "active")
-	require.Contains(t, filters.ConsentTypes, "accounts")
+	out := authResourceToOutput(ar)
+	require.NotNil(t, out.Resources)
+	resourceMap, ok := out.Resources.(map[string]interface{})
+	require.True(t, ok)
+	require.Equal(t, "read", resourceMap["scope"])
 }
 
-func TestConsentWithPointerFields(t *testing.T) {
-	// Test consent with optional pointer fields
-	validityTime := int64(3600000)
-	frequency := 5
-	recurring := true
-	dataAccess := int64(7200000)
-
-	req := model.ConsentAPIRequest{
-		Type:                       "accounts",
-		ValidityTime:               &validityTime,
-		Frequency:                  &frequency,
-		RecurringIndicator:         &recurring,
-		DataAccessValidityDuration: &dataAccess,
-		Purposes: []model.ConsentPurposeItem{
-			{
-				PurposeName: "purpose-1",
-				Elements: []model.ConsentElementApprovalItem{
-					{ElementName: "element-1", IsUserApproved: true},
-				},
-			},
-		},
-		Authorizations: []model.AuthorizationAPIRequest{
-			{Type: "accounts"},
-		},
+func TestAuthResourceToOutput_EmptyResourcesString(t *testing.T) {
+	empty := ""
+	ar := authmodel.AuthResource{
+		AuthID:    "auth-003",
+		ConsentID: testConsentID,
+		OrgID:     testOrgID,
+		Resources: &empty,
 	}
-
-	require.NotNil(t, req.ValidityTime)
-	require.Equal(t, int64(3600000), *req.ValidityTime)
-	require.NotNil(t, req.Frequency)
-	require.Equal(t, 5, *req.Frequency)
+	out := authResourceToOutput(ar)
+	require.Nil(t, out.Resources)
 }
 
-func TestConsentRevokeRequestWithReason(t *testing.T) {
-	// Test revoke request with reason
-	req := model.ConsentRevokeRequest{
-		ActionBy:         "user-123",
-		RevocationReason: "Customer requested cancellation",
+func TestAuthResourceToOutput_WithUserID(t *testing.T) {
+	userID := "user-001"
+	ar := authmodel.AuthResource{
+		AuthID:    "auth-004",
+		ConsentID: testConsentID,
+		OrgID:     testOrgID,
+		UserID:    &userID,
 	}
-
-	require.Equal(t, "user-123", req.ActionBy)
-	require.NotEmpty(t, req.RevocationReason)
+	out := authResourceToOutput(ar)
+	require.NotNil(t, out.UserID)
+	require.Equal(t, "user-001", *out.UserID)
 }
 
-func TestValidateRequestWithConsentID(t *testing.T) {
-	// Test validate request structure
-	req := model.ValidateRequest{
-		ConsentID: "consent-123",
-	}
+// =============================================================================
+// GetConsent
+// =============================================================================
 
-	require.NotEmpty(t, req.ConsentID)
-	require.Equal(t, "consent-123", req.ConsentID)
+func TestGetConsent_NotFound(t *testing.T) {
+	cs := interfacesmock.NewConsentStore(t)
+	svc := newConsentSvc(t, cs, nil)
+
+	cs.On("GetByID", mock.Anything, testConsentID, testOrgID).Return(nil, nil)
+
+	out, svcErr := svc.GetConsent(context.Background(), testConsentID, testOrgID)
+	require.Nil(t, out)
+	require.NotNil(t, svcErr)
+	require.Equal(t, ErrorConsentNotFound.Code, svcErr.Code)
+	require.Contains(t, svcErr.Description, testConsentID)
 }
 
-func TestConsentAttributeSearchResponse(t *testing.T) {
-	// Test attribute search response structure
-	resp := model.ConsentAttributeSearchResponse{
-		ConsentIDs: []string{"consent-1", "consent-2", "consent-3"},
-	}
+func TestGetConsent_StoreError(t *testing.T) {
+	cs := interfacesmock.NewConsentStore(t)
+	svc := newConsentSvc(t, cs, nil)
 
-	require.Len(t, resp.ConsentIDs, 3)
-	require.Contains(t, resp.ConsentIDs, "consent-1")
+	cs.On("GetByID", mock.Anything, testConsentID, testOrgID).Return(nil, errStoreConsent)
+
+	out, svcErr := svc.GetConsent(context.Background(), testConsentID, testOrgID)
+	require.Nil(t, out)
+	require.NotNil(t, svcErr)
+	require.Equal(t, ErrorInternalServerError.Code, svcErr.Code)
 }
 
-func TestMultiplePurposesWithElements(t *testing.T) {
-	// Test consent with multiple purposes, each having multiple elements
-	purposes := []model.ConsentPurposeItem{
-		{
-			PurposeName: "purpose-1",
-			Elements: []model.ConsentElementApprovalItem{
-				{ElementName: "element-1", IsUserApproved: true, Value: "value1"},
-				{ElementName: "element-2", IsUserApproved: false},
-			},
-		},
-		{
-			PurposeName: "purpose-2",
-			Elements: []model.ConsentElementApprovalItem{
-				{ElementName: "element-3", IsUserApproved: true},
-			},
-		},
-	}
+func TestGetConsent_Success(t *testing.T) {
+	config.SetGlobal(makeTestConfig())
 
-	require.Len(t, purposes, 2)
-	require.Len(t, purposes[0].Elements, 2)
-	require.Len(t, purposes[1].Elements, 1)
-	require.Equal(t, "value1", purposes[0].Elements[0].Value)
+	cs := interfacesmock.NewConsentStore(t)
+	as := interfacesmock.NewAuthResourceStore(t)
+	svc := newConsentSvc(t, cs, as)
+
+	consent := makeTestConsent(testConsentID, testOrgID, "ACTIVE")
+	cs.On("GetByID", mock.Anything, testConsentID, testOrgID).Return(consent, nil)
+	cs.On("GetAttributesByConsentID", mock.Anything, testConsentID, testOrgID).Return([]model.ConsentAttribute{}, nil)
+	cs.On("GetPurposesByConsentID", mock.Anything, testConsentID, testOrgID).Return([]model.ConsentPurposeRow{}, nil)
+	cs.On("GetElementApprovalsByConsentID", mock.Anything, testConsentID, testOrgID).Return([]model.ConsentApprovalRow{}, nil)
+	as.On("GetByConsentID", mock.Anything, testConsentID, testOrgID).Return([]authmodel.AuthResource{}, nil)
+
+	out, svcErr := svc.GetConsent(context.Background(), testConsentID, testOrgID)
+	require.Nil(t, svcErr)
+	require.NotNil(t, out)
+	require.Equal(t, testConsentID, out.ConsentID)
+	require.Equal(t, testOrgID, out.OrgID)
+	require.Equal(t, "ACTIVE", out.CurrentStatus)
+	require.Equal(t, "GENERAL", out.ConsentType)
+	require.Empty(t, out.Purposes)
+	require.Empty(t, out.Authorizations)
 }
 
-func TestConsentUpdateRequestStructure(t *testing.T) {
-	// Test update request structure
-	freq := 3
-	req := model.ConsentAPIUpdateRequest{
-		Type:      "payments",
-		Frequency: &freq,
-		Purposes: []model.ConsentPurposeItem{
-			{
-				PurposeName: "updated-purpose",
-				Elements: []model.ConsentElementApprovalItem{
-					{ElementName: "element-1", IsUserApproved: true},
-				},
-			},
-		},
-	}
+// =============================================================================
+// RevokeConsent — pre-transaction validation paths
+// =============================================================================
 
-	require.Equal(t, "payments", req.Type)
-	require.NotNil(t, req.Frequency)
-	require.Equal(t, 3, *req.Frequency)
-	require.Len(t, req.Purposes, 1)
+func TestRevokeConsent_EmptyActionBy(t *testing.T) {
+	cs := interfacesmock.NewConsentStore(t)
+	svc := newConsentSvc(t, cs, nil)
+
+	out, svcErr := svc.RevokeConsent(context.Background(), testConsentID, testOrgID,
+		model.ConsentRevokeInput{ActionBy: ""})
+	require.Nil(t, out)
+	require.NotNil(t, svcErr)
+	require.Equal(t, ErrorValidationFailed.Code, svcErr.Code)
+	require.Contains(t, svcErr.Description, "actionBy is required")
 }
 
-func TestConsentSearchFiltersWithTimeRange(t *testing.T) {
-	// Test search filters with time range
-	fromTime := int64(1640000000000)
-	toTime := int64(1650000000000)
+func TestRevokeConsent_ConsentNotFound(t *testing.T) {
+	cs := interfacesmock.NewConsentStore(t)
+	svc := newConsentSvc(t, cs, nil)
 
-	filters := model.ConsentSearchFilters{
-		OrgID:    "org-1",
-		FromTime: &fromTime,
-		ToTime:   &toTime,
-		Limit:    50,
-		Offset:   0,
-	}
+	cs.On("GetByID", mock.Anything, testConsentID, testOrgID).Return(nil, nil)
 
-	require.NotNil(t, filters.FromTime)
-	require.NotNil(t, filters.ToTime)
-	require.Equal(t, int64(1640000000000), *filters.FromTime)
-	require.Equal(t, int64(1650000000000), *filters.ToTime)
+	out, svcErr := svc.RevokeConsent(context.Background(), testConsentID, testOrgID,
+		model.ConsentRevokeInput{ActionBy: "user-001"})
+	require.Nil(t, out)
+	require.NotNil(t, svcErr)
+	require.Equal(t, ErrorConsentNotFound.Code, svcErr.Code)
+	require.Contains(t, svcErr.Description, testConsentID)
 }
 
-func TestEmptyAttributesMap(t *testing.T) {
-	// Test consent with empty attributes map
-	req := model.ConsentAPIRequest{
-		Type:       "accounts",
-		Attributes: make(map[string]string),
-		Purposes: []model.ConsentPurposeItem{
-			{
-				PurposeName: "purpose-1",
-				Elements: []model.ConsentElementApprovalItem{
-					{ElementName: "element-1", IsUserApproved: true},
-				},
-			},
-		},
-		Authorizations: []model.AuthorizationAPIRequest{
-			{Type: "accounts"},
-		},
-	}
+func TestRevokeConsent_StoreError(t *testing.T) {
+	cs := interfacesmock.NewConsentStore(t)
+	svc := newConsentSvc(t, cs, nil)
 
-	require.NotNil(t, req.Attributes)
-	require.Empty(t, req.Attributes)
+	cs.On("GetByID", mock.Anything, testConsentID, testOrgID).Return(nil, errStoreConsent)
+
+	out, svcErr := svc.RevokeConsent(context.Background(), testConsentID, testOrgID,
+		model.ConsentRevokeInput{ActionBy: "user-001"})
+	require.Nil(t, out)
+	require.NotNil(t, svcErr)
+	require.Equal(t, ErrorInternalServerError.Code, svcErr.Code)
+}
+
+func TestRevokeConsent_AlreadyRevoked(t *testing.T) {
+	config.SetGlobal(makeTestConfig())
+
+	cs := interfacesmock.NewConsentStore(t)
+	svc := newConsentSvc(t, cs, nil)
+
+	consent := makeTestConsent(testConsentID, testOrgID, "REVOKED")
+	cs.On("GetByID", mock.Anything, testConsentID, testOrgID).Return(consent, nil)
+
+	out, svcErr := svc.RevokeConsent(context.Background(), testConsentID, testOrgID,
+		model.ConsentRevokeInput{ActionBy: "user-001"})
+	require.Nil(t, out)
+	require.NotNil(t, svcErr)
+	require.Equal(t, ErrorConsentAlreadyRevoked.Code, svcErr.Code)
+	require.Contains(t, svcErr.Description, testConsentID)
+}
+
+// =============================================================================
+// ValidateConsent — pre-store validation paths
+// =============================================================================
+
+func TestValidateConsent_EmptyConsentID(t *testing.T) {
+	cs := interfacesmock.NewConsentStore(t)
+	svc := newConsentSvc(t, cs, nil)
+
+	out, svcErr := svc.ValidateConsent(context.Background(),
+		model.ConsentValidateInput{ConsentID: ""}, testOrgID)
+	require.Nil(t, out)
+	require.NotNil(t, svcErr)
+	require.Equal(t, ErrorValidationFailed.Code, svcErr.Code)
+	require.Contains(t, svcErr.Description, "consentId is required")
+}
+
+func TestValidateConsent_ConsentNotFound(t *testing.T) {
+	cs := interfacesmock.NewConsentStore(t)
+	svc := newConsentSvc(t, cs, nil)
+
+	cs.On("GetByID", mock.Anything, testConsentID, testOrgID).Return(nil, nil)
+
+	out, svcErr := svc.ValidateConsent(context.Background(),
+		model.ConsentValidateInput{ConsentID: testConsentID}, testOrgID)
+	require.Nil(t, out)
+	require.NotNil(t, svcErr)
+	require.Equal(t, ErrorConsentNotFound.Code, svcErr.Code)
+}
+
+func TestValidateConsent_StoreError(t *testing.T) {
+	cs := interfacesmock.NewConsentStore(t)
+	svc := newConsentSvc(t, cs, nil)
+
+	cs.On("GetByID", mock.Anything, testConsentID, testOrgID).Return(nil, errStoreConsent)
+
+	out, svcErr := svc.ValidateConsent(context.Background(),
+		model.ConsentValidateInput{ConsentID: testConsentID}, testOrgID)
+	require.Nil(t, out)
+	require.NotNil(t, svcErr)
+	require.Equal(t, ErrorInternalServerError.Code, svcErr.Code)
+}
+
+// =============================================================================
+// SearchConsentsByAttribute
+// =============================================================================
+
+func TestSearchConsentsByAttribute_WithValue(t *testing.T) {
+	cs := interfacesmock.NewConsentStore(t)
+	svc := newConsentSvc(t, cs, nil)
+
+	cs.On("GetConsentIDsByAttribute", mock.Anything, "userId", "user-001", testOrgID).
+		Return([]string{"c-1", "c-2"}, nil)
+
+	out, svcErr := svc.SearchConsentsByAttribute(context.Background(), "userId", "user-001", testOrgID)
+	require.Nil(t, svcErr)
+	require.NotNil(t, out)
+	require.Equal(t, 2, out.Count)
+	require.ElementsMatch(t, []string{"c-1", "c-2"}, out.ConsentIDs)
+}
+
+func TestSearchConsentsByAttribute_WithoutValue(t *testing.T) {
+	cs := interfacesmock.NewConsentStore(t)
+	svc := newConsentSvc(t, cs, nil)
+
+	cs.On("GetConsentIDsByAttributeKey", mock.Anything, "userId", testOrgID).
+		Return([]string{"c-1", "c-2", "c-3"}, nil)
+
+	out, svcErr := svc.SearchConsentsByAttribute(context.Background(), "userId", "", testOrgID)
+	require.Nil(t, svcErr)
+	require.NotNil(t, out)
+	require.Equal(t, 3, out.Count)
+	require.Len(t, out.ConsentIDs, 3)
+}
+
+func TestSearchConsentsByAttribute_WithValueStoreError(t *testing.T) {
+	cs := interfacesmock.NewConsentStore(t)
+	svc := newConsentSvc(t, cs, nil)
+
+	cs.On("GetConsentIDsByAttribute", mock.Anything, "userId", "user-001", testOrgID).
+		Return(nil, errStoreConsent)
+
+	out, svcErr := svc.SearchConsentsByAttribute(context.Background(), "userId", "user-001", testOrgID)
+	require.Nil(t, out)
+	require.NotNil(t, svcErr)
+	require.Equal(t, ErrorInternalServerError.Code, svcErr.Code)
+}
+
+func TestSearchConsentsByAttribute_WithoutValueStoreError(t *testing.T) {
+	cs := interfacesmock.NewConsentStore(t)
+	svc := newConsentSvc(t, cs, nil)
+
+	cs.On("GetConsentIDsByAttributeKey", mock.Anything, "userId", testOrgID).
+		Return(nil, errStoreConsent)
+
+	out, svcErr := svc.SearchConsentsByAttribute(context.Background(), "userId", "", testOrgID)
+	require.Nil(t, out)
+	require.NotNil(t, svcErr)
+	require.Equal(t, ErrorInternalServerError.Code, svcErr.Code)
+}
+
+func TestSearchConsentsByAttribute_EmptyResult(t *testing.T) {
+	cs := interfacesmock.NewConsentStore(t)
+	svc := newConsentSvc(t, cs, nil)
+
+	cs.On("GetConsentIDsByAttribute", mock.Anything, "unknownKey", "someValue", testOrgID).
+		Return([]string{}, nil)
+
+	out, svcErr := svc.SearchConsentsByAttribute(context.Background(), "unknownKey", "someValue", testOrgID)
+	require.Nil(t, svcErr)
+	require.NotNil(t, out)
+	require.Equal(t, 0, out.Count)
+	require.Empty(t, out.ConsentIDs)
 }

@@ -42,21 +42,23 @@ func TestHandleCreate_Success(t *testing.T) {
 	handler := newAuthResourceHandler(mockService)
 
 	userID := "user-123"
-	request := model.CreateRequest{
-		AuthType:   "accounts",
-		AuthStatus: "authorized",
-		UserID:     &userID,
+	// Status is intentionally omitted — it is optional; the service applies the default.
+	// Including a status here would require config to be initialised (validator checks it).
+	request := model.AuthResourceCreateRequest{
+		Type:   "accounts",
+		UserID: &userID,
 	}
 
-	expectedResponse := &model.Response{
+	expectedOutput := &model.AuthResourceOutput{
 		AuthID:     testAuthID,
 		AuthType:   "accounts",
-		AuthStatus: "authorized",
+		AuthStatus: "APPROVED",
 		UserID:     &userID,
 	}
 
-	mockService.On("CreateAuthResource", mock.Anything, testConsentID, testOrgID, &request).
-		Return(expectedResponse, nil)
+	mockService.On("CreateAuthResource", mock.Anything, testConsentID, testOrgID,
+		mock.AnythingOfType("model.CreateAuthResourceInput")).
+		Return(expectedOutput, nil)
 
 	body, _ := json.Marshal(request)
 	req := httptest.NewRequest(http.MethodPost, "/consents/"+testConsentID+"/authorizations", bytes.NewBuffer(body))
@@ -66,7 +68,7 @@ func TestHandleCreate_Success(t *testing.T) {
 
 	handler.handleCreate(rr, req)
 
-	require.Equal(t, http.StatusCreated, rr.Code)
+	require.Equal(t, http.StatusOK, rr.Code)
 	mockService.AssertExpectations(t)
 }
 
@@ -74,9 +76,9 @@ func TestHandleCreate_MissingOrgID(t *testing.T) {
 	mockService := NewMockAuthResourceService(t)
 	handler := newAuthResourceHandler(mockService)
 
-	request := model.CreateRequest{
-		AuthType:   "accounts",
-		AuthStatus: "authorized",
+	request := model.AuthResourceCreateRequest{
+		Type:   "accounts",
+		Status: "authorized",
 	}
 
 	body, _ := json.Marshal(request)
@@ -93,9 +95,9 @@ func TestHandleCreate_MissingConsentID(t *testing.T) {
 	mockService := NewMockAuthResourceService(t)
 	handler := newAuthResourceHandler(mockService)
 
-	request := model.CreateRequest{
-		AuthType:   "accounts",
-		AuthStatus: "authorized",
+	request := model.AuthResourceCreateRequest{
+		Type:   "accounts",
+		Status: "authorized",
 	}
 
 	body, _ := json.Marshal(request)
@@ -123,7 +125,51 @@ func TestHandleCreate_InvalidJSON(t *testing.T) {
 }
 
 func TestHandleGet_Success(t *testing.T) {
-	t.Skip("Skipping - requires path value setup")
+	mockService := NewMockAuthResourceService(t)
+	handler := newAuthResourceHandler(mockService)
+
+	uid := "user-1"
+	expectedOutput := &model.AuthResourceOutput{
+		AuthID:     testAuthID,
+		ConsentID:  testConsentID,
+		AuthType:   "authorisation",
+		UserID:     &uid,
+		AuthStatus: "APPROVED",
+	}
+
+	mockService.On("GetAuthResource", mock.Anything, testAuthID, testConsentID, testOrgID).
+		Return(expectedOutput, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/consents/"+testConsentID+"/authorizations/"+testAuthID, nil)
+	req.Header.Set(constants.HeaderOrgID, testOrgID)
+	req.SetPathValue("consentId", testConsentID)
+	req.SetPathValue("authorizationId", testAuthID)
+	rr := httptest.NewRecorder()
+
+	handler.handleGet(rr, req)
+
+	require.Equal(t, http.StatusOK, rr.Code)
+	mockService.AssertExpectations(t)
+}
+
+func TestHandleGet_ServiceError(t *testing.T) {
+	mockService := NewMockAuthResourceService(t)
+	handler := newAuthResourceHandler(mockService)
+
+	svcErr := &ErrorAuthResourceNotFound
+
+	mockService.On("GetAuthResource", mock.Anything, testAuthID, testConsentID, testOrgID).
+		Return((*model.AuthResourceOutput)(nil), svcErr)
+
+	req := httptest.NewRequest(http.MethodGet, "/consents/"+testConsentID+"/authorizations/"+testAuthID, nil)
+	req.Header.Set(constants.HeaderOrgID, testOrgID)
+	req.SetPathValue("consentId", testConsentID)
+	req.SetPathValue("authorizationId", testAuthID)
+	rr := httptest.NewRecorder()
+
+	handler.handleGet(rr, req)
+
+	require.Equal(t, http.StatusNotFound, rr.Code)
 }
 
 func TestHandleGet_MissingOrgID(t *testing.T) {
@@ -158,8 +204,8 @@ func TestHandleListByConsent_Success(t *testing.T) {
 	mockService := NewMockAuthResourceService(t)
 	handler := newAuthResourceHandler(mockService)
 
-	expectedResponse := &model.ListResponse{
-		Data: []model.Response{
+	expectedOutput := &model.AuthResourceListOutput{
+		Data: []model.AuthResourceOutput{
 			{
 				AuthID:     testAuthID,
 				AuthType:   "accounts",
@@ -169,7 +215,7 @@ func TestHandleListByConsent_Success(t *testing.T) {
 	}
 
 	mockService.On("GetAuthResourcesByConsentID", mock.Anything, testConsentID, testOrgID).
-		Return(expectedResponse, nil)
+		Return(expectedOutput, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/consents/"+testConsentID+"/authorizations", nil)
 	req.Header.Set(constants.HeaderOrgID, testOrgID)
@@ -209,15 +255,67 @@ func TestHandleListByConsent_MissingConsentID(t *testing.T) {
 }
 
 func TestHandleUpdate_Success(t *testing.T) {
-	t.Skip("Skipping - requires path value setup")
+	mockService := NewMockAuthResourceService(t)
+	handler := newAuthResourceHandler(mockService)
+
+	updateReq := model.AuthResourceUpdateRequest{
+		Type: "re-authorisation",
+	}
+	expectedOutput := &model.AuthResourceOutput{
+		AuthID:     testAuthID,
+		ConsentID:  testConsentID,
+		AuthType:   "re-authorisation",
+		AuthStatus: "APPROVED",
+	}
+
+	mockService.On("UpdateAuthResource", mock.Anything, testAuthID, testConsentID, testOrgID,
+		mock.AnythingOfType("model.UpdateAuthResourceInput")).
+		Return(expectedOutput, nil)
+
+	body, _ := json.Marshal(updateReq)
+	req := httptest.NewRequest(http.MethodPut, "/consents/"+testConsentID+"/authorizations/"+testAuthID, bytes.NewBuffer(body))
+	req.Header.Set(constants.HeaderOrgID, testOrgID)
+	req.SetPathValue("consentId", testConsentID)
+	req.SetPathValue("authorizationId", testAuthID)
+	rr := httptest.NewRecorder()
+
+	handler.handleUpdate(rr, req)
+
+	require.Equal(t, http.StatusOK, rr.Code)
+	mockService.AssertExpectations(t)
+}
+
+func TestHandleUpdate_ServiceError(t *testing.T) {
+	mockService := NewMockAuthResourceService(t)
+	handler := newAuthResourceHandler(mockService)
+
+	updateReq := model.AuthResourceUpdateRequest{
+		Type: "re-authorisation",
+	}
+	svcErr := &ErrorAuthResourceNotFound
+
+	mockService.On("UpdateAuthResource", mock.Anything, testAuthID, testConsentID, testOrgID,
+		mock.AnythingOfType("model.UpdateAuthResourceInput")).
+		Return((*model.AuthResourceOutput)(nil), svcErr)
+
+	body, _ := json.Marshal(updateReq)
+	req := httptest.NewRequest(http.MethodPut, "/consents/"+testConsentID+"/authorizations/"+testAuthID, bytes.NewBuffer(body))
+	req.Header.Set(constants.HeaderOrgID, testOrgID)
+	req.SetPathValue("consentId", testConsentID)
+	req.SetPathValue("authorizationId", testAuthID)
+	rr := httptest.NewRecorder()
+
+	handler.handleUpdate(rr, req)
+
+	require.Equal(t, http.StatusNotFound, rr.Code)
 }
 
 func TestHandleUpdate_MissingOrgID(t *testing.T) {
 	mockService := NewMockAuthResourceService(t)
 	handler := newAuthResourceHandler(mockService)
 
-	updateReq := model.UpdateRequest{
-		AuthStatus: "revoked",
+	updateReq := model.AuthResourceUpdateRequest{
+		Status: "revoked",
 	}
 	body, _ := json.Marshal(updateReq)
 	req := httptest.NewRequest(http.MethodPut, "/consents/"+testConsentID+"/authorizations/"+testAuthID, bytes.NewBuffer(body))

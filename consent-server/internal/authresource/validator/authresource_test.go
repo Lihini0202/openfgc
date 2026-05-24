@@ -44,20 +44,33 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
+// =============================================================================
+// ValidateAuthResourceCreateRequest
+// =============================================================================
+
 func TestValidateAuthResourceCreateRequest_Success(t *testing.T) {
-	req := model.ConsentAuthResourceCreateRequest{
-		AuthType:   "accounts",
-		AuthStatus: "authorized",
+	// Type and Status are both optional.
+	req := model.AuthResourceCreateRequest{
+		Type:   "accounts",
+		Status: "authorized",
 	}
 
 	err := ValidateAuthResourceCreateRequest(req, "consent-123", "org-123")
 	require.NoError(t, err)
 }
 
+func TestValidateAuthResourceCreateRequest_NoTypeOrStatus(t *testing.T) {
+	// Both Type and Status are optional — empty request is valid.
+	req := model.AuthResourceCreateRequest{}
+
+	err := ValidateAuthResourceCreateRequest(req, "consent-123", "org-123")
+	require.NoError(t, err)
+}
+
 func TestValidateAuthResourceCreateRequest_MissingConsentID(t *testing.T) {
-	req := model.ConsentAuthResourceCreateRequest{
-		AuthType:   "accounts",
-		AuthStatus: "authorized",
+	req := model.AuthResourceCreateRequest{
+		Type:   "accounts",
+		Status: "authorized",
 	}
 
 	err := ValidateAuthResourceCreateRequest(req, "", "org-123")
@@ -66,9 +79,9 @@ func TestValidateAuthResourceCreateRequest_MissingConsentID(t *testing.T) {
 }
 
 func TestValidateAuthResourceCreateRequest_MissingOrgID(t *testing.T) {
-	req := model.ConsentAuthResourceCreateRequest{
-		AuthType:   "accounts",
-		AuthStatus: "authorized",
+	req := model.AuthResourceCreateRequest{
+		Type:   "accounts",
+		Status: "authorized",
 	}
 
 	err := ValidateAuthResourceCreateRequest(req, "consent-123", "")
@@ -76,28 +89,21 @@ func TestValidateAuthResourceCreateRequest_MissingOrgID(t *testing.T) {
 	require.Contains(t, err.Error(), "orgID is required")
 }
 
-func TestValidateAuthResourceCreateRequest_MissingAuthType(t *testing.T) {
-	req := model.ConsentAuthResourceCreateRequest{
-		AuthStatus: "authorized",
+func TestValidateAuthResourceCreateRequest_SystemReservedStatus(t *testing.T) {
+	req := model.AuthResourceCreateRequest{
+		Status: "system_expired",
 	}
 
 	err := ValidateAuthResourceCreateRequest(req, "consent-123", "org-123")
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "authType is required")
+	require.Contains(t, err.Error(), "system-reserved")
 }
 
-func TestValidateAuthResourceCreateRequest_MissingAuthStatus(t *testing.T) {
-	req := model.ConsentAuthResourceCreateRequest{
-		AuthType: "accounts",
-	}
-
-	err := ValidateAuthResourceCreateRequest(req, "consent-123", "org-123")
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "authStatus is required")
-}
+// =============================================================================
+// ValidateAuthStatus
+// =============================================================================
 
 func TestValidateAuthStatus_ValidStatus(t *testing.T) {
-	// Create mock mappings
 	mappings := config.AuthStatusMappings{
 		SystemExpiredState: "system_expired",
 		SystemRevokedState: "system_revoked",
@@ -107,10 +113,23 @@ func TestValidateAuthStatus_ValidStatus(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestValidateAuthStatus_SystemExpiredRejected(t *testing.T) {
+	mappings := config.AuthStatusMappings{
+		SystemExpiredState: "system_expired",
+		SystemRevokedState: "system_revoked",
+	}
+
+	require.Error(t, ValidateAuthStatus("system_expired", mappings))
+	require.Error(t, ValidateAuthStatus("system_revoked", mappings))
+}
+
+// =============================================================================
+// ValidateAuthResourceUpdateRequest
+// =============================================================================
+
 func TestValidateAuthResourceUpdateRequest_Success(t *testing.T) {
-	status := "revoked"
-	req := model.ConsentAuthResourceUpdateRequest{
-		AuthStatus: status,
+	req := model.AuthResourceUpdateRequest{
+		Status: "revoked",
 	}
 
 	err := ValidateAuthResourceUpdateRequest(req)
@@ -119,7 +138,7 @@ func TestValidateAuthResourceUpdateRequest_Success(t *testing.T) {
 
 func TestValidateAuthResourceUpdateRequest_WithUserID(t *testing.T) {
 	userID := "user-123"
-	req := model.ConsentAuthResourceUpdateRequest{
+	req := model.AuthResourceUpdateRequest{
 		UserID: &userID,
 	}
 
@@ -128,9 +147,8 @@ func TestValidateAuthResourceUpdateRequest_WithUserID(t *testing.T) {
 }
 
 func TestValidateAuthResourceUpdateRequest_WithResources(t *testing.T) {
-	resources := map[string]interface{}{"key": "value"}
-	req := model.ConsentAuthResourceUpdateRequest{
-		Resources: resources,
+	req := model.AuthResourceUpdateRequest{
+		Resources: map[string]interface{}{"key": "value"},
 	}
 
 	err := ValidateAuthResourceUpdateRequest(req)
@@ -138,7 +156,7 @@ func TestValidateAuthResourceUpdateRequest_WithResources(t *testing.T) {
 }
 
 func TestValidateAuthResourceUpdateRequest_EmptyRequest(t *testing.T) {
-	req := model.ConsentAuthResourceUpdateRequest{}
+	req := model.AuthResourceUpdateRequest{}
 
 	err := ValidateAuthResourceUpdateRequest(req)
 	require.Error(t, err)
@@ -146,12 +164,11 @@ func TestValidateAuthResourceUpdateRequest_EmptyRequest(t *testing.T) {
 }
 
 func TestValidateAuthResourceUpdateRequest_MultipleFields(t *testing.T) {
-	status := "authorized"
 	userID := "user-123"
-	req := model.ConsentAuthResourceUpdateRequest{
-		AuthStatus: status,
-		UserID:     &userID,
-		Resources:  map[string]interface{}{"key": "value"},
+	req := model.AuthResourceUpdateRequest{
+		Status:    "authorized",
+		UserID:    &userID,
+		Resources: map[string]interface{}{"key": "value"},
 	}
 
 	err := ValidateAuthResourceUpdateRequest(req)

@@ -7,7 +7,6 @@ import (
 
 	mock "github.com/stretchr/testify/mock"
 	model "github.com/wso2/openfgc/internal/consent/model"
-
 	serviceerror "github.com/wso2/openfgc/internal/system/error/serviceerror"
 )
 
@@ -16,29 +15,37 @@ type MockConsentService struct {
 	mock.Mock
 }
 
-// CreateConsent provides a mock function with given fields: ctx, req, clientID, orgID
-func (_m *MockConsentService) CreateConsent(ctx context.Context, req model.ConsentAPIRequest, clientID string, orgID string) (*model.ConsentResponse, *serviceerror.ServiceError) {
-	ret := _m.Called(ctx, req, clientID, orgID)
+type MockConsentService_Expecter struct {
+	mock *mock.Mock
+}
+
+func (_m *MockConsentService) EXPECT() *MockConsentService_Expecter {
+	return &MockConsentService_Expecter{mock: &_m.Mock}
+}
+
+// CreateConsent provides a mock function with given fields: ctx, input, orgID
+func (_m *MockConsentService) CreateConsent(ctx context.Context, input model.CreateConsentInput, orgID string) (*model.ConsentOutput, *serviceerror.ServiceError) {
+	ret := _m.Called(ctx, input, orgID)
 
 	if len(ret) == 0 {
 		panic("no return value specified for CreateConsent")
 	}
 
-	var r0 *model.ConsentResponse
+	var r0 *model.ConsentOutput
 	var r1 *serviceerror.ServiceError
-	if rf, ok := ret.Get(0).(func(context.Context, model.ConsentAPIRequest, string, string) (*model.ConsentResponse, *serviceerror.ServiceError)); ok {
-		return rf(ctx, req, clientID, orgID)
+	if rf, ok := ret.Get(0).(func(context.Context, model.CreateConsentInput, string) (*model.ConsentOutput, *serviceerror.ServiceError)); ok {
+		return rf(ctx, input, orgID)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, model.ConsentAPIRequest, string, string) *model.ConsentResponse); ok {
-		r0 = rf(ctx, req, clientID, orgID)
+	if rf, ok := ret.Get(0).(func(context.Context, model.CreateConsentInput, string) *model.ConsentOutput); ok {
+		r0 = rf(ctx, input, orgID)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*model.ConsentResponse)
+			r0 = ret.Get(0).(*model.ConsentOutput)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, model.ConsentAPIRequest, string, string) *serviceerror.ServiceError); ok {
-		r1 = rf(ctx, req, clientID, orgID)
+	if rf, ok := ret.Get(1).(func(context.Context, model.CreateConsentInput, string) *serviceerror.ServiceError); ok {
+		r1 = rf(ctx, input, orgID)
 	} else {
 		if ret.Get(1) != nil {
 			r1 = ret.Get(1).(*serviceerror.ServiceError)
@@ -48,24 +55,54 @@ func (_m *MockConsentService) CreateConsent(ctx context.Context, req model.Conse
 	return r0, r1
 }
 
+// MockConsentService_CreateConsent_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'CreateConsent'
+type MockConsentService_CreateConsent_Call struct {
+	*mock.Call
+}
+
+// CreateConsent is a helper method to define mock.On call
+//   - ctx context.Context
+//   - input model.CreateConsentInput
+//   - orgID string
+func (_e *MockConsentService_Expecter) CreateConsent(ctx interface{}, input interface{}, orgID interface{}) *MockConsentService_CreateConsent_Call {
+	return &MockConsentService_CreateConsent_Call{Call: _e.mock.On("CreateConsent", ctx, input, orgID)}
+}
+
+func (_c *MockConsentService_CreateConsent_Call) Run(run func(ctx context.Context, input model.CreateConsentInput, orgID string)) *MockConsentService_CreateConsent_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(model.CreateConsentInput), args[2].(string))
+	})
+	return _c
+}
+
+func (_c *MockConsentService_CreateConsent_Call) Return(_a0 *model.ConsentOutput, _a1 *serviceerror.ServiceError) *MockConsentService_CreateConsent_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *MockConsentService_CreateConsent_Call) RunAndReturn(run func(context.Context, model.CreateConsentInput, string) (*model.ConsentOutput, *serviceerror.ServiceError)) *MockConsentService_CreateConsent_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetConsent provides a mock function with given fields: ctx, consentID, orgID
-func (_m *MockConsentService) GetConsent(ctx context.Context, consentID string, orgID string) (*model.ConsentResponse, *serviceerror.ServiceError) {
+func (_m *MockConsentService) GetConsent(ctx context.Context, consentID string, orgID string) (*model.ConsentOutput, *serviceerror.ServiceError) {
 	ret := _m.Called(ctx, consentID, orgID)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetConsent")
 	}
 
-	var r0 *model.ConsentResponse
+	var r0 *model.ConsentOutput
 	var r1 *serviceerror.ServiceError
-	if rf, ok := ret.Get(0).(func(context.Context, string, string) (*model.ConsentResponse, *serviceerror.ServiceError)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string, string) (*model.ConsentOutput, *serviceerror.ServiceError)); ok {
 		return rf(ctx, consentID, orgID)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, string, string) *model.ConsentResponse); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string, string) *model.ConsentOutput); ok {
 		r0 = rf(ctx, consentID, orgID)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*model.ConsentResponse)
+			r0 = ret.Get(0).(*model.ConsentOutput)
 		}
 	}
 
@@ -80,29 +117,59 @@ func (_m *MockConsentService) GetConsent(ctx context.Context, consentID string, 
 	return r0, r1
 }
 
-// RevokeConsent provides a mock function with given fields: ctx, consentID, orgID, req
-func (_m *MockConsentService) RevokeConsent(ctx context.Context, consentID string, orgID string, req model.ConsentRevokeRequest) (*model.ConsentRevokeResponse, *serviceerror.ServiceError) {
-	ret := _m.Called(ctx, consentID, orgID, req)
+// MockConsentService_GetConsent_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetConsent'
+type MockConsentService_GetConsent_Call struct {
+	*mock.Call
+}
+
+// GetConsent is a helper method to define mock.On call
+//   - ctx context.Context
+//   - consentID string
+//   - orgID string
+func (_e *MockConsentService_Expecter) GetConsent(ctx interface{}, consentID interface{}, orgID interface{}) *MockConsentService_GetConsent_Call {
+	return &MockConsentService_GetConsent_Call{Call: _e.mock.On("GetConsent", ctx, consentID, orgID)}
+}
+
+func (_c *MockConsentService_GetConsent_Call) Run(run func(ctx context.Context, consentID string, orgID string)) *MockConsentService_GetConsent_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(string), args[2].(string))
+	})
+	return _c
+}
+
+func (_c *MockConsentService_GetConsent_Call) Return(_a0 *model.ConsentOutput, _a1 *serviceerror.ServiceError) *MockConsentService_GetConsent_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *MockConsentService_GetConsent_Call) RunAndReturn(run func(context.Context, string, string) (*model.ConsentOutput, *serviceerror.ServiceError)) *MockConsentService_GetConsent_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// RevokeConsent provides a mock function with given fields: ctx, consentID, orgID, input
+func (_m *MockConsentService) RevokeConsent(ctx context.Context, consentID string, orgID string, input model.ConsentRevokeInput) (*model.ConsentRevokeOutput, *serviceerror.ServiceError) {
+	ret := _m.Called(ctx, consentID, orgID, input)
 
 	if len(ret) == 0 {
 		panic("no return value specified for RevokeConsent")
 	}
 
-	var r0 *model.ConsentRevokeResponse
+	var r0 *model.ConsentRevokeOutput
 	var r1 *serviceerror.ServiceError
-	if rf, ok := ret.Get(0).(func(context.Context, string, string, model.ConsentRevokeRequest) (*model.ConsentRevokeResponse, *serviceerror.ServiceError)); ok {
-		return rf(ctx, consentID, orgID, req)
+	if rf, ok := ret.Get(0).(func(context.Context, string, string, model.ConsentRevokeInput) (*model.ConsentRevokeOutput, *serviceerror.ServiceError)); ok {
+		return rf(ctx, consentID, orgID, input)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, string, string, model.ConsentRevokeRequest) *model.ConsentRevokeResponse); ok {
-		r0 = rf(ctx, consentID, orgID, req)
+	if rf, ok := ret.Get(0).(func(context.Context, string, string, model.ConsentRevokeInput) *model.ConsentRevokeOutput); ok {
+		r0 = rf(ctx, consentID, orgID, input)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*model.ConsentRevokeResponse)
+			r0 = ret.Get(0).(*model.ConsentRevokeOutput)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, string, string, model.ConsentRevokeRequest) *serviceerror.ServiceError); ok {
-		r1 = rf(ctx, consentID, orgID, req)
+	if rf, ok := ret.Get(1).(func(context.Context, string, string, model.ConsentRevokeInput) *serviceerror.ServiceError); ok {
+		r1 = rf(ctx, consentID, orgID, input)
 	} else {
 		if ret.Get(1) != nil {
 			r1 = ret.Get(1).(*serviceerror.ServiceError)
@@ -112,24 +179,116 @@ func (_m *MockConsentService) RevokeConsent(ctx context.Context, consentID strin
 	return r0, r1
 }
 
+// MockConsentService_RevokeConsent_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'RevokeConsent'
+type MockConsentService_RevokeConsent_Call struct {
+	*mock.Call
+}
+
+// RevokeConsent is a helper method to define mock.On call
+//   - ctx context.Context
+//   - consentID string
+//   - orgID string
+//   - input model.ConsentRevokeInput
+func (_e *MockConsentService_Expecter) RevokeConsent(ctx interface{}, consentID interface{}, orgID interface{}, input interface{}) *MockConsentService_RevokeConsent_Call {
+	return &MockConsentService_RevokeConsent_Call{Call: _e.mock.On("RevokeConsent", ctx, consentID, orgID, input)}
+}
+
+func (_c *MockConsentService_RevokeConsent_Call) Run(run func(ctx context.Context, consentID string, orgID string, input model.ConsentRevokeInput)) *MockConsentService_RevokeConsent_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(string), args[2].(string), args[3].(model.ConsentRevokeInput))
+	})
+	return _c
+}
+
+func (_c *MockConsentService_RevokeConsent_Call) Return(_a0 *model.ConsentRevokeOutput, _a1 *serviceerror.ServiceError) *MockConsentService_RevokeConsent_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *MockConsentService_RevokeConsent_Call) RunAndReturn(run func(context.Context, string, string, model.ConsentRevokeInput) (*model.ConsentRevokeOutput, *serviceerror.ServiceError)) *MockConsentService_RevokeConsent_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// SearchConsents provides a mock function with given fields: ctx, filters
+func (_m *MockConsentService) SearchConsents(ctx context.Context, filters model.ConsentSearchFilter) (*model.ConsentListOutput, *serviceerror.ServiceError) {
+	ret := _m.Called(ctx, filters)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SearchConsents")
+	}
+
+	var r0 *model.ConsentListOutput
+	var r1 *serviceerror.ServiceError
+	if rf, ok := ret.Get(0).(func(context.Context, model.ConsentSearchFilter) (*model.ConsentListOutput, *serviceerror.ServiceError)); ok {
+		return rf(ctx, filters)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, model.ConsentSearchFilter) *model.ConsentListOutput); ok {
+		r0 = rf(ctx, filters)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*model.ConsentListOutput)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, model.ConsentSearchFilter) *serviceerror.ServiceError); ok {
+		r1 = rf(ctx, filters)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*serviceerror.ServiceError)
+		}
+	}
+
+	return r0, r1
+}
+
+// MockConsentService_SearchConsents_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SearchConsents'
+type MockConsentService_SearchConsents_Call struct {
+	*mock.Call
+}
+
+// SearchConsents is a helper method to define mock.On call
+//   - ctx context.Context
+//   - filters model.ConsentSearchFilter
+func (_e *MockConsentService_Expecter) SearchConsents(ctx interface{}, filters interface{}) *MockConsentService_SearchConsents_Call {
+	return &MockConsentService_SearchConsents_Call{Call: _e.mock.On("SearchConsents", ctx, filters)}
+}
+
+func (_c *MockConsentService_SearchConsents_Call) Run(run func(ctx context.Context, filters model.ConsentSearchFilter)) *MockConsentService_SearchConsents_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(model.ConsentSearchFilter))
+	})
+	return _c
+}
+
+func (_c *MockConsentService_SearchConsents_Call) Return(_a0 *model.ConsentListOutput, _a1 *serviceerror.ServiceError) *MockConsentService_SearchConsents_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *MockConsentService_SearchConsents_Call) RunAndReturn(run func(context.Context, model.ConsentSearchFilter) (*model.ConsentListOutput, *serviceerror.ServiceError)) *MockConsentService_SearchConsents_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // SearchConsentsByAttribute provides a mock function with given fields: ctx, key, value, orgID
-func (_m *MockConsentService) SearchConsentsByAttribute(ctx context.Context, key string, value string, orgID string) (*model.ConsentAttributeSearchResponse, *serviceerror.ServiceError) {
+func (_m *MockConsentService) SearchConsentsByAttribute(ctx context.Context, key string, value string, orgID string) (*model.ConsentAttributeSearchOutput, *serviceerror.ServiceError) {
 	ret := _m.Called(ctx, key, value, orgID)
 
 	if len(ret) == 0 {
 		panic("no return value specified for SearchConsentsByAttribute")
 	}
 
-	var r0 *model.ConsentAttributeSearchResponse
+	var r0 *model.ConsentAttributeSearchOutput
 	var r1 *serviceerror.ServiceError
-	if rf, ok := ret.Get(0).(func(context.Context, string, string, string) (*model.ConsentAttributeSearchResponse, *serviceerror.ServiceError)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string, string, string) (*model.ConsentAttributeSearchOutput, *serviceerror.ServiceError)); ok {
 		return rf(ctx, key, value, orgID)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, string, string, string) *model.ConsentAttributeSearchResponse); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string, string, string) *model.ConsentAttributeSearchOutput); ok {
 		r0 = rf(ctx, key, value, orgID)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*model.ConsentAttributeSearchResponse)
+			r0 = ret.Get(0).(*model.ConsentAttributeSearchOutput)
 		}
 	}
 
@@ -144,61 +303,60 @@ func (_m *MockConsentService) SearchConsentsByAttribute(ctx context.Context, key
 	return r0, r1
 }
 
-// SearchConsentsDetailed provides a mock function with given fields: ctx, filters
-func (_m *MockConsentService) SearchConsentsDetailed(ctx context.Context, filters model.ConsentSearchFilters) (*model.ConsentDetailSearchResponse, *serviceerror.ServiceError) {
-	ret := _m.Called(ctx, filters)
-
-	if len(ret) == 0 {
-		panic("no return value specified for SearchConsentsDetailed")
-	}
-
-	var r0 *model.ConsentDetailSearchResponse
-	var r1 *serviceerror.ServiceError
-	if rf, ok := ret.Get(0).(func(context.Context, model.ConsentSearchFilters) (*model.ConsentDetailSearchResponse, *serviceerror.ServiceError)); ok {
-		return rf(ctx, filters)
-	}
-	if rf, ok := ret.Get(0).(func(context.Context, model.ConsentSearchFilters) *model.ConsentDetailSearchResponse); ok {
-		r0 = rf(ctx, filters)
-	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*model.ConsentDetailSearchResponse)
-		}
-	}
-
-	if rf, ok := ret.Get(1).(func(context.Context, model.ConsentSearchFilters) *serviceerror.ServiceError); ok {
-		r1 = rf(ctx, filters)
-	} else {
-		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*serviceerror.ServiceError)
-		}
-	}
-
-	return r0, r1
+// MockConsentService_SearchConsentsByAttribute_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SearchConsentsByAttribute'
+type MockConsentService_SearchConsentsByAttribute_Call struct {
+	*mock.Call
 }
 
-// UpdateConsent provides a mock function with given fields: ctx, req, clientID, orgID, consentID
-func (_m *MockConsentService) UpdateConsent(ctx context.Context, req model.ConsentAPIUpdateRequest, clientID string, orgID string, consentID string) (*model.ConsentResponse, *serviceerror.ServiceError) {
-	ret := _m.Called(ctx, req, clientID, orgID, consentID)
+// SearchConsentsByAttribute is a helper method to define mock.On call
+//   - ctx context.Context
+//   - key string
+//   - value string
+//   - orgID string
+func (_e *MockConsentService_Expecter) SearchConsentsByAttribute(ctx interface{}, key interface{}, value interface{}, orgID interface{}) *MockConsentService_SearchConsentsByAttribute_Call {
+	return &MockConsentService_SearchConsentsByAttribute_Call{Call: _e.mock.On("SearchConsentsByAttribute", ctx, key, value, orgID)}
+}
+
+func (_c *MockConsentService_SearchConsentsByAttribute_Call) Run(run func(ctx context.Context, key string, value string, orgID string)) *MockConsentService_SearchConsentsByAttribute_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(string), args[2].(string), args[3].(string))
+	})
+	return _c
+}
+
+func (_c *MockConsentService_SearchConsentsByAttribute_Call) Return(_a0 *model.ConsentAttributeSearchOutput, _a1 *serviceerror.ServiceError) *MockConsentService_SearchConsentsByAttribute_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *MockConsentService_SearchConsentsByAttribute_Call) RunAndReturn(run func(context.Context, string, string, string) (*model.ConsentAttributeSearchOutput, *serviceerror.ServiceError)) *MockConsentService_SearchConsentsByAttribute_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// UpdateConsent provides a mock function with given fields: ctx, consentID, groupID, orgID, input
+func (_m *MockConsentService) UpdateConsent(ctx context.Context, consentID string, groupID string, orgID string, input model.UpdateConsentInput) (*model.ConsentOutput, *serviceerror.ServiceError) {
+	ret := _m.Called(ctx, consentID, groupID, orgID, input)
 
 	if len(ret) == 0 {
 		panic("no return value specified for UpdateConsent")
 	}
 
-	var r0 *model.ConsentResponse
+	var r0 *model.ConsentOutput
 	var r1 *serviceerror.ServiceError
-	if rf, ok := ret.Get(0).(func(context.Context, model.ConsentAPIUpdateRequest, string, string, string) (*model.ConsentResponse, *serviceerror.ServiceError)); ok {
-		return rf(ctx, req, clientID, orgID, consentID)
+	if rf, ok := ret.Get(0).(func(context.Context, string, string, string, model.UpdateConsentInput) (*model.ConsentOutput, *serviceerror.ServiceError)); ok {
+		return rf(ctx, consentID, groupID, orgID, input)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, model.ConsentAPIUpdateRequest, string, string, string) *model.ConsentResponse); ok {
-		r0 = rf(ctx, req, clientID, orgID, consentID)
+	if rf, ok := ret.Get(0).(func(context.Context, string, string, string, model.UpdateConsentInput) *model.ConsentOutput); ok {
+		r0 = rf(ctx, consentID, groupID, orgID, input)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*model.ConsentResponse)
+			r0 = ret.Get(0).(*model.ConsentOutput)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, model.ConsentAPIUpdateRequest, string, string, string) *serviceerror.ServiceError); ok {
-		r1 = rf(ctx, req, clientID, orgID, consentID)
+	if rf, ok := ret.Get(1).(func(context.Context, string, string, string, model.UpdateConsentInput) *serviceerror.ServiceError); ok {
+		r1 = rf(ctx, consentID, groupID, orgID, input)
 	} else {
 		if ret.Get(1) != nil {
 			r1 = ret.Get(1).(*serviceerror.ServiceError)
@@ -208,29 +366,61 @@ func (_m *MockConsentService) UpdateConsent(ctx context.Context, req model.Conse
 	return r0, r1
 }
 
-// ValidateConsent provides a mock function with given fields: ctx, req, orgID
-func (_m *MockConsentService) ValidateConsent(ctx context.Context, req model.ValidateRequest, orgID string) (*model.ValidateResponse, *serviceerror.ServiceError) {
-	ret := _m.Called(ctx, req, orgID)
+// MockConsentService_UpdateConsent_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'UpdateConsent'
+type MockConsentService_UpdateConsent_Call struct {
+	*mock.Call
+}
+
+// UpdateConsent is a helper method to define mock.On call
+//   - ctx context.Context
+//   - consentID string
+//   - groupID string
+//   - orgID string
+//   - input model.UpdateConsentInput
+func (_e *MockConsentService_Expecter) UpdateConsent(ctx interface{}, consentID interface{}, groupID interface{}, orgID interface{}, input interface{}) *MockConsentService_UpdateConsent_Call {
+	return &MockConsentService_UpdateConsent_Call{Call: _e.mock.On("UpdateConsent", ctx, consentID, groupID, orgID, input)}
+}
+
+func (_c *MockConsentService_UpdateConsent_Call) Run(run func(ctx context.Context, consentID string, groupID string, orgID string, input model.UpdateConsentInput)) *MockConsentService_UpdateConsent_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(string), args[2].(string), args[3].(string), args[4].(model.UpdateConsentInput))
+	})
+	return _c
+}
+
+func (_c *MockConsentService_UpdateConsent_Call) Return(_a0 *model.ConsentOutput, _a1 *serviceerror.ServiceError) *MockConsentService_UpdateConsent_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *MockConsentService_UpdateConsent_Call) RunAndReturn(run func(context.Context, string, string, string, model.UpdateConsentInput) (*model.ConsentOutput, *serviceerror.ServiceError)) *MockConsentService_UpdateConsent_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ValidateConsent provides a mock function with given fields: ctx, input, orgID
+func (_m *MockConsentService) ValidateConsent(ctx context.Context, input model.ConsentValidateInput, orgID string) (*model.ConsentValidateOutput, *serviceerror.ServiceError) {
+	ret := _m.Called(ctx, input, orgID)
 
 	if len(ret) == 0 {
 		panic("no return value specified for ValidateConsent")
 	}
 
-	var r0 *model.ValidateResponse
+	var r0 *model.ConsentValidateOutput
 	var r1 *serviceerror.ServiceError
-	if rf, ok := ret.Get(0).(func(context.Context, model.ValidateRequest, string) (*model.ValidateResponse, *serviceerror.ServiceError)); ok {
-		return rf(ctx, req, orgID)
+	if rf, ok := ret.Get(0).(func(context.Context, model.ConsentValidateInput, string) (*model.ConsentValidateOutput, *serviceerror.ServiceError)); ok {
+		return rf(ctx, input, orgID)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, model.ValidateRequest, string) *model.ValidateResponse); ok {
-		r0 = rf(ctx, req, orgID)
+	if rf, ok := ret.Get(0).(func(context.Context, model.ConsentValidateInput, string) *model.ConsentValidateOutput); ok {
+		r0 = rf(ctx, input, orgID)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*model.ValidateResponse)
+			r0 = ret.Get(0).(*model.ConsentValidateOutput)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, model.ValidateRequest, string) *serviceerror.ServiceError); ok {
-		r1 = rf(ctx, req, orgID)
+	if rf, ok := ret.Get(1).(func(context.Context, model.ConsentValidateInput, string) *serviceerror.ServiceError); ok {
+		r1 = rf(ctx, input, orgID)
 	} else {
 		if ret.Get(1) != nil {
 			r1 = ret.Get(1).(*serviceerror.ServiceError)
@@ -238,6 +428,36 @@ func (_m *MockConsentService) ValidateConsent(ctx context.Context, req model.Val
 	}
 
 	return r0, r1
+}
+
+// MockConsentService_ValidateConsent_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ValidateConsent'
+type MockConsentService_ValidateConsent_Call struct {
+	*mock.Call
+}
+
+// ValidateConsent is a helper method to define mock.On call
+//   - ctx context.Context
+//   - input model.ConsentValidateInput
+//   - orgID string
+func (_e *MockConsentService_Expecter) ValidateConsent(ctx interface{}, input interface{}, orgID interface{}) *MockConsentService_ValidateConsent_Call {
+	return &MockConsentService_ValidateConsent_Call{Call: _e.mock.On("ValidateConsent", ctx, input, orgID)}
+}
+
+func (_c *MockConsentService_ValidateConsent_Call) Run(run func(ctx context.Context, input model.ConsentValidateInput, orgID string)) *MockConsentService_ValidateConsent_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(model.ConsentValidateInput), args[2].(string))
+	})
+	return _c
+}
+
+func (_c *MockConsentService_ValidateConsent_Call) Return(_a0 *model.ConsentValidateOutput, _a1 *serviceerror.ServiceError) *MockConsentService_ValidateConsent_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *MockConsentService_ValidateConsent_Call) RunAndReturn(run func(context.Context, model.ConsentValidateInput, string) (*model.ConsentValidateOutput, *serviceerror.ServiceError)) *MockConsentService_ValidateConsent_Call {
+	_c.Call.Return(run)
+	return _c
 }
 
 // NewMockConsentService creates a new instance of MockConsentService. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.

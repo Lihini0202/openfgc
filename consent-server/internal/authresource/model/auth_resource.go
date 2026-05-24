@@ -16,54 +16,108 @@
  * under the License.
  */
 
+// Package model provides data models for authorization resources.
 package model
 
-// ConsentAuthResource represents the CONSENT_AUTH_RESOURCE table
-type ConsentAuthResource struct {
-	AuthID      string      `db:"AUTH_ID" json:"authId"`
-	ConsentID   string      `db:"CONSENT_ID" json:"consentId"`
-	AuthType    string      `db:"AUTH_TYPE" json:"authType"`
-	UserID      *string     `db:"USER_ID" json:"userId,omitempty"`
-	AuthStatus  string      `db:"AUTH_STATUS" json:"authStatus"`
-	UpdatedTime int64       `db:"UPDATED_TIME" json:"updatedTime"`
-	Resources   *string     `db:"RESOURCES" json:"-"`
-	ResourceObj interface{} `db:"-" json:"resources,omitempty"`
-	OrgID       string      `db:"ORG_ID" json:"orgId"`
+const (
+	// DefaultAuthType is used when the caller does not specify an authorization type.
+	DefaultAuthType = "default"
+)
+
+// =============================================================================
+// DB types — store layer only, db tags, no json tags
+// =============================================================================
+
+// AuthResource is one row from the CONSENT_AUTH_RESOURCE table.
+// Resources is stored as a JSON blob; use AuthResourceOutput for the parsed form.
+type AuthResource struct {
+	AuthID      string  `db:"AUTH_ID"`
+	ConsentID   string  `db:"CONSENT_ID"`
+	AuthType    string  `db:"AUTH_TYPE"`
+	UserID      *string `db:"USER_ID"`
+	AuthStatus  string  `db:"AUTH_STATUS"`
+	UpdatedTime int64   `db:"UPDATED_TIME"`
+	Resources   *string `db:"RESOURCES"` // JSON-encoded BLOB; nil when not set
+	OrgID       string  `db:"ORG_ID"`
 }
 
-// ConsentAuthResourceCreateRequest represents the request payload for creating an authorization resource
-type ConsentAuthResourceCreateRequest struct {
-	AuthType   string      `json:"type" binding:"required"`
-	UserID     *string     `json:"userId,omitempty"`
-	AuthStatus string      `json:"status" binding:"required"`
-	Resources  interface{} `json:"resources,omitempty"`
+// =============================================================================
+// Service input types — handler → service, no tags
+// =============================================================================
+
+// CreateAuthResourceInput is the input to the CreateAuthResource service method.
+// AuthType defaults to DefaultAuthType ("default") when empty.
+// AuthStatus defaults to the configured approved state when empty.
+type CreateAuthResourceInput struct {
+	AuthType   string      // optional; defaults to DefaultAuthType
+	UserID     *string
+	AuthStatus string      // optional; defaults to configured approved state
+	Resources  interface{} // arbitrary value; service JSON-marshals before storing
 }
 
-// ConsentAuthResourceUpdateRequest represents the request payload for updating an authorization resource
-type ConsentAuthResourceUpdateRequest struct {
-	AuthStatus string      `json:"status,omitempty"`
-	UserID     *string     `json:"userId,omitempty"`
-	Resources  interface{} `json:"resources,omitempty"`
+// UpdateAuthResourceInput is the input to the UpdateAuthResource service method.
+// Only non-zero fields are applied; an empty string leaves the existing value unchanged.
+type UpdateAuthResourceInput struct {
+	AuthType   string
+	UserID     *string
+	AuthStatus string
+	Resources  interface{}
 }
 
-// ConsentAuthResourceResponse represents the response for authorization resource operations
-type ConsentAuthResourceResponse struct {
-	AuthID      string      `json:"id"`
-	AuthType    string      `json:"type"`
+// =============================================================================
+// Service return types — service → handler, no tags
+// =============================================================================
+
+// AuthResourceOutput is the service-layer representation of one authorization resource.
+// Resources is already parsed from JSON into an interface{}.
+type AuthResourceOutput struct {
+	AuthID      string
+	ConsentID   string
+	AuthType    string
+	UserID      *string
+	AuthStatus  string
+	UpdatedTime int64
+	Resources   interface{} // parsed from JSON; nil when not set
+	OrgID       string
+}
+
+// AuthResourceListOutput is the return type from ListAuthResources.
+type AuthResourceListOutput struct {
+	Data []AuthResourceOutput
+}
+
+// =============================================================================
+// API request types — HTTP boundary, handler only, json tags, no db tags
+// =============================================================================
+
+// AuthResourceCreateRequest is the body for POST /consents/{consentId}/authorizations.
+// Type is optional — when absent the server uses DefaultAuthType ("default").
+type AuthResourceCreateRequest struct {
+	UserID    *string     `json:"userId,omitempty"`
+	Type      string      `json:"type,omitempty"`      // optional; defaults to "default"
+	Status    string      `json:"status,omitempty"`    // optional; defaults to "APPROVED"
+	Resources interface{} `json:"resources,omitempty"`
+}
+
+// AuthResourceUpdateRequest is the body for PUT /consents/{consentId}/authorizations/{authId}.
+// Type is optional — when absent the existing type is preserved.
+type AuthResourceUpdateRequest struct {
+	UserID    *string     `json:"userId,omitempty"`
+	Type      string      `json:"type,omitempty"`
+	Status    string      `json:"status,omitempty"`
+	Resources interface{} `json:"resources,omitempty"`
+}
+
+// =============================================================================
+// API response types — HTTP boundary, handler only, json tags, no db tags
+// =============================================================================
+
+// AuthResourceResponse is the response body for authorization resource endpoints.
+type AuthResourceResponse struct {
+	ID          string      `json:"id"`
 	UserID      *string     `json:"userId,omitempty"`
-	AuthStatus  string      `json:"status"`
+	Type        string      `json:"type"`
+	Status      string      `json:"status"`
 	UpdatedTime int64       `json:"updatedTime"`
 	Resources   interface{} `json:"resources,omitempty"`
 }
-
-// ConsentAuthResourceListResponse represents the response for listing authorization resources
-type ConsentAuthResourceListResponse struct {
-	Data []ConsentAuthResourceResponse `json:"data"`
-}
-
-// Type aliases for backward compatibility with service layer
-type AuthResource = ConsentAuthResource
-type CreateRequest = ConsentAuthResourceCreateRequest
-type UpdateRequest = ConsentAuthResourceUpdateRequest
-type Response = ConsentAuthResourceResponse
-type ListResponse = ConsentAuthResourceListResponse

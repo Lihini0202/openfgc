@@ -16,682 +16,506 @@
  * under the License.
  */
 
+// Package model provides data models for consents.
 package model
 
 import (
-	"database/sql/driver"
-	"encoding/json"
-	"fmt"
 	"time"
 
 	authmodel "github.com/wso2/openfgc/internal/authresource/model"
-	"github.com/wso2/openfgc/internal/system/config"
 )
 
-// Consent represents the CONSENT table
+// =============================================================================
+// DB types — store layer only, db tags, no json tags
+// =============================================================================
+
+// Consent is one row from the CONSENT table.
 type Consent struct {
-	ConsentID                  string `db:"CONSENT_ID" json:"consentId"`
-	CreatedTime                int64  `db:"CREATED_TIME" json:"createdTime"`
-	UpdatedTime                int64  `db:"UPDATED_TIME" json:"updatedTime"`
-	ClientID                   string `db:"CLIENT_ID" json:"clientId"`
-	ConsentType                string `db:"CONSENT_TYPE" json:"consentType"`
-	CurrentStatus              string `db:"CURRENT_STATUS" json:"currentStatus"`
-	ConsentFrequency           *int   `db:"CONSENT_FREQUENCY" json:"consentFrequency,omitempty"`
-	ValidityTime               *int64 `db:"VALIDITY_TIME" json:"validityTime,omitempty"`
-	RecurringIndicator         *bool  `db:"RECURRING_INDICATOR" json:"recurringIndicator,omitempty"`
-	DataAccessValidityDuration *int64 `db:"DATA_ACCESS_VALIDITY_DURATION" json:"dataAccessValidityDuration,omitempty"`
-	OrgID                      string `db:"ORG_ID" json:"orgId"`
+	ConsentID                  string `db:"CONSENT_ID"`
+	CreatedTime                int64  `db:"CREATED_TIME"`
+	UpdatedTime                int64  `db:"UPDATED_TIME"`
+	GroupID                    string `db:"GROUP_ID"`
+	ConsentType                string `db:"CONSENT_TYPE"`
+	CurrentStatus              string `db:"CURRENT_STATUS"`
+	ConsentFrequency           *int   `db:"CONSENT_FREQUENCY"`
+	ExpirationTime             *int64 `db:"EXPIRATION_TIME"` // Unix ms timestamp; nil = no expiry
+	RecurringIndicator         *bool  `db:"RECURRING_INDICATOR"`
+	DataAccessValidityDuration *int64 `db:"DATA_ACCESS_VALIDITY_DURATION"`
+	OrgID                      string `db:"ORG_ID"`
 }
 
-// JSON type for handling JSON fields in MySQL
-type JSON json.RawMessage
-
-// Scan implements the sql.Scanner interface for JSON
-func (j *JSON) Scan(value interface{}) error {
-	if value == nil {
-		*j = nil
-		return nil
-	}
-
-	var bytes []byte
-	switch v := value.(type) {
-	case []byte:
-		bytes = v
-	case string:
-		bytes = []byte(v)
-	default:
-		return fmt.Errorf("unsupported type for JSON: %T", value)
-	}
-
-	// Validate that it's valid JSON by attempting to unmarshal and remarshal
-	var temp interface{}
-	if err := json.Unmarshal(bytes, &temp); err != nil {
-		return fmt.Errorf("invalid JSON data: %w", err)
-	}
-
-	// Remarshal to ensure clean JSON
-	cleanBytes, err := json.Marshal(temp)
-	if err != nil {
-		return fmt.Errorf("failed to marshal JSON: %w", err)
-	}
-
-	*j = JSON(cleanBytes)
-	return nil
+// GetCreatedTime returns CreatedTime as a time.Time (stored as Unix ms).
+func (c *Consent) GetCreatedTime() time.Time {
+	return time.UnixMilli(c.CreatedTime)
 }
 
-// Value implements the driver.Valuer interface for JSON
-func (j JSON) Value() (driver.Value, error) {
-	if j == nil {
-		return nil, nil
-	}
-	return []byte(j), nil
+// GetUpdatedTime returns UpdatedTime as a time.Time (stored as Unix ms).
+func (c *Consent) GetUpdatedTime() time.Time {
+	return time.UnixMilli(c.UpdatedTime)
 }
 
-// MarshalJSON implements json.Marshaler
-func (j JSON) MarshalJSON() ([]byte, error) {
-	if j == nil {
-		return []byte("null"), nil
-	}
-	return j, nil
-}
-
-// UnmarshalJSON implements json.Unmarshaler
-func (j *JSON) UnmarshalJSON(data []byte) error {
-	if j == nil {
-		return nil
-	}
-	*j = JSON(data)
-	return nil
-}
-
-// ConsentElementItem represents a single consent element with name, value, and selection status
-type ConsentElementItem struct {
-	Name           string                 `json:"name"`
-	Value          interface{}            `json:"value,omitempty"`          // Can be string, object, or array - omitted when nil
-	IsUserApproved *bool                  `json:"isUserApproved,omitempty"` // Optional: defaults to false if not provided
-	IsMandatory    *bool                  `json:"isMandatory,omitempty"`    // Optional: defaults to true if not provided
-	Type           *string                `json:"type,omitempty"`           // Enriched from element definition (optional)
-	Description    *string                `json:"description,omitempty"`    // Enriched from element definition (optional)
-	Properties     map[string]interface{} `json:"properties,omitempty"`     // Enriched from element definition (optional)
-}
-
-// ConsentPurposeItem represents a purpose in consent API
-type ConsentPurposeItem struct {
-	PurposeName string                       `json:"name" binding:"required"`
-	Elements    []ConsentElementApprovalItem `json:"elements" binding:"required,min=1"`
-}
-
-// ConsentElementApprovalItem represents an element approval within a purpose (for POST, GET, PUT, Search)
-type ConsentElementApprovalItem struct {
-	ElementName    string      `json:"name" binding:"required"`
-	IsUserApproved bool        `json:"isUserApproved"`
-	Value          interface{} `json:"value,omitempty"`
-	// IsMandatory is tracked internally but excluded from JSON in regular responses
-	IsMandatory bool `json:"-"`
-}
-
-// ConsentElementApprovalItemValidate represents a purpose approval with enriched details (for Validate endpoint)
-type ConsentElementApprovalItemValidate struct {
-	ElementName    string                 `json:"name" binding:"required"`
-	IsUserApproved bool                   `json:"isUserApproved"`
-	Value          interface{}            `json:"value,omitempty"`
-	IsMandatory    bool                   `json:"isMandatory"`
-	Type           string                 `json:"type,omitempty"`
-	Description    string                 `json:"description,omitempty"`
-	Properties     map[string]interface{} `json:"properties,omitempty"`
-}
-
-// ConsentPurposeItemValidate represents a purpose with enriched details (for Validate endpoint)
-type ConsentPurposeItemValidate struct {
-	PurposeName string                               `json:"name" binding:"required"`
-	Elements    []ConsentElementApprovalItemValidate `json:"elements" binding:"required,min=1"`
-}
-
-// ConsentPurposeCreateRequest - internal format for purpose processing
-type ConsentPurposeCreateRequest struct {
-	PurposeName string
-	PurposeID   string
-	Elements    []ConsentElementApprovalCreateRequest
-}
-
-// ConsentElementApprovalCreateRequest - internal format for element approval
-type ConsentElementApprovalCreateRequest struct {
-	ElementID      string
-	ElementName    string
-	IsUserApproved bool
-	Value          *string // JSON string
-	IsMandatory    bool    // from purpose definition
-}
-
-// ConsentElementApprovalRecord represents the DB record for element approvals
-type ConsentElementApprovalRecord struct {
-	ConsentID      string
-	PurposeID      string
-	PurposeName    string
-	ElementID      string
-	ElementName    string
-	IsUserApproved bool
-	IsMandatory    bool
-	Value          *string // JSON string
-	OrgID          string
-}
-
-// ConsentPurposeMapping represents the mapping between consent and purposes
-// from PURPOSE_CONSENT_MAPPING table
+// ConsentPurposeMapping is one row from the PURPOSE_CONSENT_MAPPING table.
+// The link is to a specific PURPOSE_VERSION_ID rather than a PURPOSE_ID.
 type ConsentPurposeMapping struct {
-	ConsentID   string
-	PurposeID   string
+	ConsentID        string `db:"CONSENT_ID"`
+	PurposeVersionID string `db:"PURPOSE_VERSION_ID"`
+	OrgID            string `db:"ORG_ID"`
+}
+
+// ConsentElementApproval is one row from the CONSENT_ELEMENT_APPROVAL table.
+// Tracks whether a user approved a specific element version within a specific purpose version.
+type ConsentElementApproval struct {
+	ConsentID        string  `db:"CONSENT_ID"`
+	PurposeVersionID string  `db:"PURPOSE_VERSION_ID"`
+	ElementVersionID string  `db:"ELEMENT_VERSION_ID"`
+	Approved         bool    `db:"APPROVED"`
+	Value            *string `db:"VALUE"` // user-provided value stored as-is; plain string for basic/xml elements, JSON string for json elements; nil if not set
+	OrgID            string  `db:"ORG_ID"`
+}
+
+// =============================================================================
+// Store join result types — results of JOIN queries, used only between the
+// store and service layers; no tags.
+// =============================================================================
+
+// ConsentPurposeRow is returned by GetConsentPurposeMappingsByConsentID.
+// Joins PURPOSE_CONSENT_MAPPING with PURPOSE to carry purpose metadata alongside the mapping.
+type ConsentPurposeRow struct {
+	ConsentID        string
+	PurposeVersionID string
+	PurposeID        string
+	PurposeName      string
+	PurposeGroupID   string
+	PurposeVersion   int
+	DisplayName      *string
+	Description      *string
+	OrgID            string
+}
+
+// ConsentApprovalRow is returned by GetPurposeElementApprovalsByConsentID.
+// Joins CONSENT_ELEMENT_APPROVAL with ELEMENT and PURPOSE_ELEMENT_MAPPING to carry
+// element metadata alongside the user's approval state.
+type ConsentApprovalRow struct {
+	ConsentID          string
+	PurposeVersionID   string
+	ElementVersionID   string
+	ElementID          string
+	ElementName        string
+	ElementNamespace   string
+	ElementVersionNum  int
+	ElementType        string
+	ElementDisplayName *string
+	ElementDescription *string
+	Mandatory          bool
+	Approved           bool
+	Value              *string
+	OrgID              string
+}
+
+// =============================================================================
+// Service input types — handler → service, no tags
+// =============================================================================
+
+// PurposeRef identifies a consent purpose in a create/update request.
+// When Version is nil the service resolves to the latest purpose version.
+// PurposeName matches the `name` field in the API request body.
+type PurposeRef struct {
 	PurposeName string
+	Version     *int // nil = use latest; parsed from the "v1" / "v2" string in the API request
 }
 
-// ConsentAPIRequest represents the API payload for creating a consent (external format)
-// Note: Status is not included in the request - it will be derived from authorization states
-type ConsentAPIRequest struct {
-	Type                       string                    `json:"type" binding:"required"`
-	ValidityTime               *int64                    `json:"validityTime,omitempty"`
-	RecurringIndicator         *bool                     `json:"recurringIndicator,omitempty"`
-	Frequency                  *int                      `json:"frequency,omitempty"`
-	DataAccessValidityDuration *int64                    `json:"dataAccessValidityDuration,omitempty"`
-	Purposes                   []ConsentPurposeItem      `json:"purposes" binding:"required,min=1"`
-	Attributes                 map[string]string         `json:"attributes,omitempty"`
-	Authorizations             []AuthorizationAPIRequest `json:"authorizations"` // Remove omitempty to allow explicit empty array in updates
+// ElementApprovalInput captures one element's approval data from the API request.
+// Name matches the element as defined in the purpose version.
+type ElementApprovalInput struct {
+	Name     string
+	Approved bool
+	Value    interface{} // arbitrary user value; service stores as string for basic/xml, JSON-marshals for json elements
 }
 
-// AuthorizationAPIRequest represents the API payload for authorization resource (external format)
-// Status field represents the authorization status/state (created, approved, rejected, or custom)
-type AuthorizationAPIRequest struct {
+// ConsentPurposeInput is the handler→service representation of one purpose in a create/update.
+type ConsentPurposeInput struct {
+	PurposeRef PurposeRef
+	Elements   []ElementApprovalInput
+}
+
+// CreateConsentInput is the input to the CreateConsent service method.
+// GroupID is read from the group-id request header.
+type CreateConsentInput struct {
+	GroupID                    string
+	ConsentType                string
+	ExpirationTime             *int64
+	ConsentFrequency           *int
+	RecurringIndicator         *bool
+	DataAccessValidityDuration *int64
+	Attributes                 map[string]string
+	Purposes                   []ConsentPurposeInput
+	Authorizations             []authmodel.CreateAuthResourceInput
+}
+
+// UpdateConsentInput is the input to the UpdateConsent service method.
+// All slice/map fields are non-nil to distinguish "caller sent empty list" from "caller omitted field".
+type UpdateConsentInput struct {
+	ConsentType                string
+	ExpirationTime             *int64
+	ConsentFrequency           *int
+	RecurringIndicator         *bool
+	DataAccessValidityDuration *int64
+	Attributes                 map[string]string
+	Purposes                   []ConsentPurposeInput
+	Authorizations             []authmodel.CreateAuthResourceInput
+}
+
+// ConsentSearchFilter holds query parameters for the SearchConsents service method.
+type ConsentSearchFilter struct {
+	ConsentIDs       []string
+	GroupIDs         []string // replaces ClientIDs
+	ConsentTypes     []string
+	ConsentStatuses  []string
+	UserIDs          []string
+	PurposeName      string // filter consents that reference this purpose name
+	PurposeVersion   *int   // combined with PurposeName to pin a specific version
+	ElementName      string // filter consents whose purpose contains this element
+	ElementNamespace string // combined with ElementName
+	ElementVersion   *int   // combined with ElementName/ElementNamespace
+	FromTime         *int64 // Unix ms lower bound on UPDATED_TIME
+	ToTime           *int64 // Unix ms upper bound on UPDATED_TIME
+	Limit            int
+	Offset           int
+	OrgID            string
+}
+
+// =============================================================================
+// Service return types — service → handler, no tags
+// =============================================================================
+
+// ConsentElementApprovalOutput is the service-layer representation of one element within a consent purpose.
+// Combines the element's definition (from PURPOSE_ELEMENT_MAPPING + ELEMENT tables) with the
+// user's approval data (from CONSENT_ELEMENT_APPROVAL).
+//
+// Value is the raw stored string — plain for basic/xml elements, JSON string for json elements.
+// The handler interprets it based on ElementType when building the API response.
+//
+// DisplayName, Description, and Properties are populated from the ELEMENT table and are used by
+// the validate endpoint's enriched response. Regular create/get/update handlers can ignore them.
+type ConsentElementApprovalOutput struct {
+	ElementVersionID string
+	ElementID        string
+	Name             string
+	Namespace        string
+	VersionNum       int
+	ElementType      string // "basic", "json", "xml" — determines how Value is interpreted
+	Mandatory        bool
+	Approved         bool
+	Value            *string           // raw stored value; plain string or JSON string depending on ElementType
+	DisplayName      *string           // from element definition; used in validate response
+	Description      *string           // from element definition; used in validate response
+	Properties       map[string]string // from element definition; used in validate response
+}
+
+// ConsentPurposeOutput is the service-layer representation of one purpose in a consent.
+type ConsentPurposeOutput struct {
+	PurposeVersionID string
+	PurposeID        string
+	Name             string
+	GroupID          string
+	VersionNum       int
+	DisplayName      *string
+	Description      *string
+	Properties       map[string]string
+	Elements         []ConsentElementApprovalOutput
+}
+
+// ConsentOutput is the service-layer output for a consent after create/get/update.
+type ConsentOutput struct {
+	ConsentID                  string
+	GroupID                    string
+	ConsentType                string
+	CurrentStatus              string
+	ConsentFrequency           *int
+	ExpirationTime             *int64
+	RecurringIndicator         *bool
+	DataAccessValidityDuration *int64
+	CreatedTime                int64
+	UpdatedTime                int64
+	OrgID                      string
+	Attributes                 map[string]string
+	Purposes                   []ConsentPurposeOutput
+	Authorizations             []authmodel.AuthResourceOutput
+}
+
+// ConsentListOutput is the return type from SearchConsents.
+type ConsentListOutput struct {
+	Data   []ConsentOutput
+	Total  int
+	Offset int
+	Count  int
+	Limit  int
+}
+
+// ConsentAttributeSearchOutput is the return type from SearchConsentsByAttribute.
+type ConsentAttributeSearchOutput struct {
+	ConsentIDs []string
+	Count      int
+}
+
+// ConsentRevokeInput is the input to the RevokeConsent service method.
+type ConsentRevokeInput struct {
+	ActionBy string
+	Reason   string
+}
+
+// ConsentRevokeOutput is the return type from RevokeConsent.
+type ConsentRevokeOutput struct {
+	ActionTime int64
+	ActionBy   string
+	Reason     string
+}
+
+// ResourceParamsInput holds optional resource context for the ValidateConsent service method.
+type ResourceParamsInput struct {
+	Resource   string
+	HTTPMethod string
+	Context    string
+}
+
+// ConsentValidateInput is the input to the ValidateConsent service method.
+type ConsentValidateInput struct {
+	ConsentID       string
+	GroupID         string
+	UserID          string
+	Headers         map[string]interface{}
+	Payload         map[string]interface{}
+	ElectedResource string
+	ResourceParams  *ResourceParamsInput
+}
+
+// ConsentValidateOutput is the return type from ValidateConsent.
+// ConsentInfo reuses ConsentOutput so the handler can format the enriched validate response.
+type ConsentValidateOutput struct {
+	IsValid          bool
+	ErrorCode        int
+	ErrorMessage     string
+	ErrorDescription string
+	ConsentInfo      *ConsentOutput
+}
+
+// =============================================================================
+// API request types — HTTP boundary, handler only, json tags, no db tags
+// =============================================================================
+
+// ConsentPurposeElementApprovalRequest is one element approval within a consent purpose request body.
+type ConsentPurposeElementApprovalRequest struct {
+	Name     string      `json:"name"`
+	Approved bool        `json:"approved"`
+	Value    interface{} `json:"value,omitempty"`
+}
+
+// ConsentPurposeRefRequest references a purpose version in a consent create/update body.
+// Purposes are identified by name (not purposeId) in request bodies.
+// Version follows the "v1", "v2", … format; when absent the service uses the latest version.
+// purposeId is response-only and is not accepted in requests.
+type ConsentPurposeRefRequest struct {
+	Name     string                                 `json:"name"`
+	Version  *string                                `json:"version,omitempty"`
+	Elements []ConsentPurposeElementApprovalRequest `json:"elements"`
+}
+
+// AuthorizationRequest is one authorization entry in a consent create/update body.
+type AuthorizationRequest struct {
 	UserID    string      `json:"userId,omitempty"`
-	Type      string      `json:"type" binding:"required"`
-	Status    string      `json:"status,omitempty"` // Optional: defaults to "approved" if not provided
+	Type      string      `json:"type,omitempty"` // optional; defaults to "default" when absent
+	Status    string      `json:"status,omitempty"` // defaults to "APPROVED" when absent
 	Resources interface{} `json:"resources,omitempty"`
 }
 
-// ToAuthResourceCreateRequest converts API request format to internal format
-func (req *AuthorizationAPIRequest) ToAuthResourceCreateRequest() *authmodel.ConsentAuthResourceCreateRequest {
-
-	AuthStatusMappings := config.Get().Consent.AuthStatusMappings
-	var userID *string
-	if req.UserID != "" {
-		userID = &req.UserID
-	}
-
-	// Default status to "created" if not provided
-	// Note: This defaults to CreatedState (unlike consent-embedded authorizations which default to ApprovedState)
-	// because direct authorization creation typically requires explicit approval workflow
-	status := req.Status
-	if status == "" {
-		status = string(AuthStatusMappings.CreatedState)
-	}
-
-	return &authmodel.ConsentAuthResourceCreateRequest{
-		AuthType:   req.Type,
-		UserID:     userID,
-		AuthStatus: status, // Store the status value in AuthStatus field
-		Resources:  req.Resources,
-	}
-}
-
-// AuthorizationAPIUpdateRequest represents the API payload for updating authorization resource (external format)
-type AuthorizationAPIUpdateRequest struct {
-	UserID    string      `json:"userId,omitempty"`
-	Type      string      `json:"type,omitempty"`
-	Status    string      `json:"status,omitempty"`
-	Resources interface{} `json:"resources,omitempty"`
-}
-
-// ToAuthResourceUpdateRequest converts API update request format to internal format
-func (req *AuthorizationAPIUpdateRequest) ToAuthResourceUpdateRequest() *authmodel.ConsentAuthResourceUpdateRequest {
-	var userID *string
-	if req.UserID != "" {
-		userID = &req.UserID
-	}
-
-	return &authmodel.ConsentAuthResourceUpdateRequest{
-		AuthStatus: req.Status,
-		UserID:     userID,
-		Resources:  req.Resources,
-	}
-}
-
-// ConsentAPIUpdateRequest represents the API payload for updating a consent (external format)
-// Note: Status is not included in the request - it will be derived from authorization states
-// Note: Purposes, Attributes, and Authorizations don't have omitempty to allow empty arrays/maps for removal
-type ConsentAPIUpdateRequest struct {
-	Type                       string                    `json:"type,omitempty"`
-	ValidityTime               *int64                    `json:"validityTime,omitempty"`
-	RecurringIndicator         *bool                     `json:"recurringIndicator,omitempty"`
-	Frequency                  *int                      `json:"frequency,omitempty"`
-	DataAccessValidityDuration *int64                    `json:"dataAccessValidityDuration,omitempty"`
-	Purposes                   []ConsentPurposeItem      `json:"purposes"`
-	Attributes                 map[string]string         `json:"attributes"`
-	Authorizations             []AuthorizationAPIRequest `json:"authorizations"`
-}
-
-// ConsentCreateRequest represents the internal request payload for creating a consent
+// ConsentCreateRequest is the body for POST /consents.
+// GroupID is not in the body — it is read from the group-id request header.
 type ConsentCreateRequest struct {
-	Purposes                   []ConsentPurposeCreateRequest                `json:"purposes" binding:"required,min=1"`
-	ConsentType                string                                       `json:"consentType" binding:"required"`
-	CurrentStatus              string                                       `json:"currentStatus" binding:"required"`
-	ConsentFrequency           *int                                         `json:"consentFrequency,omitempty"`
-	ValidityTime               *int64                                       `json:"validityTime,omitempty"`
-	RecurringIndicator         *bool                                        `json:"recurringIndicator,omitempty"`
-	DataAccessValidityDuration *int64                                       `json:"dataAccessValidityDuration,omitempty"`
-	Attributes                 map[string]string                            `json:"attributes,omitempty"`
-	AuthResources              []authmodel.ConsentAuthResourceCreateRequest `json:"authResources,omitempty"`
+	Type                       string                      `json:"type"`
+	ExpirationTime             *int64                      `json:"expirationTime,omitempty"` // Unix milliseconds
+	Frequency                  *int                        `json:"frequency,omitempty"`
+	RecurringIndicator         *bool                       `json:"recurringIndicator,omitempty"`
+	DataAccessValidityDuration *int64                      `json:"dataAccessValidityDuration,omitempty"`
+	Attributes                 map[string]string           `json:"attributes,omitempty"`
+	Purposes                   []ConsentPurposeRefRequest  `json:"purposes,omitempty"`
+	Authorizations             []AuthorizationRequest      `json:"authorizations,omitempty"`
 }
 
-// ConsentUpdateRequest represents the request payload for updating a consent
+// ConsentUpdateRequest is the body for PUT /consents/{consentId}.
+// Purposes, Authorizations, and Attributes intentionally omit `omitempty` so that sending an
+// explicit empty array/map removes all existing entries.
 type ConsentUpdateRequest struct {
-	Purposes                   []ConsentPurposeCreateRequest                `json:"purposes,omitempty"`
-	ConsentType                string                                       `json:"consentType,omitempty"`
-	CurrentStatus              string                                       `json:"currentStatus,omitempty"`
-	ConsentFrequency           *int                                         `json:"consentFrequency,omitempty"`
-	ValidityTime               *int64                                       `json:"validityTime,omitempty"`
-	RecurringIndicator         *bool                                        `json:"recurringIndicator,omitempty"`
-	DataAccessValidityDuration *int64                                       `json:"dataAccessValidityDuration,omitempty"`
-	Attributes                 map[string]string                            `json:"attributes,omitempty"`
-	AuthResources              []authmodel.ConsentAuthResourceCreateRequest `json:"authResources,omitempty"`
+	Type                       string                      `json:"type,omitempty"`
+	ExpirationTime             *int64                      `json:"expirationTime,omitempty"` // Unix milliseconds
+	Frequency                  *int                        `json:"frequency,omitempty"`
+	RecurringIndicator         *bool                       `json:"recurringIndicator,omitempty"`
+	DataAccessValidityDuration *int64                      `json:"dataAccessValidityDuration,omitempty"`
+	Attributes                 map[string]string           `json:"attributes"`
+	Purposes                   []ConsentPurposeRefRequest  `json:"purposes"`
+	Authorizations             []AuthorizationRequest      `json:"authorizations"`
 }
 
-// ConsentResponse represents the response after consent creation/retrieval
-type ConsentResponse struct {
-	ConsentID                  string                          `json:"consentId"`
-	Purposes                   []ConsentPurposeItem            `json:"purposes"`
-	CreatedTime                int64                           `json:"createdTime"`
-	UpdatedTime                int64                           `json:"updatedTime"`
-	ClientID                   string                          `json:"clientId"`
-	ConsentType                string                          `json:"consentType"`
-	CurrentStatus              string                          `json:"currentStatus"`
-	ConsentFrequency           *int                            `json:"consentFrequency,omitempty"`
-	ValidityTime               *int64                          `json:"validityTime,omitempty"`
-	RecurringIndicator         *bool                           `json:"recurringIndicator,omitempty"`
-	DataAccessValidityDuration *int64                          `json:"dataAccessValidityDuration,omitempty"`
-	OrgID                      string                          `json:"orgId"`
-	Attributes                 map[string]string               `json:"attributes,omitempty"`
-	AuthResources              []authmodel.ConsentAuthResource `json:"authResources,omitempty"`
+// ConsentRevokeRequest is the body for POST /consents/{consentId}/revoke.
+type ConsentRevokeRequest struct {
+	ActionBy         string `json:"actionBy"`
+	RevocationReason string `json:"revocationReason,omitempty"`
 }
 
-// ConsentSearchParams represents search parameters for consent queries
-type ConsentSearchParams struct {
-	ConsentIDs      []string `form:"consentIds"`
-	ClientIDs       []string `form:"clientIds"`
-	ConsentTypes    []string `form:"consentTypes"`
-	ConsentStatuses []string `form:"consentStatuses"`
-	UserIDs         []string `form:"userIds"`
-	FromTime        *int64   `form:"fromTime"`
-	ToTime          *int64   `form:"toTime"`
-	Limit           int      `form:"limit"`
-	Offset          int      `form:"offset"`
-	OrgID           string   `form:"-"` // Extracted from header
+// ResourceParams holds optional resource context for consent validation.
+type ResourceParams struct {
+	Resource   string `json:"resource,omitempty"`
+	HTTPMethod string `json:"httpMethod,omitempty"`
+	Context    string `json:"context,omitempty"`
 }
 
-// ConsentSearchResponse represents the response for consent search
-type ConsentSearchResponse struct {
-	Data     []ConsentResponse     `json:"data"`
-	Metadata ConsentSearchMetadata `json:"metadata"`
+// ConsentValidateRequest is the body for POST /consents/validate.
+type ConsentValidateRequest struct {
+	ConsentID       string                 `json:"consentId"`
+	GroupID         string                 `json:"groupId,omitempty"`
+	UserID          string                 `json:"userId,omitempty"`
+	Headers         map[string]interface{} `json:"headers,omitempty"`
+	Payload         map[string]interface{} `json:"payload,omitempty"`
+	ElectedResource string                 `json:"electedResource,omitempty"`
+	ResourceParams  *ResourceParams        `json:"resourceParams,omitempty"`
 }
 
-// ConsentSearchMetadata represents pagination metadata
-type ConsentSearchMetadata struct {
-	Total  int `json:"total"`
-	Limit  int `json:"limit"`
-	Offset int `json:"offset"`
-	Count  int `json:"count"` // Number of results in current page
+// =============================================================================
+// API response types — HTTP boundary, handler only, json tags, no db tags
+// =============================================================================
+
+// ConsentPurposeElementApprovalResponse is one element in a consent purpose response.
+// Combines the element's definition with the user's approval state for this consent.
+type ConsentPurposeElementApprovalResponse struct {
+	ElementID string      `json:"elementId"`
+	Name      string      `json:"name"`
+	Namespace string      `json:"namespace"`
+	Version   string      `json:"version"` // "v1", "v2", ...
+	Mandatory bool        `json:"mandatory"`
+	Approved  bool        `json:"approved"`
+	Value     interface{} `json:"value,omitempty"`
 }
 
-// ConsentSearchFilters represents search criteria for consents
-type ConsentSearchFilters struct {
-	ConsentTypes    []string // e.g., ["accounts", "payments"]
-	ConsentStatuses []string // e.g., ["active", "revoked"]
-	ClientIDs       []string // TPP client IDs
-	UserIDs         []string // End-user IDs
-	PurposeNames    []string // Purpose names - returns consents containing ANY of these purposes
-	FromTime        *int64   // Unix timestamp - start of time window
-	ToTime          *int64   // Unix timestamp - end of time window
-	Limit           int
-	Offset          int
-	OrgID           string
+// ConsentPurposeResponse is one purpose in a consent response (create/get/update).
+type ConsentPurposeResponse struct {
+	PurposeID string                                  `json:"purposeId"`
+	Name      string                                  `json:"name"`
+	Version   string                                  `json:"version"` // "v1", "v2", ...
+	Elements  []ConsentPurposeElementApprovalResponse `json:"elements"`
 }
 
-// ConsentDetailResponse represents a detailed consent with related data
-type ConsentDetailResponse struct {
-	ID                         string                `json:"id"`
-	Purposes                   []ConsentPurposeItem  `json:"purposes"`
-	CreatedTime                int64                 `json:"createdTime"`
-	UpdatedTime                int64                 `json:"updatedTime"`
-	ClientID                   string                `json:"clientId"`
-	Type                       string                `json:"type"`
-	Status                     string                `json:"status"`
-	Frequency                  int                   `json:"frequency"`
-	ValidityTime               int64                 `json:"validityTime"`
-	RecurringIndicator         bool                  `json:"recurringIndicator"`
-	DataAccessValidityDuration int64                 `json:"dataAccessValidityDuration"`
-	Attributes                 map[string]string     `json:"attributes"`
-	Authorizations             []AuthorizationDetail `json:"authorizations"`
-}
-
-// AuthorizationDetail represents authorization resource details
-type AuthorizationDetail struct {
+// AuthorizationResponse is one authorization in a consent response.
+type AuthorizationResponse struct {
 	ID          string      `json:"id"`
-	UserID      string      `json:"userId"`
+	UserID      *string     `json:"userId,omitempty"`
 	Type        string      `json:"type"`
 	Status      string      `json:"status"`
 	UpdatedTime int64       `json:"updatedTime"`
 	Resources   interface{} `json:"resources,omitempty"`
 }
 
-// ConsentDetailSearchResponse wraps detailed consent search results
-type ConsentDetailSearchResponse struct {
-	Data     []ConsentDetailResponse `json:"data"`
-	Metadata ConsentSearchMetadata   `json:"metadata"`
+// ConsentResponse is the response body for POST, GET, and PUT /consents.
+type ConsentResponse struct {
+	ConsentID                  string                   `json:"id"`
+	GroupID                    string                   `json:"groupId"`
+	Type                       string                   `json:"type"`
+	Status                     string                   `json:"status"`
+	CreatedTime                int64                    `json:"createdTime"`
+	UpdatedTime                int64                    `json:"updatedTime"`
+	ExpirationTime             *int64                   `json:"expirationTime,omitempty"`
+	Frequency                  *int                     `json:"frequency,omitempty"`
+	RecurringIndicator         *bool                    `json:"recurringIndicator,omitempty"`
+	DataAccessValidityDuration *int64                   `json:"dataAccessValidityDuration,omitempty"`
+	Attributes                 map[string]string        `json:"attributes"`
+	Purposes                   []ConsentPurposeResponse `json:"purposes"`
+	Authorizations             []AuthorizationResponse  `json:"authorizations"`
 }
 
-// ConsentRevokeRequest represents the request to revoke a consent
-type ConsentRevokeRequest struct {
-	ActionBy         string `json:"actionBy" binding:"required"`
-	RevocationReason string `json:"revocationReason,omitempty"`
+// ConsentListMetadata holds pagination metadata for the list response.
+type ConsentListMetadata struct {
+	Total  int `json:"total"`
+	Offset int `json:"offset"`
+	Count  int `json:"count"`
+	Limit  int `json:"limit"`
 }
 
-// GetCreatedTime returns the created time as a time.Time
-func (c *Consent) GetCreatedTime() time.Time {
-	return time.Unix(0, c.CreatedTime*int64(time.Millisecond))
+// ConsentListResponse is the response body for GET /consents.
+type ConsentListResponse struct {
+	Data     []ConsentResponse   `json:"data"`
+	Metadata ConsentListMetadata `json:"metadata"`
 }
 
-// GetUpdatedTime returns the updated time as a time.Time
-func (c *Consent) GetUpdatedTime() time.Time {
-	return time.Unix(0, c.UpdatedTime*int64(time.Millisecond))
-}
-
-// ToConsentCreateRequest converts API request format to internal format
-// Note: CurrentStatus will be set by the handler based on authorization states
-func (req *ConsentAPIRequest) ToConsentCreateRequest() (*ConsentCreateRequest, error) {
-
-	AuthStatusMappings := config.Get().Consent.AuthStatusMappings
-
-	createReq := &ConsentCreateRequest{
-		ConsentType:                req.Type,
-		CurrentStatus:              "", // Will be set by handler based on auth states
-		Attributes:                 req.Attributes,
-		ValidityTime:               req.ValidityTime,
-		ConsentFrequency:           req.Frequency,
-		RecurringIndicator:         req.RecurringIndicator,
-		DataAccessValidityDuration: req.DataAccessValidityDuration,
-	}
-
-	// Structure purposes data (validation happens in service layer)
-	purposes := make([]ConsentPurposeCreateRequest, len(req.Purposes))
-	for i, purposeInput := range req.Purposes {
-		elements := make([]ConsentElementApprovalCreateRequest, len(purposeInput.Elements))
-		for j, elementInput := range purposeInput.Elements {
-			var valueJSON *string
-			if elementInput.Value != nil {
-				valueBytes, err := json.Marshal(elementInput.Value)
-				if err != nil {
-					return nil, fmt.Errorf("failed to marshal purpose value: %v", err)
-				}
-				valueStr := string(valueBytes)
-				valueJSON = &valueStr
-			}
-
-			elements[j] = ConsentElementApprovalCreateRequest{
-				ElementName:    elementInput.ElementName,
-				IsUserApproved: elementInput.IsUserApproved,
-				Value:          valueJSON,
-			}
-		}
-
-		purposes[i] = ConsentPurposeCreateRequest{
-			PurposeName: purposeInput.PurposeName,
-			Elements:    elements,
-		}
-	}
-	createReq.Purposes = purposes
-
-	// Map authorizations to auth resources
-	if len(req.Authorizations) > 0 {
-		createReq.AuthResources = make([]authmodel.ConsentAuthResourceCreateRequest, len(req.Authorizations))
-		for i, auth := range req.Authorizations {
-			var userID *string
-			if auth.UserID != "" {
-				userID = &auth.UserID
-			}
-
-			// Default status to "approved" if not provided
-			// Note: Consent-embedded authorizations default to ApprovedState (unlike direct auth resource
-			// creation which defaults to CreatedState) because they're created as part of consent flow
-			status := auth.Status
-			if status == "" {
-				status = string(AuthStatusMappings.ApprovedState)
-			}
-
-			createReq.AuthResources[i] = authmodel.ConsentAuthResourceCreateRequest{
-				AuthType:   auth.Type,
-				UserID:     userID,
-				AuthStatus: status,
-				Resources:  auth.Resources,
-			}
-		}
-	}
-
-	return createReq, nil
-}
-
-// ToConsentUpdateRequest converts API update request format to internal format
-// Note: CurrentStatus will be set by the handler based on authorization states
-func (req *ConsentAPIUpdateRequest) ToConsentUpdateRequest() (*ConsentUpdateRequest, error) {
-
-	AuthStatusMappings := config.Get().Consent.AuthStatusMappings
-
-	// Convert purposes from API format to internal format
-	var purposes []ConsentPurposeCreateRequest
-	if req.Purposes != nil {
-		purposes = make([]ConsentPurposeCreateRequest, len(req.Purposes))
-		for i, purposeInput := range req.Purposes {
-			// Convert elements within the purpose
-			elements := make([]ConsentElementApprovalCreateRequest, len(purposeInput.Elements))
-			for j, elementInput := range purposeInput.Elements {
-				// Marshal value to JSON if present
-				var valueJSON *string
-				if elementInput.Value != nil {
-					valueBytes, err := json.Marshal(elementInput.Value)
-					if err != nil {
-						return nil, fmt.Errorf("failed to marshal purpose value for '%s': %w", elementInput.ElementName, err)
-					}
-					valueStr := string(valueBytes)
-					valueJSON = &valueStr
-				}
-
-				elements[j] = ConsentElementApprovalCreateRequest{
-					ElementName:    elementInput.ElementName,
-					IsUserApproved: elementInput.IsUserApproved,
-					Value:          valueJSON,
-					// PurposeID and IsMandatory will be resolved during validation
-				}
-			}
-
-			purposes[i] = ConsentPurposeCreateRequest{
-				PurposeName: purposeInput.PurposeName,
-				Elements:    elements,
-				// PurposeID will be resolved during validation
-			}
-		}
-	}
-
-	updateReq := &ConsentUpdateRequest{
-		Purposes:                   purposes,
-		ConsentType:                req.Type,
-		CurrentStatus:              "", // Will be set by handler based on auth states
-		Attributes:                 req.Attributes,
-		ValidityTime:               req.ValidityTime,
-		ConsentFrequency:           req.Frequency,
-		RecurringIndicator:         req.RecurringIndicator,
-		DataAccessValidityDuration: req.DataAccessValidityDuration,
-	}
-
-	// Map authorizations to auth resources
-	// If Authorizations is not nil (even if empty), set AuthResources to indicate intent to update
-	if req.Authorizations != nil {
-		updateReq.AuthResources = make([]authmodel.ConsentAuthResourceCreateRequest, len(req.Authorizations))
-		for i, auth := range req.Authorizations {
-			var userID *string
-			if auth.UserID != "" {
-				userID = &auth.UserID
-			}
-
-			// Default status to "approved" if not provided
-			// Note: Consent-embedded authorizations default to ApprovedState (unlike direct auth resource
-			// creation which defaults to CreatedState) because they're created as part of consent flow
-			status := auth.Status
-			if status == "" {
-				status = string(AuthStatusMappings.ApprovedState)
-			}
-
-			updateReq.AuthResources[i] = authmodel.ConsentAuthResourceCreateRequest{
-				AuthType:   auth.Type,
-				UserID:     userID,
-				AuthStatus: status, // Store the status value
-				Resources:  auth.Resources,
-			}
-		}
-	}
-
-	return updateReq, nil
-}
-
-// ConsentAPIResponse represents the API response format for consent (external format)
-type ConsentAPIResponse struct {
-	ID                         string                     `json:"id"`
-	Purposes                   []ConsentPurposeItem       `json:"purposes"`
-	CreatedTime                int64                      `json:"createdTime"`
-	UpdatedTime                int64                      `json:"updatedTime"`
-	ClientID                   string                     `json:"clientId"`
-	Type                       string                     `json:"type"`
-	Status                     string                     `json:"status"`
-	Frequency                  *int                       `json:"frequency,omitempty"`
-	ValidityTime               *int64                     `json:"validityTime,omitempty"`
-	RecurringIndicator         *bool                      `json:"recurringIndicator,omitempty"`
-	DataAccessValidityDuration *int64                     `json:"dataAccessValidityDuration,omitempty"`
-	Attributes                 map[string]string          `json:"attributes"`
-	Authorizations             []AuthorizationAPIResponse `json:"authorizations"`
-	ModifiedResponse           interface{}                `json:"modifiedResponse,omitempty"` // Present in GET/POST/PUT, excluded in validate
-}
-
-// AuthorizationAPIResponse represents the API response format for authorization resource (external format)
-type AuthorizationAPIResponse struct {
-	ID          string      `json:"id"`
-	UserID      *string     `json:"userId,omitempty"`
-	Type        string      `json:"type"`
-	Status      string      `json:"status"`
-	UpdatedTime int64       `json:"updatedTime"`
-	Resources   interface{} `json:"resources"`
-}
-
-// ToAPIResponse converts internal response format to API response format
-func (resp *ConsentResponse) ToAPIResponse() *ConsentAPIResponse {
-	// Initialize Attributes with empty object if nil
-	attributes := resp.Attributes
-	if attributes == nil {
-		attributes = make(map[string]string)
-	}
-
-	// Initialize Purposes with empty array if nil
-	purposes := resp.Purposes
-	if purposes == nil {
-		purposes = make([]ConsentPurposeItem, 0)
-	}
-
-	apiResp := &ConsentAPIResponse{
-		ID:                         resp.ConsentID,
-		Purposes:                   purposes,
-		CreatedTime:                resp.CreatedTime,
-		UpdatedTime:                resp.UpdatedTime,
-		ClientID:                   resp.ClientID,
-		Type:                       resp.ConsentType,
-		Status:                     resp.CurrentStatus,
-		Frequency:                  resp.ConsentFrequency,
-		ValidityTime:               resp.ValidityTime,
-		RecurringIndicator:         resp.RecurringIndicator,
-		DataAccessValidityDuration: resp.DataAccessValidityDuration,
-		Attributes:                 attributes,
-		ModifiedResponse:           make(map[string]interface{}),
-		Authorizations:             make([]AuthorizationAPIResponse, 0),
-	}
-
-	// Map auth resources to authorizations
-	if len(resp.AuthResources) > 0 {
-		apiResp.Authorizations = make([]AuthorizationAPIResponse, len(resp.AuthResources))
-		for i, auth := range resp.AuthResources {
-			// Parse resources JSON string to interface
-			var resources interface{}
-			if auth.Resources != nil && *auth.Resources != "" {
-				if err := json.Unmarshal([]byte(*auth.Resources), &resources); err != nil {
-					// If parsing fails, set to empty object
-					resources = make(map[string]interface{})
-				}
-			} else {
-				// If resources is nil or empty, set to empty object
-				resources = make(map[string]interface{})
-			}
-
-			apiResp.Authorizations[i] = AuthorizationAPIResponse{
-				ID:          auth.AuthID,
-				UserID:      auth.UserID,
-				Type:        auth.AuthType,
-				Status:      auth.AuthStatus,
-				UpdatedTime: auth.UpdatedTime,
-				Resources:   resources,
-			}
-		}
-	}
-
-	return apiResp
-}
-
-// ValidateRequest represents the payload for validation API
-type ValidateRequest struct {
-	Headers         map[string]interface{} `json:"headers"`
-	Payload         map[string]interface{} `json:"payload"`
-	ElectedResource string                 `json:"electedResource"`
-	ConsentID       string                 `json:"consentId"`
-	UserID          string                 `json:"userId"`
-	ClientID        string                 `json:"clientId"`
-	ResourceParams  struct {
-		Resource   string `json:"resource"`
-		HTTPMethod string `json:"httpMethod"`
-		Context    string `json:"context"`
-	} `json:"resourceParams"`
-}
-
-// ValidateResponse represents the response for validation API
-type ValidateResponse struct {
-	IsValid            bool                        `json:"isValid"`
-	ModifiedPayload    interface{}                 `json:"modifiedPayload,omitempty"`
-	ErrorCode          int                         `json:"errorCode,omitempty"`
-	ErrorMessage       string                      `json:"errorMessage,omitempty"`
-	ErrorDescription   string                      `json:"errorDescription,omitempty"`
-	ConsentInformation *ValidateConsentAPIResponse `json:"consentInformation,omitempty"`
-}
-
-// ValidateConsentAPIResponse represents consent information in validate response (excludes modifiedResponse)
-type ValidateConsentAPIResponse struct {
-	ID                         string                       `json:"id"`
-	Type                       string                       `json:"type"`
-	ClientID                   string                       `json:"clientId"`
-	Status                     string                       `json:"status"`
-	CreatedTime                int64                        `json:"createdTime"`
-	UpdatedTime                int64                        `json:"updatedTime"`
-	ValidityTime               *int64                       `json:"validityTime"`
-	RecurringIndicator         *bool                        `json:"recurringIndicator"`
-	Frequency                  *int                         `json:"frequency"`
-	DataAccessValidityDuration *int64                       `json:"dataAccessValidityDuration"`
-	Purposes                   []ConsentPurposeItemValidate `json:"purposes"`
-	Attributes                 map[string]string            `json:"attributes,omitempty"`
-	Authorizations             []AuthorizationAPIResponse   `json:"authorizations,omitempty"`
-}
-
-// ConsentRevokeResponse represents the response after revoking a consent
+// ConsentRevokeResponse is the response body for POST /consents/{consentId}/revoke.
 type ConsentRevokeResponse struct {
 	ActionTime       int64  `json:"actionTime"`
 	ActionBy         string `json:"actionBy"`
 	RevocationReason string `json:"revocationReason,omitempty"`
+}
+
+// ConsentAttributeSearchResponse is the response body for GET /consents/attributes.
+type ConsentAttributeSearchResponse struct {
+	ConsentIDs []string `json:"consentIds"`
+	Count      int      `json:"count"`
+}
+
+// =============================================================================
+// Validate-specific API response types
+//
+// The validate endpoint returns enriched element details (type, description,
+// properties from the element definition) that regular responses omit.
+// =============================================================================
+
+// ConsentValidatePurposeElementResponse is one element in a validate consent response.
+// Extends ConsentPurposeElementApprovalResponse with enriched definition fields.
+type ConsentValidatePurposeElementResponse struct {
+	ElementID   string            `json:"elementId"`
+	Name        string            `json:"name"`
+	Namespace   string            `json:"namespace"`
+	Version     string            `json:"version"`
+	Mandatory   bool              `json:"mandatory"`
+	Approved    bool              `json:"approved"`
+	Value       interface{}       `json:"value,omitempty"`
+	DisplayName *string           `json:"displayName,omitempty"`
+	Type        string            `json:"type,omitempty"`        // element type: "basic", "json", "xml"
+	Description *string           `json:"description,omitempty"` // element description from definition
+	Properties  map[string]string `json:"properties,omitempty"`  // element properties from definition
+}
+
+// ConsentValidatePurposeResponse is one purpose in a validate consent response.
+// Extends ConsentPurposeResponse with enriched definition fields.
+type ConsentValidatePurposeResponse struct {
+	PurposeID   string                                  `json:"purposeId"`
+	Name        string                                  `json:"name"`
+	Version     string                                  `json:"version"`
+	DisplayName *string                                 `json:"displayName,omitempty"`
+	Description *string                                 `json:"description,omitempty"`
+	Properties  map[string]string                       `json:"properties,omitempty"`
+	Elements    []ConsentValidatePurposeElementResponse `json:"elements"`
+}
+
+// ConsentValidateInfo is the consent information returned inside the validate response.
+// Identical top-level fields to ConsentResponse but uses the enriched purpose/element types.
+type ConsentValidateInfo struct {
+	ConsentID                  string                           `json:"id"`
+	GroupID                    string                           `json:"groupId"`
+	Type                       string                           `json:"type"`
+	Status                     string                           `json:"status"`
+	CreatedTime                int64                            `json:"createdTime"`
+	UpdatedTime                int64                            `json:"updatedTime"`
+	ExpirationTime             *int64                           `json:"expirationTime,omitempty"`
+	Frequency                  *int                             `json:"frequency,omitempty"`
+	RecurringIndicator         *bool                            `json:"recurringIndicator,omitempty"`
+	DataAccessValidityDuration *int64                           `json:"dataAccessValidityDuration,omitempty"`
+	Attributes                 map[string]string                `json:"attributes"`
+	Purposes                   []ConsentValidatePurposeResponse `json:"purposes"`
+	Authorizations             []AuthorizationResponse          `json:"authorizations"`
+}
+
+// ConsentValidateResponse is the response body for POST /consents/validate.
+// ModifiedPayload is removed — the validate endpoint no longer mutates responses.
+type ConsentValidateResponse struct {
+	IsValid          bool                 `json:"isValid"`
+	ErrorCode        int                  `json:"errorCode,omitempty"`
+	ErrorMessage     string               `json:"errorMessage,omitempty"`
+	ErrorDescription string               `json:"errorDescription,omitempty"`
+	ConsentInfo      *ConsentValidateInfo `json:"consentInformation,omitempty"`
 }

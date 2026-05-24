@@ -25,43 +25,129 @@ import (
 	"github.com/wso2/openfgc/internal/consent/model"
 )
 
+// =============================================================================
+// ValidateConsentCreateRequest
+// =============================================================================
+
 func TestValidateConsentCreateRequest_Success(t *testing.T) {
-	req := model.ConsentAPIRequest{
-		Type: "accounts",
-		Authorizations: []model.AuthorizationAPIRequest{
-			{Type: "accounts"},
-		},
+	// Status omitted — it is optional; service applies the default.
+	req := model.ConsentCreateRequest{
+		Type:           "accounts",
+		Authorizations: []model.AuthorizationRequest{{Type: "accounts"}},
 	}
-	err := ValidateConsentCreateRequest(req, "client-1", "org-1")
+	err := ValidateConsentCreateRequest(req, "grp-1", "org-1")
+	require.NoError(t, err)
+}
+
+func TestValidateConsentCreateRequest_AuthTypeOptional(t *testing.T) {
+	// Authorization type is optional — service defaults to "default"
+	req := model.ConsentCreateRequest{
+		Type:           "accounts",
+		Authorizations: []model.AuthorizationRequest{{}},
+	}
+	err := ValidateConsentCreateRequest(req, "grp-1", "org-1")
 	require.NoError(t, err)
 }
 
 func TestValidateConsentCreateRequest_MissingType(t *testing.T) {
-	req := model.ConsentAPIRequest{
-		Authorizations: []model.AuthorizationAPIRequest{
-			{Type: "accounts"},
-		},
-	}
-	err := ValidateConsentCreateRequest(req, "client-1", "org-1")
+	req := model.ConsentCreateRequest{}
+	err := ValidateConsentCreateRequest(req, "grp-1", "org-1")
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "type is required")
 }
 
 func TestValidateConsentCreateRequest_TypeTooLong(t *testing.T) {
-	req := model.ConsentAPIRequest{
-		Type: string(make([]byte, 65)),
-		Authorizations: []model.AuthorizationAPIRequest{
-			{Type: "accounts"},
-		},
-	}
-	err := ValidateConsentCreateRequest(req, "client-1", "org-1")
+	req := model.ConsentCreateRequest{Type: string(make([]byte, 65))}
+	err := ValidateConsentCreateRequest(req, "grp-1", "org-1")
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "type must be at most 64 characters")
 }
 
-func TestValidateConsentGetRequest_Success(t *testing.T) {
-	err := ValidateConsentGetRequest("consent-123", "org-1")
+func TestValidateConsentCreateRequest_MissingGroupID(t *testing.T) {
+	req := model.ConsentCreateRequest{Type: "accounts"}
+	err := ValidateConsentCreateRequest(req, "", "org-1")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "group-id header is required")
+}
+
+func TestValidateConsentCreateRequest_MissingOrgID(t *testing.T) {
+	req := model.ConsentCreateRequest{Type: "accounts"}
+	err := ValidateConsentCreateRequest(req, "grp-1", "")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "orgID is required")
+}
+
+func TestValidateConsentCreateRequest_NegativeExpirationTime(t *testing.T) {
+	neg := int64(-1)
+	req := model.ConsentCreateRequest{Type: "accounts", ExpirationTime: &neg}
+	err := ValidateConsentCreateRequest(req, "grp-1", "org-1")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "expirationTime must be non-negative")
+}
+
+func TestValidateConsentCreateRequest_NegativeFrequency(t *testing.T) {
+	neg := -5
+	req := model.ConsentCreateRequest{Type: "accounts", Frequency: &neg}
+	err := ValidateConsentCreateRequest(req, "grp-1", "org-1")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "frequency must be non-negative")
+}
+
+// =============================================================================
+// ValidateConsentUpdateRequest
+// =============================================================================
+
+func TestValidateConsentUpdateRequest_Success(t *testing.T) {
+	req := model.ConsentUpdateRequest{Type: "payments"}
+	err := ValidateConsentUpdateRequest(req)
 	require.NoError(t, err)
+}
+
+func TestValidateConsentUpdateRequest_NoFieldsProvided(t *testing.T) {
+	req := model.ConsentUpdateRequest{}
+	err := ValidateConsentUpdateRequest(req)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "at least one field must be provided")
+}
+
+func TestValidateConsentUpdateRequest_TypeTooLong(t *testing.T) {
+	req := model.ConsentUpdateRequest{Type: string(make([]byte, 65))}
+	err := ValidateConsentUpdateRequest(req)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "type must be at most 64 characters")
+}
+
+func TestValidateConsentUpdateRequest_NegativeExpirationTime(t *testing.T) {
+	neg := int64(-1)
+	req := model.ConsentUpdateRequest{ExpirationTime: &neg}
+	err := ValidateConsentUpdateRequest(req)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "expirationTime must be non-negative")
+}
+
+func TestValidateConsentUpdateRequest_NegativeFrequency(t *testing.T) {
+	neg := -5
+	req := model.ConsentUpdateRequest{Frequency: &neg}
+	err := ValidateConsentUpdateRequest(req)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "frequency must be non-negative")
+}
+
+func TestValidateConsentUpdateRequest_AuthTypeOptional(t *testing.T) {
+	// Authorization type is optional in update too; status omitted to avoid config dependency in tests.
+	req := model.ConsentUpdateRequest{
+		Authorizations: []model.AuthorizationRequest{{}},
+	}
+	err := ValidateConsentUpdateRequest(req)
+	require.NoError(t, err)
+}
+
+// =============================================================================
+// ValidateConsentGetRequest
+// =============================================================================
+
+func TestValidateConsentGetRequest_Success(t *testing.T) {
+	require.NoError(t, ValidateConsentGetRequest("consent-123", "org-1"))
 }
 
 func TestValidateConsentGetRequest_EmptyConsentID(t *testing.T) {
@@ -88,100 +174,20 @@ func TestValidateConsentGetRequest_OrgIDTooLong(t *testing.T) {
 	require.Contains(t, err.Error(), "organization ID too long")
 }
 
-func TestValidateConsentCreateRequest_MissingClientID(t *testing.T) {
-	req := model.ConsentAPIRequest{
-		Type:           "accounts",
-		Authorizations: []model.AuthorizationAPIRequest{{Type: "accounts"}},
-	}
-	err := ValidateConsentCreateRequest(req, "", "org-1")
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "clientID is required")
+// =============================================================================
+// IsConsentExpired
+// =============================================================================
+
+func TestIsConsentExpired_ZeroMeansNoExpiry(t *testing.T) {
+	require.False(t, IsConsentExpired(0))
 }
 
-func TestValidateConsentCreateRequest_MissingOrgID(t *testing.T) {
-	req := model.ConsentAPIRequest{
-		Type:           "accounts",
-		Authorizations: []model.AuthorizationAPIRequest{{Type: "accounts"}},
-	}
-	err := ValidateConsentCreateRequest(req, "client-1", "")
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "orgID is required")
+func TestIsConsentExpired_FutureTimestamp(t *testing.T) {
+	// Far-future timestamp in ms
+	require.False(t, IsConsentExpired(9_999_999_999_999))
 }
 
-func TestValidateConsentCreateRequest_MissingAuthType(t *testing.T) {
-	req := model.ConsentAPIRequest{
-		Type:           "accounts",
-		Authorizations: []model.AuthorizationAPIRequest{{Type: ""}},
-	}
-	err := ValidateConsentCreateRequest(req, "client-1", "org-1")
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "authorizations[0].type is required")
-}
-
-func TestValidateConsentCreateRequest_NegativeValidityTime(t *testing.T) {
-	negativeTime := int64(-100)
-	req := model.ConsentAPIRequest{
-		Type:           "accounts",
-		ValidityTime:   &negativeTime,
-		Authorizations: []model.AuthorizationAPIRequest{{Type: "accounts"}},
-	}
-	err := ValidateConsentCreateRequest(req, "client-1", "org-1")
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "validityTime must be non-negative")
-}
-
-func TestValidateConsentCreateRequest_NegativeFrequency(t *testing.T) {
-	negativeFreq := -5
-	req := model.ConsentAPIRequest{
-		Type:           "accounts",
-		Frequency:      &negativeFreq,
-		Authorizations: []model.AuthorizationAPIRequest{{Type: "accounts"}},
-	}
-	err := ValidateConsentCreateRequest(req, "client-1", "org-1")
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "frequency must be non-negative")
-}
-
-func TestValidateConsentUpdateRequest_Success(t *testing.T) {
-	req := model.ConsentAPIUpdateRequest{Type: "payments"}
-	err := ValidateConsentUpdateRequest(req)
-	require.NoError(t, err)
-}
-
-func TestValidateConsentUpdateRequest_NoFieldsProvided(t *testing.T) {
-	req := model.ConsentAPIUpdateRequest{}
-	err := ValidateConsentUpdateRequest(req)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "at least one field must be provided")
-}
-
-func TestValidateConsentUpdateRequest_TypeTooLong(t *testing.T) {
-	req := model.ConsentAPIUpdateRequest{Type: string(make([]byte, 65))}
-	err := ValidateConsentUpdateRequest(req)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "type must be at most 64 characters")
-}
-
-func TestValidateConsentUpdateRequest_NegativeValidityTime(t *testing.T) {
-	negativeTime := int64(-100)
-	req := model.ConsentAPIUpdateRequest{ValidityTime: &negativeTime}
-	err := ValidateConsentUpdateRequest(req)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "validityTime must be non-negative")
-}
-
-func TestValidateConsentUpdateRequest_NegativeFrequency(t *testing.T) {
-	negativeFreq := -5
-	req := model.ConsentAPIUpdateRequest{Frequency: &negativeFreq}
-	err := ValidateConsentUpdateRequest(req)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "frequency must be non-negative")
-}
-
-func TestValidateConsentUpdateRequest_MissingAuthType(t *testing.T) {
-	auths := []model.AuthorizationAPIRequest{{Type: ""}}
-	req := model.ConsentAPIUpdateRequest{Authorizations: auths}
-	err := ValidateConsentUpdateRequest(req)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "authorizations[0].type is required")
+func TestIsConsentExpired_PastTimestamp(t *testing.T) {
+	// Well-past timestamp in ms (year 2001)
+	require.True(t, IsConsentExpired(1_000_000_000_000))
 }

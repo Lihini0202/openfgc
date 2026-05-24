@@ -110,11 +110,11 @@ var (
 
 	QueryGetPurposeVersionElements = dbmodel.DBQuery{
 		ID: "GET_PURPOSE_VERSION_ELEMENTS",
-		Query: `SELECT m.ELEMENT_VERSION_ID, e.ID AS ELEMENT_ID, e.NAME, e.NAMESPACE, e.VERSION, m.MANDATORY
+		Query: `SELECT m.ELEMENT_VERSION_ID, e.ID AS ELEMENT_ID, e.NAME, e.NAMESPACE, e.VERSION, m.MANDATORY, e.TYPE, e.ELEMENT_SCHEMA
 				FROM PURPOSE_ELEMENT_MAPPING m
 				JOIN ELEMENT e ON m.ELEMENT_VERSION_ID = e.VERSION_ID
 				WHERE m.PURPOSE_VERSION_ID = ? AND m.ORG_ID = ?`,
-		PostgresQuery: `SELECT m.ELEMENT_VERSION_ID, e.ID AS ELEMENT_ID, e.NAME, e.NAMESPACE, e.VERSION, m.MANDATORY
+		PostgresQuery: `SELECT m.ELEMENT_VERSION_ID, e.ID AS ELEMENT_ID, e.NAME, e.NAMESPACE, e.VERSION, m.MANDATORY, e.TYPE, e.ELEMENT_SCHEMA
 				FROM PURPOSE_ELEMENT_MAPPING m
 				JOIN ELEMENT e ON m.ELEMENT_VERSION_ID = e.VERSION_ID
 				WHERE m.PURPOSE_VERSION_ID = $1 AND m.ORG_ID = $2`,
@@ -584,7 +584,7 @@ func (s *store) batchPopulateElements(dbClient provider.DBClientInterface, versi
 	args = append(args, orgID)
 
 	rawSQL := fmt.Sprintf(
-		`SELECT m.PURPOSE_VERSION_ID, m.ELEMENT_VERSION_ID, e.ID AS ELEMENT_ID, e.NAME, e.NAMESPACE, e.VERSION, m.MANDATORY
+		`SELECT m.PURPOSE_VERSION_ID, m.ELEMENT_VERSION_ID, e.ID AS ELEMENT_ID, e.NAME, e.NAMESPACE, e.VERSION, m.MANDATORY, e.TYPE, e.ELEMENT_SCHEMA
 		 FROM PURPOSE_ELEMENT_MAPPING m
 		 JOIN ELEMENT e ON m.ELEMENT_VERSION_ID = e.VERSION_ID
 		 WHERE m.PURPOSE_VERSION_ID IN (%s) AND m.ORG_ID = ?`,
@@ -652,6 +652,8 @@ func mapToPurposeMappedElement(row map[string]interface{}) model.PurposeMappedEl
 		Namespace:        getString(row, "namespace"),
 		VersionNum:       getInt(row, "version"),
 		Mandatory:        getBool(row, "mandatory"),
+		ElementType:      getString(row, "type"),
+		Schema:           getStringPtr(row, "element_schema"),
 	}
 }
 

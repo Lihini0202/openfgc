@@ -51,12 +51,14 @@ type PurposeVersionProperty struct {
 // PurposeMappedElement is the result of joining PURPOSE_ELEMENT_MAPPING with the ELEMENT table.
 // Used by store.GetPurposeVersionElements to load element details alongside the mandatory flag.
 type PurposeMappedElement struct {
-	ElementVersionID string `db:"ELEMENT_VERSION_ID"`
-	ElementID        string `db:"ELEMENT_ID"`
-	Name             string `db:"NAME"`
-	Namespace        string `db:"NAMESPACE"`
-	VersionNum       int    `db:"VERSION"`
-	Mandatory        bool   `db:"MANDATORY"`
+	ElementVersionID string  `db:"ELEMENT_VERSION_ID"`
+	ElementID        string  `db:"ELEMENT_ID"`
+	Name             string  `db:"NAME"`
+	Namespace        string  `db:"NAMESPACE"`
+	VersionNum       int     `db:"VERSION"`
+	Mandatory        bool    `db:"MANDATORY"`
+	ElementType      string  `db:"TYPE"`
+	Schema           *string `db:"ELEMENT_SCHEMA"`
 }
 
 // =============================================================================

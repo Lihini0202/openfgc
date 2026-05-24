@@ -2501,21 +2501,22 @@ components:
       description: |
         Payload for creating or updating an authorization resource.
 
+        **Authorization Type:**
+        The `type` field is optional. When not provided, the server defaults to `"default"`.
+
         **Authorization Status/State:**
         The `status` field represents the authorization state which determines the consent status:
         - `approved` (default if not provided): Authorization is approved → consent will be "active"
         - `created`: Authorization is created but not yet approved → consent will be "created"
         - `rejected`: Authorization was rejected → consent will be "rejected"
         - Custom values: Will be resolved via extension point to one of the known consent statuses
-      required:
-        - type
       properties:
         userId:
           description: The unique ID of the user who performed this authorization.
           type: string
           example: "admin@carbon.super"
         type:
-          description: The type of authorization (e.g., 'authorisation', 're-authorisation').
+          description: The type of authorization (e.g., 'authorisation', 're-authorisation'). Defaults to "default" when not provided.
           type: string
           example: "authorisation"
         status:
@@ -2621,7 +2622,7 @@ components:
           minItems: 1
           items:
             $ref: "#/components/schemas/ConsentPurposeItem"
-        properties:
+        attributes:
           description: A key-value map of additional, non-standard attributes associated with the consent.
           type: object
           additionalProperties:

@@ -51,8 +51,8 @@ func registerRoutes(mux *http.ServeMux, handler *consentHandler) {
 	// PUT /api/v1/consents/{consentId} - Update consent
 	mux.HandleFunc("PUT "+constants.APIBasePath+"/consents/{consentId}", handler.updateConsent)
 
-	// PUT /api/v1/consents/{consentId}/revoke - Revoke consent
-	mux.HandleFunc("PUT "+constants.APIBasePath+"/consents/{consentId}/revoke", handler.revokeConsent)
+	// POST /api/v1/consents/{consentId}/revoke - Revoke consent
+	mux.HandleFunc("POST "+constants.APIBasePath+"/consents/{consentId}/revoke", handler.revokeConsent)
 
 	// POST /api/v1/consents/validate - Validate consent
 	mux.HandleFunc("POST "+constants.APIBasePath+"/consents/validate", handler.validateConsent)

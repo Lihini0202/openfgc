@@ -96,6 +96,21 @@ func (s *consentPurposeService) CreatePurpose(ctx context.Context, input model.C
 			fmt.Sprintf("a purpose named '%s' already exists for this group", input.Name))
 	}
 
+	// If creating a group-specific purpose, also block names already taken by an org-level purpose
+	// (GROUP_ID = orgID). Org-level purposes are visible to all groups, so a same-named
+	// group-specific purpose would be ambiguous when referenced by name in a consent.
+	if input.GroupID != orgID {
+		orgLevel, err := s.stores.ConsentPurpose.GetByNameAndGroupID(ctx, input.Name, orgID, orgID)
+		if err != nil {
+			logger.Error("Failed to check org-level purpose name existence", log.Error(err))
+			return nil, &ErrorCheckNameExistence
+		}
+		if orgLevel != nil {
+			return nil, serviceerror.CustomServiceError(ErrorPurposeNameExists,
+				fmt.Sprintf("a purpose named '%s' already exists as an org-level purpose", input.Name))
+		}
+	}
+
 	resolvedElements, svcErr := s.validateAndResolveElements(ctx, input.Elements, orgID)
 	if svcErr != nil {
 		return nil, svcErr

@@ -336,7 +336,9 @@ func TestCreatePurpose_EmptyElements(t *testing.T) {
 	ps := interfacesmock.NewConsentPurposeStore(t)
 	svc := newSvc(t, ps, nil)
 
+	// GroupID is empty → service also checks for an org-level purpose with groupID = orgID.
 	ps.On("GetByNameAndGroupID", mock.Anything, "Marketing", "", svcOrgID).Return(nil, nil)
+	ps.On("GetByNameAndGroupID", mock.Anything, "Marketing", svcOrgID, svcOrgID).Return(nil, nil)
 
 	input := purposemodel.CreatePurposeInput{Name: "Marketing", Elements: nil}
 	out, svcErr := svc.CreatePurpose(context.Background(), input, svcOrgID)
@@ -350,7 +352,9 @@ func TestCreatePurpose_ElementNotFound(t *testing.T) {
 	es := interfacesmock.NewConsentElementStore(t)
 	svc := newSvc(t, ps, es)
 
+	// GroupID is empty → service also checks for an org-level purpose with groupID = orgID.
 	ps.On("GetByNameAndGroupID", mock.Anything, "Marketing", "", svcOrgID).Return(nil, nil)
+	ps.On("GetByNameAndGroupID", mock.Anything, "Marketing", svcOrgID, svcOrgID).Return(nil, nil)
 	es.On("GetByNameAndNamespace", mock.Anything, "email", "default", svcOrgID).Return(nil, nil)
 
 	input := purposemodel.CreatePurposeInput{
