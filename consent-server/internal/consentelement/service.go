@@ -25,7 +25,7 @@ import (
 	"time"
 
 	"github.com/wso2/openfgc/internal/consentelement/model"
-	"github.com/wso2/openfgc/internal/consentelement/validators"
+	"github.com/wso2/openfgc/internal/consentelement/validator"
 	dbmodel "github.com/wso2/openfgc/internal/system/database/model"
 	"github.com/wso2/openfgc/internal/system/error/serviceerror"
 	"github.com/wso2/openfgc/internal/system/stores"
@@ -301,7 +301,7 @@ func validateCreateInput(input model.CreateElementInput) *serviceerror.ServiceEr
 	default:
 		return serviceerror.CustomServiceError(ErrorInvalidElementType, fmt.Sprintf("invalid element type: %s", input.Type))
 	}
-	if elementTypeDef, err := validators.GetTypeRegistry().Get(input.Type); err == nil {
+	if elementTypeDef, err := validator.GetTypeRegistry().Get(input.Type); err == nil {
 		if verr := elementTypeDef.ValidateSchema(input.Schema); verr != nil {
 			return serviceerror.CustomServiceError(ErrorValidateElement, verr.Message)
 		}

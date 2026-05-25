@@ -76,6 +76,12 @@ type ConsentStore interface {
 	DeleteElementApprovalsByConsentID(tx dbmodel.TxInterface, consentID, orgID string) error
 	// GetElementApprovalsByConsentID returns approval rows joined with ELEMENT metadata for a consent.
 	GetElementApprovalsByConsentID(ctx context.Context, consentID, orgID string) ([]consentModel.ConsentApprovalRow, error)
+	// GetElementPropertiesByConsentID returns element properties for all elements in a consent,
+	// keyed by element version ID then attribute key.
+	GetElementPropertiesByConsentID(ctx context.Context, consentID, orgID string) (map[string]map[string]string, error)
+	// GetPurposePropertiesByConsentID returns purpose properties for all purposes in a consent,
+	// keyed by purpose version ID then attribute key.
+	GetPurposePropertiesByConsentID(ctx context.Context, consentID, orgID string) (map[string]map[string]string, error)
 }
 
 // AuthResourceStore defines the interface for authorization resource data operations.

@@ -16,30 +16,27 @@
  * under the License.
  */
 
-package validators
+package validator
 
 import "github.com/wso2/openfgc/internal/consentelement/model"
 
-// JSONElementType handles "json" consent elements.
-// Schema is required and must be non-empty. It accepts either a JSON object
-// ({"type":"object"}) or a plain string value. Format validation (object vs string
-// vs disallowed types like arrays) is performed upstream by parseSchemaRaw before
-// the validator is called.
-type JSONElementType struct{}
+// XMLElementType handles "xml" consent elements.
+// Schema is required and must be a non-empty string.
+type XMLElementType struct{}
 
-func (t *JSONElementType) GetType() string {
-	return model.ElementTypeJSON
+func (t *XMLElementType) GetType() string {
+	return model.ElementTypeXML
 }
 
-// ValidateSchema requires a non-nil, non-empty schema for json elements.
-func (t *JSONElementType) ValidateSchema(schema *string) *ValidationError {
+// ValidateSchema requires a non-nil, non-empty schema for xml elements.
+func (t *XMLElementType) ValidateSchema(schema *string) *ValidationError {
 	if schema == nil || *schema == "" {
-		return &ValidationError{Field: "schema", Message: "schema is required for json elements"}
+		return &ValidationError{Field: "schema", Message: "schema is required for xml elements"}
 	}
 	return nil
 }
 
 // ValidateProperties is reserved for future property-level constraints.
-func (t *JSONElementType) ValidateProperties(properties map[string]string) []ValidationError {
+func (t *XMLElementType) ValidateProperties(properties map[string]string) []ValidationError {
 	return nil
 }

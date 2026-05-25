@@ -353,7 +353,7 @@ func (s *consentService) SearchConsents(ctx context.Context, filters model.Conse
 		}
 
 		consent := c // avoid loop-variable capture for pointer fields
-		out := buildConsentOutput(&consent, purposeRows, approvalRows, attrMap, authsByConsent[c.ConsentID])
+		out := buildConsentOutput(&consent, purposeRows, approvalRows, attrMap, authsByConsent[c.ConsentID], nil, nil)
 		outputs = append(outputs, *out)
 	}
 
@@ -981,8 +981,14 @@ func (s *consentService) loadConsentOutput(ctx context.Context, consent *model.C
 	consentStore := s.stores.Consent
 	authResourceStore := s.stores.AuthResource
 
-	attrs, _ := consentStore.GetAttributesByConsentID(ctx, consent.ConsentID, orgID)
-	authResources, _ := authResourceStore.GetByConsentID(ctx, consent.ConsentID, orgID)
+	attrs, err := consentStore.GetAttributesByConsentID(ctx, consent.ConsentID, orgID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load attributes: %w", err)
+	}
+	authResources, err := authResourceStore.GetByConsentID(ctx, consent.ConsentID, orgID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load auth resources: %w", err)
+	}
 
 	purposeRows, err := consentStore.GetPurposesByConsentID(ctx, consent.ConsentID, orgID)
 	if err != nil {
@@ -992,23 +998,35 @@ func (s *consentService) loadConsentOutput(ctx context.Context, consent *model.C
 	if err != nil {
 		return nil, fmt.Errorf("failed to load approval rows: %w", err)
 	}
+	elementProps, err := consentStore.GetElementPropertiesByConsentID(ctx, consent.ConsentID, orgID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load element properties: %w", err)
+	}
+	purposeProps, err := consentStore.GetPurposePropertiesByConsentID(ctx, consent.ConsentID, orgID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load purpose properties: %w", err)
+	}
 
 	attrMap := make(map[string]string, len(attrs))
 	for _, a := range attrs {
 		attrMap[a.AttKey] = a.AttValue
 	}
 
-	return buildConsentOutput(consent, purposeRows, approvalRows, attrMap, authResources), nil
+	return buildConsentOutput(consent, purposeRows, approvalRows, attrMap, authResources, elementProps, purposeProps), nil
 }
 
 // buildConsentOutput is a pure, side-effect-free function that assembles a ConsentOutput
 // from pre-fetched data. No DB calls are made here.
+// elementProps maps elementVersionID → {attKey → attValue}; may be nil (no properties loaded).
+// purposeProps maps purposeVersionID → {attKey → attValue}; may be nil (no properties loaded).
 func buildConsentOutput(
 	consent *model.Consent,
 	purposeRows []model.ConsentPurposeRow,
 	approvalRows []model.ConsentApprovalRow,
 	attrMap map[string]string,
 	authResources []authmodel.AuthResource,
+	elementProps map[string]map[string]string,
+	purposeProps map[string]map[string]string,
 ) *model.ConsentOutput {
 	// Index approvals by purposeVersionID → elementVersionID for O(1) lookup
 	approvalIdx := make(map[string]map[string]model.ConsentApprovalRow, len(purposeRows))
@@ -1036,6 +1054,7 @@ func buildConsentOutput(
 				Value:            ar.Value,
 				DisplayName:      ar.ElementDisplayName,
 				Description:      ar.ElementDescription,
+				Properties:       elementProps[ar.ElementVersionID],
 			})
 		}
 		purposes = append(purposes, model.ConsentPurposeOutput{
@@ -1046,6 +1065,7 @@ func buildConsentOutput(
 			VersionNum:       pr.PurposeVersion,
 			DisplayName:      pr.DisplayName,
 			Description:      pr.Description,
+			Properties:       purposeProps[pr.PurposeVersionID],
 			Elements:         elements,
 		})
 	}

@@ -466,6 +466,16 @@ func (ts *PurposeAPITestSuite) TestDeletePurposeVersion() {
 			},
 		},
 		{
+			name: "version referenced by a consent — 409 CP-4091",
+			setup: func(orgID string) (string, string) {
+				id := ts.mustCreatePurpose(orgID, "dv-in-use")
+				ts.mustCreateConsentForPurpose(orgID, "dv-in-use")
+				return id, "v1"
+			},
+			wantStatus:    http.StatusConflict,
+			wantErrorCode: "CP-4091",
+		},
+		{
 			name: "non-existent version — 404 CP-4040",
 			setup: func(orgID string) (string, string) {
 				id := ts.mustCreatePurpose(orgID, "dv-no-v99")

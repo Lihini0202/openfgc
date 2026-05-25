@@ -717,6 +717,126 @@ func (_c *ConsentStore_GetElementApprovalsByConsentID_Call) RunAndReturn(run fun
 	return _c
 }
 
+// GetElementPropertiesByConsentID provides a mock function with given fields: ctx, consentID, orgID
+func (_m *ConsentStore) GetElementPropertiesByConsentID(ctx context.Context, consentID string, orgID string) (map[string]map[string]string, error) {
+	ret := _m.Called(ctx, consentID, orgID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetElementPropertiesByConsentID")
+	}
+
+	var r0 map[string]map[string]string
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, string, string) (map[string]map[string]string, error)); ok {
+		return rf(ctx, consentID, orgID)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, string, string) map[string]map[string]string); ok {
+		r0 = rf(ctx, consentID, orgID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(map[string]map[string]string)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, string, string) error); ok {
+		r1 = rf(ctx, consentID, orgID)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// ConsentStore_GetElementPropertiesByConsentID_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetElementPropertiesByConsentID'
+type ConsentStore_GetElementPropertiesByConsentID_Call struct {
+	*mock.Call
+}
+
+// GetElementPropertiesByConsentID is a helper method to define mock.On call
+//   - ctx context.Context
+//   - consentID string
+//   - orgID string
+func (_e *ConsentStore_Expecter) GetElementPropertiesByConsentID(ctx interface{}, consentID interface{}, orgID interface{}) *ConsentStore_GetElementPropertiesByConsentID_Call {
+	return &ConsentStore_GetElementPropertiesByConsentID_Call{Call: _e.mock.On("GetElementPropertiesByConsentID", ctx, consentID, orgID)}
+}
+
+func (_c *ConsentStore_GetElementPropertiesByConsentID_Call) Run(run func(ctx context.Context, consentID string, orgID string)) *ConsentStore_GetElementPropertiesByConsentID_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(string), args[2].(string))
+	})
+	return _c
+}
+
+func (_c *ConsentStore_GetElementPropertiesByConsentID_Call) Return(_a0 map[string]map[string]string, _a1 error) *ConsentStore_GetElementPropertiesByConsentID_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *ConsentStore_GetElementPropertiesByConsentID_Call) RunAndReturn(run func(context.Context, string, string) (map[string]map[string]string, error)) *ConsentStore_GetElementPropertiesByConsentID_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetPurposePropertiesByConsentID provides a mock function with given fields: ctx, consentID, orgID
+func (_m *ConsentStore) GetPurposePropertiesByConsentID(ctx context.Context, consentID string, orgID string) (map[string]map[string]string, error) {
+	ret := _m.Called(ctx, consentID, orgID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetPurposePropertiesByConsentID")
+	}
+
+	var r0 map[string]map[string]string
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, string, string) (map[string]map[string]string, error)); ok {
+		return rf(ctx, consentID, orgID)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, string, string) map[string]map[string]string); ok {
+		r0 = rf(ctx, consentID, orgID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(map[string]map[string]string)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, string, string) error); ok {
+		r1 = rf(ctx, consentID, orgID)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// ConsentStore_GetPurposePropertiesByConsentID_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetPurposePropertiesByConsentID'
+type ConsentStore_GetPurposePropertiesByConsentID_Call struct {
+	*mock.Call
+}
+
+// GetPurposePropertiesByConsentID is a helper method to define mock.On call
+//   - ctx context.Context
+//   - consentID string
+//   - orgID string
+func (_e *ConsentStore_Expecter) GetPurposePropertiesByConsentID(ctx interface{}, consentID interface{}, orgID interface{}) *ConsentStore_GetPurposePropertiesByConsentID_Call {
+	return &ConsentStore_GetPurposePropertiesByConsentID_Call{Call: _e.mock.On("GetPurposePropertiesByConsentID", ctx, consentID, orgID)}
+}
+
+func (_c *ConsentStore_GetPurposePropertiesByConsentID_Call) Run(run func(ctx context.Context, consentID string, orgID string)) *ConsentStore_GetPurposePropertiesByConsentID_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(string), args[2].(string))
+	})
+	return _c
+}
+
+func (_c *ConsentStore_GetPurposePropertiesByConsentID_Call) Return(_a0 map[string]map[string]string, _a1 error) *ConsentStore_GetPurposePropertiesByConsentID_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *ConsentStore_GetPurposePropertiesByConsentID_Call) RunAndReturn(run func(context.Context, string, string) (map[string]map[string]string, error)) *ConsentStore_GetPurposePropertiesByConsentID_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetPurposesByConsentID provides a mock function with given fields: ctx, consentID, orgID
 func (_m *ConsentStore) GetPurposesByConsentID(ctx context.Context, consentID string, orgID string) ([]consentmodel.ConsentPurposeRow, error) {
 	ret := _m.Called(ctx, consentID, orgID)

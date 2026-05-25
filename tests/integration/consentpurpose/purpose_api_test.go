@@ -341,6 +341,31 @@ func (ts *PurposeAPITestSuite) mustCreateElementWith(orgID string, fields map[st
 	return batchResp.Results[0].Element.ElementID
 }
 
+// mustCreateConsentForPurpose creates a minimal consent that references the named purpose,
+// binding the purpose's v1 so the version-in-use guard is triggered when tests try to delete it.
+func (ts *PurposeAPITestSuite) mustCreateConsentForPurpose(orgID, purposeName string) {
+	body := map[string]any{
+		"type":     "ACCOUNTS",
+		"purposes": []map[string]any{{"name": purposeName}},
+	}
+	req, err := http.NewRequest(http.MethodPost, serverURL+"/api/v1/consents", nil)
+	ts.Require().NoError(err)
+	req.Header.Set(testutils.HeaderOrgID, orgID)
+	req.Header.Set("group-id", orgID)
+	req.Header.Set(testutils.HeaderContentType, "application/json")
+
+	rawBody, err := json.Marshal(body)
+	ts.Require().NoError(err)
+	req.Body = io.NopCloser(bytes.NewReader(rawBody))
+	req.ContentLength = int64(len(rawBody))
+
+	resp, err := testutils.GetHTTPClient().Do(req)
+	ts.Require().NoError(err)
+	defer resp.Body.Close()
+	ts.Require().Equal(http.StatusCreated, resp.StatusCode,
+		"mustCreateConsentForPurpose: unexpected status creating consent for purpose '%s'", purposeName)
+}
+
 // =============================================================================
 // Assertion helpers
 // =============================================================================

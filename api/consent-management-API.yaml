@@ -72,7 +72,7 @@ paths:
               $ref: "#/components/schemas/ConsentCreatePayload"
             example:
               type: "marketing"
-              expirationTime: 1766383796
+              expirationTime: 1766383796000
               recurringIndicator: true
               dataAccessValidityDuration: 0
               frequency: 0
@@ -190,18 +190,18 @@ paths:
           example: "v2"
         - name: fromTime
           in: query
-          description: The start of the time window for the search, as a Unix timestamp in seconds (integer).
+          description: The start of the time window for the search, as a Unix timestamp in milliseconds (integer).
           schema:
             type: integer
             format: int64
-          example: 1702800000
+          example: 1702800000000
         - name: toTime
           in: query
-          description: The end of the time window for the search, as a Unix timestamp in seconds (integer).
+          description: The end of the time window for the search, as a Unix timestamp in milliseconds (integer).
           schema:
             type: integer
             format: int64
-          example: 1734422400
+          example: 1734422400000
         - name: limit
           in: query
           description: The maximum number of results to return in a single page. Used for pagination.
@@ -731,9 +731,9 @@ paths:
                   type: "accounts"
                   groupId: "group-123"
                   status: "ACTIVE"
-                  createdTime: 1702800000
-                  updatedTime: 1702800000
-                  expirationTime: 1734422400
+                  createdTime: 1702800000000
+                  updatedTime: 1702800000000
+                  expirationTime: 1734422400000
                   recurringIndicator: true
                   frequency: 10
                   dataAccessValidityDuration: 86400
@@ -765,7 +765,7 @@ paths:
                       userId: "user1@example.com"
                       type: "authorisation"
                       status: "APPROVED"
-                      updatedTime: 1702800000
+                      updatedTime: 1702800000000
                       resources:
                         accountIds: ["acc-123", "acc-456"]
         "400":
@@ -917,7 +917,7 @@ paths:
                           properties:
                             value: "license:read"
                             resourcePath: "/api/license/{id}"
-                          createdTime: "2026-03-25T10:00:00Z"
+                          createdTime: 1742860800000
                       - index: 1
                         status: "FAILED"
                         error:
@@ -1055,7 +1055,7 @@ paths:
                         version: "v3"
                         displayName: "First Name"
                         description: "Access to the user's first name"
-                        createdTime: "2026-01-10T08:00:00Z"
+                        createdTime: 1736467200000
                       - elementId: "b2c3d4e5-f6a7-8901-bcde-f12345678901"
                         name: "account_details"
                         namespace: "banking"
@@ -1063,7 +1063,7 @@ paths:
                         version: "v2"
                         displayName: "Account Details"
                         description: "Structured account information with JSON schema validation"
-                        createdTime: "2026-02-01T09:00:00Z"
+                        createdTime: 1738368000000
                     metadata:
                       total: 2
                       offset: 0
@@ -1083,7 +1083,7 @@ paths:
                         properties:
                           resourcePath: "/Patient/{firstName}"
                           jsonPath: "$.patient.firstName"
-                        createdTime: "2026-01-10T08:00:00Z"
+                        createdTime: 1736467200000
                       - elementId: "b2c3d4e5-f6a7-8901-bcde-f12345678901"
                         name: "account_details"
                         namespace: "banking"
@@ -1095,7 +1095,7 @@ paths:
                         properties:
                           resourcePath: "/accounts/{accountId}"
                           jsonPath: "$.account"
-                        createdTime: "2026-02-01T09:00:00Z"
+                        createdTime: 1738368000000
                     metadata:
                       total: 2
                       offset: 0
@@ -1164,7 +1164,7 @@ paths:
                 type: "basic"
                 displayName: "First Name"
                 description: "Allows access to the user's first name"
-                createdTime: "2026-01-10T08:00:00Z"
+                createdTime: 1736467200000
         "404":
           description: Consent element not found
           content:
@@ -1231,14 +1231,14 @@ paths:
                     properties:
                       resourcePath: "/Patient/{firstName}"
                       jsonPath: "$.patient.firstName"
-                    createdTime: "2026-03-01T10:00:00Z"
+                    createdTime: 1740787200000
                   - version: "v1"
                     displayName: "First Name"
                     description: "Allows access to the user's first name"
                     properties:
                       resourcePath: "/Patient/{firstName}"
                       jsonPath: "$.patient.firstName"
-                    createdTime: "2026-01-10T08:00:00Z"
+                    createdTime: 1736467200000
         "404":
           description: Consent element not found
           content:
@@ -1354,7 +1354,7 @@ paths:
                       resourcePath: "/Patient/{firstName}"
                       jsonPath: "$.patient.firstName"
                       xPath: "/Patient/firstName"
-                    createdTime: "2026-03-01T10:00:00Z"
+                    createdTime: 1740787200000
                 jsonVersion:
                   summary: Created new version of a json type element
                   value:
@@ -1369,7 +1369,7 @@ paths:
                     properties:
                       resourcePath: "/accounts/{accountId}"
                       jsonPath: "$.account"
-                    createdTime: "2026-03-01T10:00:00Z"
+                    createdTime: 1740787200000
         "400":
           description: Bad Request - Invalid input or validation error
           content:
@@ -1456,7 +1456,7 @@ paths:
                       resourcePath: "/Patient/{firstName}"
                       jsonPath: "$.patient.firstName"
                       xPath: "/Patient/firstName"
-                    createdTime: "2026-01-10T08:00:00Z"
+                    createdTime: 1736467200000
                 jsonVersion:
                   summary: json type element version
                   value:
@@ -1471,7 +1471,7 @@ paths:
                     properties:
                       resourcePath: "/accounts/{accountId}"
                       jsonPath: "$.account"
-                    createdTime: "2026-01-10T08:00:00Z"
+                    createdTime: 1736467200000
         "404":
           description: Element or version not found
           content:
@@ -1695,7 +1695,7 @@ paths:
                         namespace: "personal"
                         version: "v2"
                         mandatory: false
-                    createdTime: "2026-03-25T10:00:00Z"
+                    createdTime: 1742860800000
         "400":
           description: Bad Request - Invalid input or validation error
           content:
@@ -1859,14 +1859,14 @@ paths:
                         version: "v3"
                         displayName: "Marketing Communication Preferences"
                         description: "User preferences related to marketing communications"
-                        createdTime: "2026-01-10T08:00:00Z"
+                        createdTime: 1736467200000
                       - purposeId: "b2c3d4e5-f6a7-8901-bcde-f12345678901"
                         name: "account_access_permissions_purpose"
                         groupId: "group-001"
                         version: "v1"
                         displayName: "Account Access Permissions"
                         description: "Permissions for accessing account data"
-                        createdTime: "2026-02-15T09:00:00Z"
+                        createdTime: 1739577600000
                     metadata:
                       total: 2
                       offset: 0
@@ -1896,7 +1896,7 @@ paths:
                             namespace: "personal"
                             version: "v2"
                             mandatory: false
-                        createdTime: "2026-01-10T08:00:00Z"
+                        createdTime: 1736467200000
                     metadata:
                       total: 1
                       offset: 0
@@ -1987,7 +1987,7 @@ paths:
                     namespace: "personal"
                     version: "v1"
                     mandatory: false
-                createdTime: "2026-01-10T08:00:00Z"
+                createdTime: 1736467200000
         "404":
           description: Purpose not found
           content:
@@ -2069,7 +2069,7 @@ paths:
                         namespace: "personal"
                         version: "v1"
                         mandatory: false
-                    createdTime: "2026-03-01T10:00:00Z"
+                    createdTime: 1740787200000
                   - version: "v1"
                     displayName: "Marketing Communication Preferences"
                     description: "User preferences related to marketing communications"
@@ -2087,7 +2087,7 @@ paths:
                         namespace: "personal"
                         version: "v1"
                         mandatory: false
-                    createdTime: "2026-01-10T08:00:00Z"
+                    createdTime: 1736467200000
         "404":
           description: Consent purpose not found
           content:
@@ -2191,7 +2191,7 @@ paths:
                     namespace: "medical"
                     version: "v2"
                     mandatory: false
-                createdTime: "2026-03-01T10:00:00Z"
+                createdTime: 1740787200000
         "400":
           description: Bad Request - Invalid input or validation error
           content:
@@ -2293,7 +2293,7 @@ paths:
                     namespace: "medical"
                     version: "v1"
                     mandatory: false
-                createdTime: "2026-01-10T08:00:00Z"
+                createdTime: 1736467200000
         "404":
           description: Purpose or version not found
           content:
@@ -2594,7 +2594,10 @@ components:
           type: string
           example: "marketing"
         expirationTime:
-          description: Unix timestamp (seconds) when the consent expires. Set to 0 to indicate no expiration.
+          description: |
+            Unix timestamp when the consent expires. Set to 0 to indicate no expiration.
+            Values less than 10^11 are interpreted as seconds and automatically converted to milliseconds.
+            Values >= 10^11 are treated as already in milliseconds.
           type: integer
           format: int64
           example: 1766383796
@@ -2705,7 +2708,9 @@ components:
           example: "created"
         updatedTime:
           type: integer
-          format: int32
+          format: int64
+          description: Unix timestamp (milliseconds) when this authorization was last updated.
+          example: 1702800000000
         resources:
           description: Flexible resources field containing authorization-specific data as JSON.
           oneOf:
@@ -2766,7 +2771,10 @@ components:
           type: string
           example: "marketing"
         expirationTime:
-          description: Unix timestamp (seconds) when the consent expires. Set to 0 to indicate no expiration.
+          description: |
+            Unix timestamp when the consent expires. Set to 0 to indicate no expiration.
+            Values less than 10^11 are interpreted as seconds and automatically converted to milliseconds.
+            Values >= 10^11 are treated as already in milliseconds.
           type: integer
           format: int64
           example: 1766383796
@@ -2835,13 +2843,13 @@ components:
                 namespace: "personal"
                 approved: true
                 value: {}
-        createdTime: 1702800000
-        updatedTime: 1702800000
+        createdTime: 1702800000000
+        updatedTime: 1702800000000
         groupId: "group-123"
         type: "marketing"
         status: "ACTIVE"
         frequency: 0
-        expirationTime: 1766383796
+        expirationTime: 1766383796000
         recurringIndicator: true
         dataAccessValidityDuration: 0
         attributes:
@@ -2851,7 +2859,7 @@ components:
             userId: "user1@example.com"
             type: "authorisation"
             status: "APPROVED"
-            updatedTime: 1702800000
+            updatedTime: 1702800000000
             resources:
               accountIds: ["acc-123", "acc-456"]
       properties:
@@ -2867,11 +2875,11 @@ components:
         createdTime:
           type: integer
           format: int64
-          example: 1702800000
+          example: 1702800000000
         updatedTime:
           type: integer
           format: int64
-          example: 1702800000
+          example: 1702800000000
         groupId:
           type: string
         type:
@@ -2888,7 +2896,7 @@ components:
           format: int32
           example: 0
         expirationTime:
-          description: Unix timestamp (seconds) when the consent expires. Set to 0 to indicate no expiration.
+          description: Unix timestamp (milliseconds) when the consent expires. Set to 0 to indicate no expiration.
           type: integer
           format: int64
           example: 0
@@ -2933,13 +2941,13 @@ components:
                 namespace: "personal"
                 approved: true
                 value: {}
-        createdTime: 1702800000
-        updatedTime: 1702800000
+        createdTime: 1702800000000
+        updatedTime: 1702800000000
         groupId: "group-123"
         type: "marketing"
         status: "ACTIVE"
         frequency: 0
-        expirationTime: 1766383796
+        expirationTime: 1766383796000
         recurringIndicator: true
         dataAccessValidityDuration: 0
         attributes:
@@ -2949,7 +2957,7 @@ components:
             userId: "user1@example.com"
             type: "authorisation"
             status: "APPROVED"
-            updatedTime: 1702800000
+            updatedTime: 1702800000000
             resources:
               accountIds: ["acc-123", "acc-456"]
       required:
@@ -2973,11 +2981,11 @@ components:
         createdTime:
           type: integer
           format: int64
-          example: 1702800000
+          example: 1702800000000
         updatedTime:
           type: integer
           format: int64
-          example: 1702800000
+          example: 1702800000000
         groupId:
           type: string
         type:
@@ -2994,7 +3002,7 @@ components:
           format: int32
           example: 0
         expirationTime:
-          description: Unix timestamp (seconds) when the consent expires. Set to 0 to indicate no expiration.
+          description: Unix timestamp (milliseconds) when the consent expires. Set to 0 to indicate no expiration.
           type: integer
           format: int64
           example: 0
@@ -3026,10 +3034,10 @@ components:
       description: The response body returned after successfully revoking a consent.
       properties:
         actionTime:
-          description: The Unix timestamp (in seconds) when the revocation occurred.
+          description: The Unix timestamp (in milliseconds) when the revocation occurred.
           type: integer
           format: int64
-          example: 1758829540
+          example: 1758829540000
         actionBy:
           description: The user or system that performed the revoke action.
           type: string
@@ -3066,13 +3074,13 @@ components:
                 namespace: "personal"
                 approved: true
                 value: {}
-        createdTime: 1702800000
-        updatedTime: 1702800000
+        createdTime: 1702800000000
+        updatedTime: 1702800000000
         groupId: "group-123"
         type: "marketing"
         status: "ACTIVE"
         frequency: 0
-        expirationTime: 1766383796
+        expirationTime: 1766383796000
         recurringIndicator: true
         dataAccessValidityDuration: 0
         attributes:
@@ -3082,7 +3090,7 @@ components:
             userId: "user1@example.com"
             type: "authorisation"
             status: "APPROVED"
-            updatedTime: 1702800000
+            updatedTime: 1702800000000
             resources:
               accountIds: ["acc-123", "acc-456"]
       properties:
@@ -3098,11 +3106,11 @@ components:
         createdTime:
           type: integer
           format: int64
-          example: 1702800000
+          example: 1702800000000
         updatedTime:
           type: integer
           format: int64
-          example: 1702800000
+          example: 1702800000000
         groupId:
           type: string
         type:
@@ -3119,7 +3127,7 @@ components:
           format: int32
           example: 0
         expirationTime:
-          description: Unix timestamp (seconds) when the consent expires. Set to 0 to indicate no expiration.
+          description: Unix timestamp (milliseconds) when the consent expires. Set to 0 to indicate no expiration.
           type: integer
           format: int64
           example: 0
@@ -3173,13 +3181,13 @@ components:
                 namespace: "personal"
                 approved: true
                 value: {}
-        createdTime: 1702800000
-        updatedTime: 1702800000
+        createdTime: 1702800000000
+        updatedTime: 1702800000000
         groupId: "group-123"
         type: "marketing"
         status: "ACTIVE"
         frequency: 0
-        expirationTime: 1766383796
+        expirationTime: 1766383796000
         recurringIndicator: true
         dataAccessValidityDuration: 0
         attributes:
@@ -3189,7 +3197,7 @@ components:
             userId: "user1@example.com"
             type: "authorisation"
             status: "APPROVED"
-            updatedTime: 1702800000
+            updatedTime: 1702800000000
             resources:
               accountIds: ["acc-123", "acc-456"]
       properties:
@@ -3205,11 +3213,11 @@ components:
         createdTime:
           type: integer
           format: int64
-          example: 1702800000
+          example: 1702800000000
         updatedTime:
           type: integer
           format: int64
-          example: 1702800000
+          example: 1702800000000
         groupId:
           type: string
         type:
@@ -3226,7 +3234,7 @@ components:
           format: int32
           example: 0
         expirationTime:
-          description: Unix timestamp (seconds) when the consent expires. Set to 0 to indicate no expiration.
+          description: Unix timestamp (milliseconds) when the consent expires. Set to 0 to indicate no expiration.
           type: integer
           format: int64
           example: 0
@@ -3298,7 +3306,9 @@ components:
           example: "created"
         updatedTime:
           type: integer
-          format: int32
+          format: int64
+          description: Unix timestamp (milliseconds) when this authorization was last updated.
+          example: 1702800000000
         resources:
           description: Flexible resources field containing authorization-specific data as JSON.
           oneOf:
@@ -3412,19 +3422,19 @@ components:
         createdTime:
           type: integer
           format: int64
-          description: Unix timestamp (seconds) when the consent was created
-          example: 1699564800
+          description: Unix timestamp (milliseconds) when the consent was created.
+          example: 1699564800000
         updatedTime:
           type: integer
           format: int64
-          description: Unix timestamp (seconds) when the consent was last updated
-          example: 1699651200
+          description: Unix timestamp (milliseconds) when the consent was last updated.
+          example: 1699651200000
         expirationTime:
           type: integer
           format: int64
           nullable: true
-          description: Unix timestamp (seconds) until which the consent is valid. If expired, status will be EXPIRED. Omitted from response when null.
-          example: 1707340800
+          description: Unix timestamp (milliseconds) until which the consent is valid. If expired, status will be EXPIRED. Omitted from response when null.
+          example: 1707340800000
         recurringIndicator:
           type: boolean
           nullable: true
@@ -3483,7 +3493,7 @@ components:
                 description: Human-readable description of the purpose
                 example: "Preferences for marketing communication channels and frequency"
               version:
-                type: string1
+                type: string
                 description: The specific version of the purpose bound to this consent (e.g., v1, v2)
                 example: "v1"
               displayName:
@@ -3797,10 +3807,10 @@ components:
           example:
             value: "license:read"
         createdTime:
-          type: string
-          format: date-time
-          description: ISO 8601 timestamp when this element and its initial version were created
-          example: "2026-03-25T10:00:00Z"
+          type: integer
+          format: int64
+          description: Unix timestamp (milliseconds) when this element and its initial version were created.
+          example: 1742860800000
     ConsentElementSummaryResponse:
       type: object
       description: |
@@ -3845,10 +3855,10 @@ components:
           description: Description from the latest (or requested) version.
           example: "Access to the user's first name"
         createdTime:
-          type: string
-          format: date-time
-          description: ISO 8601 timestamp when this element was created
-          example: "2026-01-10T08:00:00Z"
+          type: integer
+          format: int64
+          description: Unix timestamp (milliseconds) when this element was created.
+          example: 1736467200000
     ConsentElementListResponse:
       type: object
       description: |
@@ -3928,127 +3938,6 @@ components:
               namespace: "personal"
               version: "v1"
               mandatory: false
-    PurposeUpdateRequest:
-      type: object
-      required:
-        - name
-        - elements
-      description: |
-        Request object for updating a consent element. This is a full replacement
-        operation - all required fields must be provided.
-
-        **Important:** The purposes array replaces the existing purposes completely.
-        Any purposes not included in the update will be removed from the group.
-      properties:
-        name:
-          type: string
-          maxLength: 255
-          description: |
-            The name/identifier of the purpose (can be changed or kept the same).
-            Must remain unique within the organization.
-          example: "marketing_communication_preferences"
-        description:
-          type: string
-          maxLength: 1024
-          description: Optional description for the purpose
-          example: "Updated preferences for all marketing communications"
-        elements:
-          type: array
-          minItems: 1
-          description: |
-            Complete array of element references with mandatory flags. This replaces
-            all existing elements in the purpose. At least one element is required.
-          items:
-            $ref: "#/components/schemas/PurposeElementItem"
-          example:
-            - name: "user_email"
-              mandatory: true
-            - name: "user_phone"
-              mandatory: true
-            - name: "user_sms"
-              mandatory: false
-    PurposeElementItem:
-      type: object
-      required:
-        - name
-        - mandatory
-      description: |
-        Represents a single element within a purpose, including whether it is
-        mandatory for the consent to be valid.
-
-        **Element Name Validation:**
-        The `name` must reference an existing consent element in the organization.
-        If the element doesn't exist, the API will return a 400 Bad Request error.
-      properties:
-        name:
-          type: string
-          description: |
-            The name of an existing consent element to include in this purpose.
-            Must match the name of an element that has been previously created in the organization.
-          example: "user_email"
-        version:
-          type: string
-          description: The specific version of the element to reference in this purpose version (e.g., v1, v2)
-          example: "v1"
-        mandatory:
-          type: boolean
-          description: |
-            Indicates whether this element must be approved for consents using this purpose.
-
-            - `true`: This element is required - user must approve it
-            - `false`: This element is optional - user can choose to approve or decline
-
-            This flag allows fine-grained control over which elements are essential vs.
-            optional within the purpose.
-          example: true
-    PurposeResponse:
-      type: object
-      required:
-        - id
-        - name
-        - elements
-        - createdTime
-        - updatedTime
-      description: Response object containing complete purpose information
-      properties:
-        id:
-          type: string
-          description: Unique identifier for the purpose (UUID)
-          example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
-        name:
-          type: string
-          description: The name/identifier of the purpose
-          example: "marketing_communication_preferences"
-        description:
-          type: string
-          description: Description of the purpose (optional)
-          example: "User preferences related to marketing communications"
-        groupId:
-          type: string
-          description: The group ID associated with this purpose
-          example: "group-001"
-        elements:
-          type: array
-          description: Array of elements included in this purpose with their mandatory flags
-          items:
-            $ref: "#/components/schemas/PurposeElementItem"
-          example:
-            - name: "user_email"
-              mandatory: true
-            - name: "user_phone"
-              mandatory: false
-            - name: "user_address"
-              mandatory: false
-        createdTime:
-          type: integer
-          format: int64
-          description: Unix timestamp (seconds) when the purpose was created
-          example: 1704153600
-        updatedTime:
-          type: integer
-          format: int64
-          description: Unix timestamp (seconds) when the purpose was last updated
-          example: 1704153600
     ConsentPurposeCreateResponse:
       type: object
       description: |
@@ -4099,10 +3988,10 @@ components:
           items:
             $ref: "#/components/schemas/PurposeVersionElementResponse"
         createdTime:
-          type: string
-          format: date-time
-          description: ISO 8601 timestamp when this purpose and its initial version were created
-          example: "2026-03-25T10:00:00Z"
+          type: integer
+          format: int64
+          description: Unix timestamp (milliseconds) when this purpose and its initial version were created.
+          example: 1742860800000
     ConsentPurposeSummaryResponse:
       type: object
       description: Summary response for a consent purpose. Always includes immutable identity fields, the latest version number, and the latest version's displayName and description. Returned by default when `details=false`.
@@ -4138,10 +4027,10 @@ components:
           description: Description from the latest (or requested) version.
           example: "User preferences related to marketing communications"
         createdTime:
-          type: string
-          format: date-time
-          description: ISO 8601 timestamp when this purpose was created
-          example: "2026-01-10T08:00:00Z"
+          type: integer
+          format: int64
+          description: Unix timestamp (milliseconds) when this purpose was created.
+          example: 1736467200000
     PurposeListResponse:
       type: object
       required:
@@ -4158,31 +4047,6 @@ components:
               - $ref: "#/components/schemas/ConsentPurposeVersionResponse"
         metadata:
           $ref: "#/components/schemas/ConsentSearchMetadata"
-    ConsentElementMetadataResponse:
-      type: object
-      description: Metadata response for a consent element (stable identity; version content is separate)
-      required:
-        - elementId
-        - name
-        - namespace
-        - latestVersion
-      properties:
-        elementId:
-          type: string
-          description: Unique identifier for the consent element
-          example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
-        name:
-          type: string
-          description: The name/identifier of the consent element
-          example: "first_name"
-        namespace:
-          type: string
-          description: The namespace of the consent element
-          example: "personal"
-        latestVersion:
-          type: string
-          description: The latest version identifier of this element
-          example: "v2"
     ConsentElementVersionCreateRequest:
       type: object
       description: |
@@ -4264,10 +4128,10 @@ components:
             resourcePath: "/Patient/{firstName}"
             jsonPath: "$.patient.firstName"
         createdTime:
-          type: string
-          format: date-time
-          description: ISO 8601 timestamp when this version was created
-          example: "2026-01-10T08:00:00Z"
+          type: integer
+          format: int64
+          description: Unix timestamp (milliseconds) when this version was created.
+          example: 1736467200000
     ConsentElementVersionListResponse:
       type: object
       description: Response for listing all versions of a consent element
@@ -4335,30 +4199,10 @@ components:
             resourcePath: "/Patient/{firstName}"
             jsonPath: "$.patient.firstName"
         createdTime:
-          type: string
-          format: date-time
-          description: ISO 8601 timestamp when this version was created
-          example: "2026-01-10T08:00:00Z"
-    ConsentPurposeMetadataResponse:
-      type: object
-      description: Metadata response for a consent purpose (stable identity; version content is separate)
-      required:
-        - purposeId
-        - name
-        - latestVersion
-      properties:
-        purposeId:
-          type: string
-          description: Unique identifier for the consent purpose
-          example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
-        name:
-          type: string
-          description: The name/identifier of the consent purpose
-          example: "medical_data_access"
-        latestVersion:
-          type: string
-          description: The latest version identifier of this purpose
-          example: "v1"
+          type: integer
+          format: int64
+          description: Unix timestamp (milliseconds) when this version was created.
+          example: 1736467200000
     ConsentPurposeVersionCreateRequest:
       type: object
       required:
@@ -4439,10 +4283,10 @@ components:
           items:
             $ref: "#/components/schemas/PurposeVersionElementResponse"
         createdTime:
-          type: string
-          format: date-time
-          description: ISO 8601 timestamp when this version was created
-          example: "2026-01-10T08:00:00Z"
+          type: integer
+          format: int64
+          description: Unix timestamp (milliseconds) when this version was created.
+          example: 1736467200000
     ConsentPurposeVersionListResponse:
       type: object
       description: Response for listing all versions of a consent purpose
@@ -4506,10 +4350,10 @@ components:
           items:
             $ref: "#/components/schemas/PurposeVersionElementResponse"
         createdTime:
-          type: string
-          format: date-time
-          description: ISO 8601 timestamp when this version was created
-          example: "2026-03-01T10:00:00Z"
+          type: integer
+          format: int64
+          description: Unix timestamp (milliseconds) when this version was created.
+          example: 1740787200000
     PurposeVersionElementResponse:
       type: object
       required:

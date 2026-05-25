@@ -132,6 +132,10 @@ func (s *authResourceService) CreateAuthResource(
 		return nil, serviceerror.CustomServiceError(ErrorInternalServerError,
 			fmt.Sprintf("failed to retrieve consent: %v", err))
 	}
+	if currentConsent == nil {
+		return nil, serviceerror.CustomServiceError(ErrorConsentNotFound,
+			fmt.Sprintf("consent %s does not exist in org %s", consentID, orgID))
+	}
 
 	// Derive new consent status from all auth statuses (including the one being created)
 	authStatuses := make([]string, 0, len(allAuthResources)+1)
@@ -321,6 +325,10 @@ func (s *authResourceService) UpdateAuthResource(
 		if err != nil {
 			return nil, serviceerror.CustomServiceError(ErrorInternalServerError,
 				fmt.Sprintf("failed to retrieve consent: %v", err))
+		}
+		if currentConsent == nil {
+			return nil, serviceerror.CustomServiceError(ErrorConsentNotFound,
+				fmt.Sprintf("consent %s does not exist in org %s", consentID, orgID))
 		}
 		authStatuses := make([]string, 0, len(allAuthResources))
 		for _, ar := range allAuthResources {

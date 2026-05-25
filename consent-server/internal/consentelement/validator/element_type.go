@@ -16,7 +16,7 @@
  * under the License.
  */
 
-package validators
+package validator
 
 import "encoding/json"
 

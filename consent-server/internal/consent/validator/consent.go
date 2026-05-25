@@ -61,6 +61,15 @@ func ValidateConsentCreateRequest(req model.ConsentCreateRequest, groupID, orgID
 		return fmt.Errorf("frequency must be non-negative")
 	}
 
+	for key, value := range req.Attributes {
+		if len(key) > 255 {
+			return fmt.Errorf("attribute key %q exceeds maximum length of 255 characters", key)
+		}
+		if len(value) > 1024 {
+			return fmt.Errorf("attribute value for key %q exceeds maximum length of 1024 characters", key)
+		}
+	}
+
 	for i, authReq := range req.Authorizations {
 		if authReq.Status != "" {
 			cfg := config.Get()
@@ -96,6 +105,15 @@ func ValidateConsentUpdateRequest(req model.ConsentUpdateRequest) error {
 	}
 	if req.Frequency != nil && *req.Frequency < 0 {
 		return fmt.Errorf("frequency must be non-negative")
+	}
+
+	for key, value := range req.Attributes {
+		if len(key) > 255 {
+			return fmt.Errorf("attribute key %q exceeds maximum length of 255 characters", key)
+		}
+		if len(value) > 1024 {
+			return fmt.Errorf("attribute value for key %q exceeds maximum length of 1024 characters", key)
+		}
 	}
 
 	for i, authReq := range req.Authorizations {

@@ -287,6 +287,8 @@ func TestGetConsent_Success(t *testing.T) {
 	cs.On("GetAttributesByConsentID", mock.Anything, testConsentID, testOrgID).Return([]model.ConsentAttribute{}, nil)
 	cs.On("GetPurposesByConsentID", mock.Anything, testConsentID, testOrgID).Return([]model.ConsentPurposeRow{}, nil)
 	cs.On("GetElementApprovalsByConsentID", mock.Anything, testConsentID, testOrgID).Return([]model.ConsentApprovalRow{}, nil)
+	cs.On("GetElementPropertiesByConsentID", mock.Anything, testConsentID, testOrgID).Return(map[string]map[string]string{}, nil)
+	cs.On("GetPurposePropertiesByConsentID", mock.Anything, testConsentID, testOrgID).Return(map[string]map[string]string{}, nil)
 	as.On("GetByConsentID", mock.Anything, testConsentID, testOrgID).Return([]authmodel.AuthResource{}, nil)
 
 	out, svcErr := svc.GetConsent(context.Background(), testConsentID, testOrgID)

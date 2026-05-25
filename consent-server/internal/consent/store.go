@@ -170,6 +170,34 @@ var (
 			ORDER BY pa.PURPOSE_VERSION_ID, e.NAME`,
 	}
 
+	QueryGetElementPropertiesByConsentID = dbmodel.DBQuery{
+		ID: "GET_ELEMENT_PROPERTIES_BY_CONSENT_ID",
+		Query: `SELECT ep.ELEMENT_VERSION_ID, ep.ATT_KEY, ep.ATT_VALUE
+			FROM ELEMENT_PROPERTY ep
+			JOIN CONSENT_ELEMENT_APPROVAL cea
+				ON ep.ELEMENT_VERSION_ID = cea.ELEMENT_VERSION_ID AND ep.ORG_ID = cea.ORG_ID
+			WHERE cea.CONSENT_ID = ? AND cea.ORG_ID = ?`,
+		PostgresQuery: `SELECT ep.ELEMENT_VERSION_ID, ep.ATT_KEY, ep.ATT_VALUE
+			FROM ELEMENT_PROPERTY ep
+			JOIN CONSENT_ELEMENT_APPROVAL cea
+				ON ep.ELEMENT_VERSION_ID = cea.ELEMENT_VERSION_ID AND ep.ORG_ID = cea.ORG_ID
+			WHERE cea.CONSENT_ID = $1 AND cea.ORG_ID = $2`,
+	}
+
+	QueryGetPurposePropertiesByConsentID = dbmodel.DBQuery{
+		ID: "GET_PURPOSE_PROPERTIES_BY_CONSENT_ID",
+		Query: `SELECT pp.PURPOSE_VERSION_ID, pp.ATT_KEY, pp.ATT_VALUE
+			FROM PURPOSE_PROPERTY pp
+			JOIN PURPOSE_CONSENT_MAPPING pcm
+				ON pp.PURPOSE_VERSION_ID = pcm.PURPOSE_VERSION_ID AND pp.ORG_ID = pcm.ORG_ID
+			WHERE pcm.CONSENT_ID = ? AND pcm.ORG_ID = ?`,
+		PostgresQuery: `SELECT pp.PURPOSE_VERSION_ID, pp.ATT_KEY, pp.ATT_VALUE
+			FROM PURPOSE_PROPERTY pp
+			JOIN PURPOSE_CONSENT_MAPPING pcm
+				ON pp.PURPOSE_VERSION_ID = pcm.PURPOSE_VERSION_ID AND pp.ORG_ID = pcm.ORG_ID
+			WHERE pcm.CONSENT_ID = $1 AND pcm.ORG_ID = $2`,
+	}
+
 	QueryDeleteConsentPurposesByConsentID = dbmodel.DBQuery{
 		ID:            "DELETE_PURPOSES_BY_CONSENT_ID",
 		Query:         "DELETE FROM PURPOSE_CONSENT_MAPPING WHERE CONSENT_ID = ? AND ORG_ID = ?",
@@ -438,6 +466,60 @@ func (s *store) GetElementApprovalsByConsentID(ctx context.Context, consentID, o
 	result := make([]model.ConsentApprovalRow, 0, len(rows))
 	for _, row := range rows {
 		result = append(result, mapToConsentApprovalRow(row))
+	}
+	return result, nil
+}
+
+// GetElementPropertiesByConsentID returns element properties for all elements in the consent,
+// keyed by element version ID then attribute key.
+func (s *store) GetElementPropertiesByConsentID(ctx context.Context, consentID, orgID string) (map[string]map[string]string, error) {
+	dbClient, err := s.getDBClient()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get database client: %w", err)
+	}
+	rows, err := dbClient.Query(QueryGetElementPropertiesByConsentID, consentID, orgID)
+	if err != nil {
+		return nil, err
+	}
+	result := make(map[string]map[string]string)
+	for _, row := range rows {
+		versionID := getString(row, "element_version_id")
+		key := getString(row, "att_key")
+		value := getString(row, "att_value")
+		if versionID == "" || key == "" {
+			continue
+		}
+		if result[versionID] == nil {
+			result[versionID] = make(map[string]string)
+		}
+		result[versionID][key] = value
+	}
+	return result, nil
+}
+
+// GetPurposePropertiesByConsentID returns purpose properties for all purposes in the consent,
+// keyed by purpose version ID then attribute key.
+func (s *store) GetPurposePropertiesByConsentID(ctx context.Context, consentID, orgID string) (map[string]map[string]string, error) {
+	dbClient, err := s.getDBClient()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get database client: %w", err)
+	}
+	rows, err := dbClient.Query(QueryGetPurposePropertiesByConsentID, consentID, orgID)
+	if err != nil {
+		return nil, err
+	}
+	result := make(map[string]map[string]string)
+	for _, row := range rows {
+		versionID := getString(row, "purpose_version_id")
+		key := getString(row, "att_key")
+		value := getString(row, "att_value")
+		if versionID == "" || key == "" {
+			continue
+		}
+		if result[versionID] == nil {
+			result[versionID] = make(map[string]string)
+		}
+		result[versionID][key] = value
 	}
 	return result, nil
 }

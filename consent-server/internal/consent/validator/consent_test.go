@@ -24,6 +24,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"github.com/wso2/openfgc/internal/consent/model"
+	"github.com/wso2/openfgc/internal/system/config"
 )
 
 // =============================================================================
@@ -213,4 +214,105 @@ func TestIsConsentExpired_FutureTimestamp(t *testing.T) {
 func TestIsConsentExpired_PastTimestamp(t *testing.T) {
 	// Well-past timestamp in ms (year 2001)
 	require.True(t, IsConsentExpired(1_000_000_000_000))
+}
+
+// =============================================================================
+// EvaluateConsentStatusFromAuthStatuses
+// =============================================================================
+
+// setTestConfig initialises the global config with standard status labels used
+// by EvaluateConsentStatusFromAuthStatuses. Called at the start of each sub-test
+// that exercises the derivation logic so the config is always present.
+func setTestConfig() {
+	config.SetGlobal(&config.Config{
+		Consent: config.ConsentConfig{
+			StatusMappings: config.ConsentStatusMappings{
+				ActiveStatus:   "ACTIVE",
+				CreatedStatus:  "CREATED",
+				RejectedStatus: "REJECTED",
+			},
+			AuthStatusMappings: config.AuthStatusMappings{
+				ApprovedState: "APPROVED",
+				RejectedState: "REJECTED",
+				CreatedState:  "CREATED",
+			},
+		},
+	})
+}
+
+func TestEvaluateConsentStatus_EmptyList(t *testing.T) {
+	setTestConfig()
+	// No auth resources → consent stays in CREATED
+	got := EvaluateConsentStatusFromAuthStatuses(nil)
+	require.Equal(t, "CREATED", got)
+}
+
+func TestEvaluateConsentStatus_AllApproved(t *testing.T) {
+	setTestConfig()
+	got := EvaluateConsentStatusFromAuthStatuses([]string{"APPROVED", "APPROVED"})
+	require.Equal(t, "ACTIVE", got)
+}
+
+func TestEvaluateConsentStatus_AllCreated(t *testing.T) {
+	setTestConfig()
+	got := EvaluateConsentStatusFromAuthStatuses([]string{"CREATED", "CREATED"})
+	require.Equal(t, "CREATED", got)
+}
+
+func TestEvaluateConsentStatus_AllRejected(t *testing.T) {
+	setTestConfig()
+	got := EvaluateConsentStatusFromAuthStatuses([]string{"REJECTED", "REJECTED"})
+	require.Equal(t, "REJECTED", got)
+}
+
+func TestEvaluateConsentStatus_RejectedTakesPriorityOverApproved(t *testing.T) {
+	setTestConfig()
+	// Even one REJECTED makes the whole consent REJECTED.
+	got := EvaluateConsentStatusFromAuthStatuses([]string{"APPROVED", "REJECTED"})
+	require.Equal(t, "REJECTED", got)
+}
+
+func TestEvaluateConsentStatus_RejectedTakesPriorityOverCreated(t *testing.T) {
+	setTestConfig()
+	got := EvaluateConsentStatusFromAuthStatuses([]string{"CREATED", "REJECTED"})
+	require.Equal(t, "REJECTED", got)
+}
+
+func TestEvaluateConsentStatus_CreatedTakesPriorityOverApproved(t *testing.T) {
+	setTestConfig()
+	// Mix of APPROVED and CREATED → CREATED wins over APPROVED.
+	got := EvaluateConsentStatusFromAuthStatuses([]string{"APPROVED", "CREATED"})
+	require.Equal(t, "CREATED", got)
+}
+
+func TestEvaluateConsentStatus_MixedAllThree_RejectedWins(t *testing.T) {
+	setTestConfig()
+	got := EvaluateConsentStatusFromAuthStatuses([]string{"APPROVED", "CREATED", "REJECTED"})
+	require.Equal(t, "REJECTED", got)
+}
+
+func TestEvaluateConsentStatus_SingleApproved(t *testing.T) {
+	setTestConfig()
+	got := EvaluateConsentStatusFromAuthStatuses([]string{"APPROVED"})
+	require.Equal(t, "ACTIVE", got)
+}
+
+func TestEvaluateConsentStatus_SingleRejected(t *testing.T) {
+	setTestConfig()
+	got := EvaluateConsentStatusFromAuthStatuses([]string{"REJECTED"})
+	require.Equal(t, "REJECTED", got)
+}
+
+func TestEvaluateConsentStatus_UnknownStatusTreatedAsCreated(t *testing.T) {
+	setTestConfig()
+	// An unknown status value should not cause a panic and should produce CREATED.
+	got := EvaluateConsentStatusFromAuthStatuses([]string{"SOME_UNKNOWN_STATUS"})
+	require.Equal(t, "CREATED", got)
+}
+
+func TestEvaluateConsentStatus_CaseInsensitive(t *testing.T) {
+	setTestConfig()
+	// Status comparison must be case-insensitive.
+	got := EvaluateConsentStatusFromAuthStatuses([]string{"approved", "approved"})
+	require.Equal(t, "ACTIVE", got)
 }

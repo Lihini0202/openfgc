@@ -16,7 +16,7 @@
  * under the License.
  */
 
-package validators
+package validator
 
 import (
 	"testing"
@@ -24,13 +24,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestXMLElementType_GetType(t *testing.T) {
-	et := &XMLElementType{}
-	require.Equal(t, "xml", et.GetType())
+func TestJSONElementType_GetType(t *testing.T) {
+	et := &JSONElementType{}
+	require.Equal(t, "json", et.GetType())
 }
 
-func TestXMLElementType_ValidateSchema(t *testing.T) {
-	et := &XMLElementType{}
+func TestJSONElementType_ValidateSchema(t *testing.T) {
+	et := &JSONElementType{}
 
 	// nil schema — required, must fail
 	require.NotNil(t, et.ValidateSchema(nil))
@@ -39,19 +39,23 @@ func TestXMLElementType_ValidateSchema(t *testing.T) {
 	empty := ""
 	require.NotNil(t, et.ValidateSchema(&empty))
 
-	// non-empty value is accepted
-	s := "<root/>"
-	require.Nil(t, et.ValidateSchema(&s))
+	// JSON object — accepted
+	jsonObj := `{"type":"string"}`
+	require.Nil(t, et.ValidateSchema(&jsonObj))
 
-	s = "any non-empty string"
-	require.Nil(t, et.ValidateSchema(&s))
+	// plain string — accepted (format validation is done upstream by parseSchemaRaw)
+	plain := "email_address"
+	require.Nil(t, et.ValidateSchema(&plain))
+
+	// any non-empty value is accepted by the validator
+	arr := `["a","b"]`
+	require.Nil(t, et.ValidateSchema(&arr))
 }
 
-func TestXMLElementType_ValidateProperties(t *testing.T) {
-	et := &XMLElementType{}
+func TestJSONElementType_ValidateProperties(t *testing.T) {
+	et := &JSONElementType{}
 
 	require.Nil(t, et.ValidateProperties(nil))
 	require.Nil(t, et.ValidateProperties(map[string]string{}))
 	require.Nil(t, et.ValidateProperties(map[string]string{"anyKey": "anyValue"}))
 }
-

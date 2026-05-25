@@ -16,27 +16,24 @@
  * under the License.
  */
 
-package validators
+package validator
 
 import "github.com/wso2/openfgc/internal/consentelement/model"
 
-// XMLElementType handles "xml" consent elements.
-// Schema is required and must be a non-empty string.
-type XMLElementType struct{}
+// BasicElementType handles "basic" consent elements.
+// Basic type has no mandatory properties — all properties are optional.
+type BasicElementType struct{}
 
-func (t *XMLElementType) GetType() string {
-	return model.ElementTypeXML
+func (t *BasicElementType) GetType() string {
+	return model.ElementTypeBasic
 }
 
-// ValidateSchema requires a non-nil, non-empty schema for xml elements.
-func (t *XMLElementType) ValidateSchema(schema *string) *ValidationError {
-	if schema == nil || *schema == "" {
-		return &ValidationError{Field: "schema", Message: "schema is required for xml elements"}
-	}
+// ValidateSchema accepts any schema value — schema is optional for basic elements.
+func (t *BasicElementType) ValidateSchema(schema *string) *ValidationError {
 	return nil
 }
 
 // ValidateProperties is reserved for future property-level constraints.
-func (t *XMLElementType) ValidateProperties(properties map[string]string) []ValidationError {
+func (t *BasicElementType) ValidateProperties(properties map[string]string) []ValidationError {
 	return nil
 }

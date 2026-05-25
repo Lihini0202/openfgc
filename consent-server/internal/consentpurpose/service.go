@@ -26,6 +26,7 @@ import (
 
 	"github.com/go-sql-driver/mysql"
 	"github.com/wso2/openfgc/internal/consentpurpose/model"
+	elementmodel "github.com/wso2/openfgc/internal/consentelement/model"
 	dbmodel "github.com/wso2/openfgc/internal/system/database/model"
 	"github.com/wso2/openfgc/internal/system/error/serviceerror"
 	"github.com/wso2/openfgc/internal/system/log"
@@ -469,7 +470,7 @@ func (s *consentPurposeService) validateAndResolveElements(ctx context.Context, 
 	for _, ref := range refs {
 		ns := ref.Namespace
 		if ns == "" {
-			ns = "default"
+			ns = elementmodel.DefaultNamespace
 		}
 
 		// Dedup key includes version when specified to allow the same element at different versions.
