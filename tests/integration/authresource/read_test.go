@@ -298,3 +298,64 @@ func (ts *AuthResourceAPITestSuite) TestListAuthResources() {
 		})
 	}
 }
+
+// TestGetAuthResource_NotFoundUniformMessage verifies that all three AR-4040 conditions
+// (non-existent ID, wrong consent, wrong org) return the same opaque description.
+// This guards against the leaky messages that previously exposed internal state:
+//   - "auth resource not found: {authID}"        — revealed resource existence
+//   - "auth resource {authID} does not belong to consent {consentID}"  — confirmed existence
+func (ts *AuthResourceAPITestSuite) TestGetAuthResource_NotFoundUniformMessage() {
+	const wantDescription = "the authorization resource does not exist, does not belong to the specified consent, or is not accessible in this organization"
+
+	type testCase struct {
+		name  string
+		setup func(orgID string) (consentID, authID, orgForReq string)
+	}
+
+	cases := []testCase{
+		{
+			name: "non-existent auth ID — description is opaque",
+			setup: func(orgID string) (string, string, string) {
+				consentID := ts.mustCreateConsent(orgID, "grp-ar-msg-nf")
+				return consentID, "00000000-0000-0000-0000-000000000000", orgID
+			},
+		},
+		{
+			name: "auth belongs to consent A but requested via consent B — description is opaque",
+			setup: func(orgID string) (string, string, string) {
+				consentA := ts.mustCreateConsent(orgID, "grp-ar-msg-ca")
+				consentB := ts.mustCreateConsent(orgID, "grp-ar-msg-cb")
+				ar := ts.mustCreateAuthResource(orgID, consentA, AuthResourceCreateRequest{})
+				return consentB, ar.ID, orgID
+			},
+		},
+		{
+			name: "auth exists but org-id header belongs to a different org — description is opaque",
+			setup: func(orgID string) (string, string, string) {
+				consentID := ts.mustCreateConsent(orgID, "grp-ar-msg-org")
+				ar := ts.mustCreateAuthResource(orgID, consentID, AuthResourceCreateRequest{})
+				return consentID, ar.ID, freshOrgID()
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		ts.Run(tc.name, func() {
+			orgID := freshOrgID()
+			consentID, authID, orgForReq := tc.setup(orgID)
+
+			status, body := ts.doRequest(
+				http.MethodGet,
+				"/api/v1/consents/"+consentID+"/authorizations/"+authID,
+				orgForReq,
+				nil,
+			)
+
+			ts.Equal(http.StatusNotFound, status)
+			errResp := ts.assertAPIError(body, "AR-4040")
+			ts.Equal(wantDescription, errResp.Description,
+				"all not-found conditions must return the same opaque description")
+		})
+	}
+}

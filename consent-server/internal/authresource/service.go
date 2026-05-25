@@ -202,14 +202,9 @@ func (s *authResourceService) GetAuthResource(
 		return nil, serviceerror.CustomServiceError(ErrorInternalServerError,
 			fmt.Sprintf("failed to retrieve auth resource: %v", err))
 	}
-	if ar == nil {
+	if ar == nil || ar.ConsentID != consentID {
 		return nil, serviceerror.CustomServiceError(ErrorAuthResourceNotFound,
-			fmt.Sprintf("auth resource not found: %s", authID))
-	}
-
-	if ar.ConsentID != consentID {
-		return nil, serviceerror.CustomServiceError(ErrorAuthResourceNotFound,
-			fmt.Sprintf("auth resource %s does not belong to consent %s", authID, consentID))
+			"the authorization resource does not exist, does not belong to the specified consent, or is not accessible in this organization")
 	}
 
 	return buildAuthResourceOutput(ar), nil
@@ -275,14 +270,9 @@ func (s *authResourceService) UpdateAuthResource(
 		return nil, serviceerror.CustomServiceError(ErrorInternalServerError,
 			fmt.Sprintf("failed to retrieve auth resource: %v", err))
 	}
-	if existing == nil {
+	if existing == nil || existing.ConsentID != consentID {
 		return nil, serviceerror.CustomServiceError(ErrorAuthResourceNotFound,
-			fmt.Sprintf("auth resource not found: %s", authID))
-	}
-
-	if existing.ConsentID != consentID {
-		return nil, serviceerror.CustomServiceError(ErrorAuthResourceNotFound,
-			fmt.Sprintf("auth resource %s does not belong to consent %s", authID, consentID))
+			"the authorization resource does not exist, does not belong to the specified consent, or is not accessible in this organization")
 	}
 
 	updated := *existing

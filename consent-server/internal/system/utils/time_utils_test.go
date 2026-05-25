@@ -19,21 +19,23 @@
 package utils
 
 import (
-	"fmt"
-	"strings"
+	"testing"
+	"time"
 )
 
-// ConvertToPostgresParams converts ? placeholders to $1, $2, etc. for PostgreSQL.
-func ConvertToPostgresParams(query string) string {
-	paramIndex := 1
-	var result strings.Builder
-	for i := 0; i < len(query); i++ {
-		if query[i] == '?' {
-			result.WriteString(fmt.Sprintf("$%d", paramIndex))
-			paramIndex++
-		} else {
-			result.WriteByte(query[i])
-		}
+func TestGetCurrentTimeMillis(t *testing.T) {
+	before := time.Now().UnixMilli()
+	got := GetCurrentTimeMillis()
+	after := time.Now().UnixMilli()
+
+	if got < before || got > after {
+		t.Errorf("GetCurrentTimeMillis() = %d, want value between %d and %d", got, before, after)
 	}
-	return result.String()
+
+	// Guard against accidentally returning seconds: year 2000 in millis is ~946_684_800_000.
+	// Any value below that is definitely seconds, not milliseconds.
+	const year2000Millis = int64(946_684_800_000)
+	if got < year2000Millis {
+		t.Errorf("GetCurrentTimeMillis() = %d looks like Unix seconds, not milliseconds", got)
+	}
 }

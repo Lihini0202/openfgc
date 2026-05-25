@@ -18,26 +18,7 @@
 
 package utils
 
-import (
-	"fmt"
-	"net/http"
-
-	"github.com/wso2/openfgc/internal/system/constants"
-)
-
-// Validate orgID and clientID in the request headers.
-func ValidateOrgIdAndClientIdIsPresent(r *http.Request) error {
-	orgID := r.Header.Get(constants.HeaderOrgID)
-	clientID := r.Header.Get(constants.HeaderTPPClientID)
-
-	if err := ValidateOrgID(orgID); err != nil {
-		return err
-	}
-	if err := ValidateClientID(clientID); err != nil {
-		return err
-	}
-	return nil
-}
+import "fmt"
 
 // ValidateOrgID validates organization ID
 func ValidateOrgID(orgID string) error {
@@ -50,32 +31,10 @@ func ValidateOrgID(orgID string) error {
 	return nil
 }
 
-// ValidateClientID validates client ID
-func ValidateClientID(clientID string) error {
-	if clientID == "" {
-		return fmt.Errorf("client ID is required")
-	}
-	if len(clientID) > 255 {
-		return fmt.Errorf("client ID too long (max 255 chars)")
-	}
-	return nil
-}
-
 // ValidateRequired validates a field is not empty
 func ValidateRequired(fieldName, value string) error {
 	if value == "" {
 		return fmt.Errorf("%s is required", fieldName)
-	}
-	return nil
-}
-
-// ValidatePagination validates limit and offset
-func ValidatePagination(limit, offset int) error {
-	if limit < 1 || limit > 100 {
-		return fmt.Errorf("limit must be between 1 and 100")
-	}
-	if offset < 0 {
-		return fmt.Errorf("offset must be non-negative")
 	}
 	return nil
 }
