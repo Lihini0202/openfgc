@@ -43,7 +43,7 @@ type ConsentService interface {
 	RevokeConsent(ctx context.Context, consentID, orgID string, req model.ConsentRevokeRequest) (*model.ConsentRevokeResponse, *serviceerror.ServiceError)
 	ValidateConsent(ctx context.Context, req model.ValidateRequest, orgID string) (*model.ValidateResponse, *serviceerror.ServiceError)
 	SearchConsentsByAttribute(ctx context.Context, key, value, orgID string) (*model.ConsentAttributeSearchResponse, *serviceerror.ServiceError)
-	GetExpiredConsents(ctx context.Context, nowMs int64, expirableStatuses []string) ([]model.Consent, *serviceerror.ServiceError)
+	GetExpiredConsents(ctx context.Context, currentTimeMs int64, expirableStatuses []string) ([]model.Consent, *serviceerror.ServiceError)
 	ExpireConsent(ctx context.Context, consent *model.Consent, orgID string) error
 }
 
@@ -1611,10 +1611,10 @@ func (s *consentService) validatePurposes(
 
 // GetExpiredConsents retrieves all consents whose validity time has passed
 // and whose status is in the expirable list.
-func (consentService *consentService) GetExpiredConsents(ctx context.Context, nowMs int64, expirableStatuses []string) ([]model.Consent, *serviceerror.ServiceError) {
+func (consentService *consentService) GetExpiredConsents(ctx context.Context, currentTimeMs int64, expirableStatuses []string) ([]model.Consent, *serviceerror.ServiceError) {
 	logger := log.GetLogger().WithContext(ctx)
 
-	consents, err := consentService.stores.Consent.GetExpiredConsents(nowMs, expirableStatuses)
+	consents, err := consentService.stores.Consent.GetExpiredConsents(ctx, currentTimeMs, expirableStatuses)
 	if err != nil {
 		logger.Error("Failed to fetch expired consents", log.Error(err))
 		return nil, serviceerror.CustomServiceError(ErrorInternalServerError, err.Error())

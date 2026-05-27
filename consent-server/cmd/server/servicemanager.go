@@ -86,12 +86,17 @@ func startConsentExpirationScheduler(expirationSvc consent.ExpirationService) {
 func registerHealthCheckEndpoints(mux *http.ServeMux) {
 	healthCheckHandler := handler.NewHealthCheckHandler()
 
+	// Liveness endpoint - simple check if server is running
 	mux.HandleFunc("GET /health/liveness", healthCheckHandler.HandleLivenessRequest)
+	// Readiness endpoint - checks if server and dependencies are ready
 	mux.HandleFunc("GET /health/readiness", healthCheckHandler.HandleReadinessRequest)
+	// Legacy health endpoint (for backward compatibility
 	mux.HandleFunc("GET /health", healthCheckHandler.HandleLivenessRequest)
 }
 
 // unregisterServices performs cleanup of all services during shutdown.
+// Currently a placeholder for future service cleanup needs.
 func unregisterServices() {
 	// Future: Add any service-specific cleanup logic here
+	// e.g., closing connections, flushing caches, etc.
 }

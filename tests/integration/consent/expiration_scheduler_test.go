@@ -14,16 +14,12 @@
  * limitations under the License.
  */
 
-// Package expiration contains integration tests for the consent expiration job.
-//
-// These tests exercise the SQL query used by GetExpiredConsents and the
-// end-to-end behaviour of RunExpirationJob against the real MySQL instance.
-// They connect directly to the database — no running server is required.
-//
-// Run from the tests/integration directory:
-//
-//	go test -v ./expiration/
-package expiration
+// Combined integration tests for consent expiration and scheduler behavior.
+// These were previously split across tests/integration/expiration and
+// tests/integration/scheduler; moving them here simplifies running consent
+// integration scenarios.
+
+package consent
 
 import (
 	"database/sql"
@@ -34,11 +30,11 @@ import (
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
 )
 
-// DB config — read from deployment.yaml; override via env vars if needed
 const configPath = "../repository/conf/deployment.yaml"
 
 type deploymentConfig struct {
@@ -53,29 +49,6 @@ type deploymentConfig struct {
 	} `yaml:"database"`
 }
 
-func loadDBConfig(t *testing.T) (dsn, dbName string) {
-	t.Helper()
-
-	data, err := os.ReadFile(configPath)
-	require.NoError(t, err, "reading %s", configPath)
-
-	var cfg deploymentConfig
-	require.NoError(t, yaml.Unmarshal(data, &cfg), "parsing deployment.yaml")
-
-	c := cfg.Database.Consent
-
-	// Allow env-var overrides so CI can inject real credentials without
-	// editing the checked-in yaml.
-	user := envOr("TEST_DB_USER", c.User)
-	pass := envOr("TEST_DB_PASS", c.Password)
-	host := envOr("TEST_DB_HOST", c.Hostname)
-	port := envOr("TEST_DB_PORT", fmt.Sprintf("%d", c.Port))
-
-	dbName = c.Database
-	dsn = fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?parseTime=true", user, pass, host, port, dbName)
-	return dsn, dbName
-}
-
 func envOr(key, fallback string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
@@ -83,25 +56,23 @@ func envOr(key, fallback string) string {
 	return fallback
 }
 
-// Package-level DB handle
 var db *sql.DB
 
 func TestMain(m *testing.M) {
-	// We need at least the config file to be present.
+	// Skip if config not present.
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
-		fmt.Println("expiration integration: deployment.yaml not found — skipping")
+		fmt.Println("consent integration: deployment.yaml not found — skipping")
 		os.Exit(0)
 	}
 
-	// Read config
 	data, err := os.ReadFile(configPath)
 	if err != nil {
-		fmt.Printf("expiration integration: cannot read config: %v\n", err)
+		fmt.Printf("consent integration: cannot read config: %v\n", err)
 		os.Exit(0)
 	}
 	var cfg deploymentConfig
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
-		fmt.Printf("expiration integration: cannot parse config: %v\n", err)
+		fmt.Printf("consent integration: cannot parse config: %v\n", err)
 		os.Exit(0)
 	}
 	c := cfg.Database.Consent
@@ -114,14 +85,14 @@ func TestMain(m *testing.M) {
 
 	db, err = sql.Open("mysql", dsn)
 	if err != nil {
-		fmt.Printf("expiration integration: cannot open DB: %v — skipping\n", err)
+		fmt.Printf("consent integration: cannot open DB: %v — skipping\n", err)
 		os.Exit(0)
 	}
 	db.SetConnMaxLifetime(30 * time.Second)
 
 	if err = db.Ping(); err != nil {
 		db.Close()
-		fmt.Printf("expiration integration: DB not reachable (%v) — skipping\n", err)
+		fmt.Printf("consent integration: DB not reachable (%v) — skipping\n", err)
 		os.Exit(0)
 	}
 
@@ -138,9 +109,9 @@ func insertConsent(t *testing.T, id, status string, validityMs int64, orgID stri
 	now := time.Now().UnixMilli()
 	_, err := db.Exec(
 		fmt.Sprintf(`INSERT INTO %s
-			(CONSENT_ID, CREATED_TIME, UPDATED_TIME, CLIENT_ID,
-			 CONSENT_TYPE, CURRENT_STATUS, VALIDITY_TIME, ORG_ID)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, consentTable),
+            (CONSENT_ID, CREATED_TIME, UPDATED_TIME, CLIENT_ID,
+             CONSENT_TYPE, CURRENT_STATUS, VALIDITY_TIME, ORG_ID)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, consentTable),
 		id, now, now, "test-client", "accounts", status, validityMs, orgID,
 	)
 	require.NoError(t, err, "inserting consent %s", id)
@@ -148,12 +119,14 @@ func insertConsent(t *testing.T, id, status string, validityMs int64, orgID stri
 
 func deleteConsent(t *testing.T, id string) {
 	t.Helper()
-	db.Exec(fmt.Sprintf("DELETE FROM %s WHERE CONSENT_ID = ?", consentTable), id)
+	// Child rows first to avoid FK constraint violations.
+	db.Exec("DELETE FROM CONSENT_STATUS_AUDIT WHERE CONSENT_ID = ?", id)
+	db.Exec("DELETE FROM CONSENT WHERE CONSENT_ID = ?", id)
 }
 
 // queryExpiredConsents runs the same SQL predicate used by the real store's
 // GetExpiredConsents and returns matching consent IDs.
-func queryExpiredConsents(t *testing.T, nowMs int64, expirableStatuses []string) []string {
+func queryExpiredConsents(t *testing.T, currentTimeMs int64, expirableStatuses []string) []string {
 	t.Helper()
 
 	if len(expirableStatuses) == 0 {
@@ -167,7 +140,7 @@ func queryExpiredConsents(t *testing.T, nowMs int64, expirableStatuses []string)
 		consentTable, placeholders,
 	)
 
-	args := []interface{}{nowMs}
+	args := []interface{}{currentTimeMs}
 	for _, s := range expirableStatuses {
 		args = append(args, s)
 	}
@@ -186,11 +159,43 @@ func queryExpiredConsents(t *testing.T, nowMs int64, expirableStatuses []string)
 	return ids
 }
 
-// Integration Tests
+func queryConsentStatus(t *testing.T, id string) string {
+	t.Helper()
+	var status string
+	err := db.QueryRow(
+		"SELECT CURRENT_STATUS FROM CONSENT WHERE CONSENT_ID = ?", id,
+	).Scan(&status)
+	require.NoError(t, err, "querying status for consent %s", id)
+	return status
+}
 
-// TestGetExpiredConsents_ReturnsConsentsWithPastValidity
-// Consents whose VALIDITY_TIME is in the past and whose status is in the
-// expirable list must be returned by the GetExpiredConsents SQL query.
+func queryAuditCount(t *testing.T, id string) int {
+	t.Helper()
+	var count int
+	err := db.QueryRow(
+		"SELECT COUNT(*) FROM CONSENT_STATUS_AUDIT WHERE CONSENT_ID = ?", id,
+	).Scan(&count)
+	require.NoError(t, err)
+	return count
+}
+
+// pollUntilStatus polls every interval until status matches want or timeout exceeded.
+func pollUntilStatus(t *testing.T, id, want string, timeout, interval time.Duration) string {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	var got string
+	for time.Now().Before(deadline) {
+		got = queryConsentStatus(t, id)
+		if got == want {
+			return got
+		}
+		time.Sleep(interval)
+	}
+	return got
+}
+
+// Expiration Integration Tests
+
 func TestGetExpiredConsents_ReturnsConsentsWithPastValidity(t *testing.T) {
 	pastMs := time.Now().Add(-1 * time.Hour).UnixMilli()
 	now := time.Now().UnixMilli()
@@ -209,9 +214,6 @@ func TestGetExpiredConsents_ReturnsConsentsWithPastValidity(t *testing.T) {
 	require.Contains(t, result, ids[1], "CREATED consent with past validity must be returned")
 }
 
-// TestGetExpiredConsents_IgnoresConsentsWithFutureValidity
-// Consents whose VALIDITY_TIME is in the future must NOT be returned,
-// even if their status is in the expirable list.
 func TestGetExpiredConsents_IgnoresConsentsWithFutureValidity(t *testing.T) {
 	futureMs := time.Now().Add(1 * time.Hour).UnixMilli()
 	now := time.Now().UnixMilli()
@@ -227,9 +229,6 @@ func TestGetExpiredConsents_IgnoresConsentsWithFutureValidity(t *testing.T) {
 		"consent with future validity must not be returned")
 }
 
-// TestGetExpiredConsents_IgnoresNonExpirableStatuses
-// Consents in terminal statuses (EXPIRED, REVOKED) must NOT be returned
-// even when their VALIDITY_TIME is in the past.
 func TestGetExpiredConsents_IgnoresNonExpirableStatuses(t *testing.T) {
 	pastMs := time.Now().Add(-1 * time.Hour).UnixMilli()
 	now := time.Now().UnixMilli()
@@ -249,13 +248,7 @@ func TestGetExpiredConsents_IgnoresNonExpirableStatuses(t *testing.T) {
 	require.NotContains(t, result, ids[1], "REVOKED consent must not appear")
 }
 
-// TestGetExpiredConsents_EmptyWhenNothingMatches
-// When no consents match the expiration criteria, the query must return
-// an empty result — not an error.
 func TestGetExpiredConsents_EmptyWhenNothingMatches(t *testing.T) {
-	// All existing test consents either have future validity or non-expirable
-	// statuses, so the query result can only grow, not shrink.
-	// We insert one future-validity row to make the test meaningful.
 	futureMs := time.Now().Add(2 * time.Hour).UnixMilli()
 	id := "exp-integ-nomatch-001"
 	defer deleteConsent(t, id)
@@ -263,17 +256,12 @@ func TestGetExpiredConsents_EmptyWhenNothingMatches(t *testing.T) {
 	insertConsent(t, id, "ACTIVE", futureMs, "org-test")
 
 	now := time.Now().UnixMilli()
-	// There should be no rows matching VALIDITY_TIME < now AND status in (ACTIVE)
-	// for this specific consent (future validity).
 	result := queryExpiredConsents(t, now, []string{"ACTIVE"})
 
 	require.NotContains(t, result, id,
 		"future-validity consent must not be in expired results")
 }
 
-// TestGetExpiredConsents_HandlesMultipleExpirableStatuses
-// Verifies the IN clause works correctly across multiple statuses: consents
-// in each expirable status are all returned when validity is in the past.
 func TestGetExpiredConsents_HandlesMultipleExpirableStatuses(t *testing.T) {
 	pastMs := time.Now().Add(-30 * time.Minute).UnixMilli()
 	now := time.Now().UnixMilli()
@@ -296,4 +284,30 @@ func TestGetExpiredConsents_HandlesMultipleExpirableStatuses(t *testing.T) {
 		require.Contains(t, result, id,
 			"consent %s with past validity must appear in results", id)
 	}
+}
+
+// Scheduler integration tests
+
+const (
+	pollInterval = 500 * time.Millisecond
+)
+
+func TestScheduler_ExpiresActiveConsent_WhenValidityTimePassed(t *testing.T) {
+	id := "sched-integ-expire-001"
+	deleteConsent(t, id)
+	defer deleteConsent(t, id)
+
+	expiresAt := time.Now().Add(30 * time.Second).UnixMilli()
+	insertConsent(t, id, "ACTIVE", expiresAt, "ORG-001")
+
+	require.Equal(t, "ACTIVE", queryConsentStatus(t, id),
+		"consent must start as ACTIVE before scheduler fires")
+
+	finalStatus := pollUntilStatus(t, id, "EXPIRED", 60*time.Second, pollInterval)
+
+	assert.Equal(t, "EXPIRED", finalStatus,
+		"scheduler must flip CURRENT_STATUS to EXPIRED after validity time passes")
+
+	assert.GreaterOrEqual(t, queryAuditCount(t, id), 1,
+		"at least one CONSENT_STATUS_AUDIT row must be written on expiration")
 }

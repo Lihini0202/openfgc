@@ -98,9 +98,9 @@ func (_m *MockConsentService) GetConsent(ctx context.Context, consentID string, 
 	return r0, r1
 }
 
-// GetExpiredConsents provides a mock function with given fields: ctx, nowMs, expirableStatuses
-func (_m *MockConsentService) GetExpiredConsents(ctx context.Context, nowMs int64, expirableStatuses []string) ([]model.Consent, *serviceerror.ServiceError) {
-	ret := _m.Called(ctx, nowMs, expirableStatuses)
+// GetExpiredConsents provides a mock function with given fields: ctx, currentTimeMs, expirableStatuses
+func (_m *MockConsentService) GetExpiredConsents(ctx context.Context, currentTimeMs int64, expirableStatuses []string) ([]model.Consent, *serviceerror.ServiceError) {
+	ret := _m.Called(ctx, currentTimeMs, expirableStatuses)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetExpiredConsents")
@@ -109,18 +109,17 @@ func (_m *MockConsentService) GetExpiredConsents(ctx context.Context, nowMs int6
 	var r0 []model.Consent
 	var r1 *serviceerror.ServiceError
 	if rf, ok := ret.Get(0).(func(context.Context, int64, []string) ([]model.Consent, *serviceerror.ServiceError)); ok {
-		return rf(ctx, nowMs, expirableStatuses)
+		return rf(ctx, currentTimeMs, expirableStatuses)
 	}
 	if rf, ok := ret.Get(0).(func(context.Context, int64, []string) []model.Consent); ok {
-		r0 = rf(ctx, nowMs, expirableStatuses)
+		r0 = rf(ctx, currentTimeMs, expirableStatuses)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).([]model.Consent)
 		}
 	}
-
 	if rf, ok := ret.Get(1).(func(context.Context, int64, []string) *serviceerror.ServiceError); ok {
-		r1 = rf(ctx, nowMs, expirableStatuses)
+		r1 = rf(ctx, currentTimeMs, expirableStatuses)
 	} else {
 		if ret.Get(1) != nil {
 			r1 = ret.Get(1).(*serviceerror.ServiceError)

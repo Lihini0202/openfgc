@@ -95,7 +95,7 @@ func (s *stubConsentStore) DeleteConsentPurposeMappingsByConsentID(_ dbmodel.TxI
 func (s *stubConsentStore) DeletePurposeElementApprovalsByConsentID(_ dbmodel.TxInterface, _, _ string) error {
 	return nil
 }
-func (s *stubConsentStore) GetExpiredConsents(nowMs int64, expirableStatuses []string) ([]model.Consent, error) {
+func (s *stubConsentStore) GetExpiredConsents(_ context.Context, currentTimeMs int64, expirableStatuses []string) ([]model.Consent, error) {
 	return s.expiredConsents, s.expiredErr
 }
 
