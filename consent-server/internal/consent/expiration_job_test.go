@@ -24,7 +24,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/wso2/openfgc/internal/consent/model"
 	dbmodel "github.com/wso2/openfgc/internal/system/database/model"
-	"github.com/wso2/openfgc/internal/system/stores"
+	"github.com/wso2/openfgc/internal/system/error/serviceerror"
 )
 
 // stubConsentStore is a no-op implementation of interfaces.ConsentStore.
@@ -100,12 +100,32 @@ func (s *stubConsentStore) GetExpiredConsents(nowMs int64, expirableStatuses []s
 }
 
 // newTestConsentService builds a *consentService wired to the given stub store.
-func newTestConsentService(stub *stubConsentStore) *consentService {
-	return &consentService{
-		stores: &stores.StoreRegistry{
-			Consent: stub,
-		},
+// expirationServiceStub is a lightweight test implementation of ExpirationService
+// that calls into the provided stubConsentStore without touching the real DB.
+type expirationServiceStub struct {
+	store *stubConsentStore
+}
+
+func (e *expirationServiceStub) GetExpiredConsents(_ context.Context, _ int64, _ []string) ([]model.Consent, *serviceerror.ServiceError) {
+	if e.store.expiredErr != nil {
+		return nil, serviceerror.CustomServiceError(ErrorInternalServerError, e.store.expiredErr.Error())
 	}
+	return e.store.expiredConsents, nil
+}
+
+func (e *expirationServiceStub) ExpireConsent(_ context.Context, consent *model.Consent, _ string) error {
+	if e.store.expireErrMap != nil {
+		if err, ok := e.store.expireErrMap[consent.ConsentID]; ok {
+			return err
+		}
+	}
+	e.store.expiredCalls = append(e.store.expiredCalls, consent.ConsentID)
+	return nil
+}
+
+// newTestConsentService returns an ExpirationService backed by the stub store.
+func newTestConsentService(stub *stubConsentStore) ExpirationService {
+	return &expirationServiceStub{store: stub}
 }
 
 // TestRunExpirationJob_NoExpiredConsents
@@ -185,7 +205,7 @@ func TestRunExpirationJob_PanicRecovery(t *testing.T) {
 // panicExpirationService satisfies ExpirationService and panics on GetExpiredConsents.
 type panicExpirationService struct{}
 
-func (p *panicExpirationService) GetExpiredConsents(_ context.Context, _ int64, _ []string) ([]model.Consent, error) {
+func (p *panicExpirationService) GetExpiredConsents(_ context.Context, _ int64, _ []string) ([]model.Consent, *serviceerror.ServiceError) {
 	panic("intentional panic for test")
 }
 

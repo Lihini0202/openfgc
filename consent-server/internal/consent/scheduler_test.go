@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/wso2/openfgc/internal/consent/model"
+	"github.com/wso2/openfgc/internal/system/error/serviceerror"
 )
 
 // signalingExpirationService satisfies ExpirationService and signals when GetExpiredConsents is called.
@@ -29,7 +30,7 @@ type signalingExpirationService struct {
 	fired chan struct{}
 }
 
-func (s *signalingExpirationService) GetExpiredConsents(_ context.Context, _ int64, _ []string) ([]model.Consent, error) {
+func (s *signalingExpirationService) GetExpiredConsents(_ context.Context, _ int64, _ []string) ([]model.Consent, *serviceerror.ServiceError) {
 	select {
 	case s.fired <- struct{}{}:
 	default:

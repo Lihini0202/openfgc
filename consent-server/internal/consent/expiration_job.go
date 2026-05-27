@@ -22,13 +22,14 @@ import (
 	"time"
 
 	"github.com/wso2/openfgc/internal/consent/model"
+	"github.com/wso2/openfgc/internal/system/error/serviceerror"
 	"github.com/wso2/openfgc/internal/system/log"
 )
 
 // ExpirationService is the minimal interface required by the expiration job.
 // Both *consentService and test doubles satisfy this interface.
 type ExpirationService interface {
-	GetExpiredConsents(ctx context.Context, nowMs int64, expirableStatuses []string) ([]model.Consent, error)
+	GetExpiredConsents(ctx context.Context, nowMs int64, expirableStatuses []string) ([]model.Consent, *serviceerror.ServiceError)
 	ExpireConsent(ctx context.Context, consent *model.Consent, orgID string) error
 }
 
