@@ -25,12 +25,45 @@ import (
 	"github.com/wso2/openfgc/internal/system/error/serviceerror"
 )
 
-// signalingExpirationService satisfies ExpirationService and signals when GetExpiredConsents is called.
-type signalingExpirationService struct {
+// unimplementedConsentService satisfies ConsentService with panicking stubs for every method.
+// Embed this in test doubles and override only the methods under test.
+type unimplementedConsentService struct{}
+
+func (unimplementedConsentService) CreateConsent(_ context.Context, _ model.ConsentAPIRequest, _, _ string) (*model.ConsentResponse, *serviceerror.ServiceError) {
+	panic("not implemented")
+}
+func (unimplementedConsentService) GetConsent(_ context.Context, _, _ string) (*model.ConsentResponse, *serviceerror.ServiceError) {
+	panic("not implemented")
+}
+func (unimplementedConsentService) SearchConsentsDetailed(_ context.Context, _ model.ConsentSearchFilters) (*model.ConsentDetailSearchResponse, *serviceerror.ServiceError) {
+	panic("not implemented")
+}
+func (unimplementedConsentService) UpdateConsent(_ context.Context, _ model.ConsentAPIUpdateRequest, _, _, _ string) (*model.ConsentResponse, *serviceerror.ServiceError) {
+	panic("not implemented")
+}
+func (unimplementedConsentService) RevokeConsent(_ context.Context, _, _ string, _ model.ConsentRevokeRequest) (*model.ConsentRevokeResponse, *serviceerror.ServiceError) {
+	panic("not implemented")
+}
+func (unimplementedConsentService) ValidateConsent(_ context.Context, _ model.ValidateRequest, _ string) (*model.ValidateResponse, *serviceerror.ServiceError) {
+	panic("not implemented")
+}
+func (unimplementedConsentService) SearchConsentsByAttribute(_ context.Context, _, _, _ string) (*model.ConsentAttributeSearchResponse, *serviceerror.ServiceError) {
+	panic("not implemented")
+}
+func (unimplementedConsentService) GetExpiredConsents(_ context.Context, _ int64, _ []string) ([]model.Consent, *serviceerror.ServiceError) {
+	panic("not implemented")
+}
+func (unimplementedConsentService) ExpireConsent(_ context.Context, _ *model.Consent, _ string) error {
+	panic("not implemented")
+}
+
+// signalingConsentService satisfies ConsentService and signals when GetExpiredConsents is called.
+type signalingConsentService struct {
+	unimplementedConsentService
 	fired chan struct{}
 }
 
-func (s *signalingExpirationService) GetExpiredConsents(_ context.Context, _ int64, _ []string) ([]model.Consent, *serviceerror.ServiceError) {
+func (s *signalingConsentService) GetExpiredConsents(_ context.Context, _ int64, _ []string) ([]model.Consent, *serviceerror.ServiceError) {
 	select {
 	case s.fired <- struct{}{}:
 	default:
@@ -38,13 +71,13 @@ func (s *signalingExpirationService) GetExpiredConsents(_ context.Context, _ int
 	return []model.Consent{}, nil
 }
 
-func (s *signalingExpirationService) ExpireConsent(_ context.Context, _ *model.Consent, _ string) error {
+func (s *signalingConsentService) ExpireConsent(_ context.Context, _ *model.Consent, _ string) error {
 	return nil
 }
 
 // TestStartScheduler_FiresJobOnTick verifies that StartScheduler launches RunExpirationJob on each ticker tick.
 func TestStartScheduler_FiresJobOnTick(t *testing.T) {
-	svc := &signalingExpirationService{fired: make(chan struct{}, 1)}
+	svc := &signalingConsentService{fired: make(chan struct{}, 1)}
 	statuses := ExpirationStatuses{ExpirableConsentStatuses: []string{"ACTIVE"}}
 
 	ctx, cancel := context.WithCancel(context.Background())

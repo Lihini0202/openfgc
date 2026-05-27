@@ -52,10 +52,10 @@ func registerServices(mux *http.ServeMux) {
 	consentpurpose.Initialize(mux, storeRegistry)
 	logger.Debug("ConsentPurpose module initialized")
 
-	expirationService := consent.Initialize(mux, storeRegistry)
+	svc := consent.Initialize(mux, storeRegistry)
 	logger.Debug("Consent module initialized")
 
-	startConsentExpirationScheduler(expirationService)
+	startConsentExpirationScheduler(svc)
 
 	registerHealthCheckEndpoints(mux)
 	logger.Debug("Health check endpoints registered")
@@ -63,7 +63,7 @@ func registerServices(mux *http.ServeMux) {
 
 // startConsentExpirationScheduler starts the background scheduler for expiring eligible consents.
 // If periodical expiration is disabled in config, the scheduler is not started.
-func startConsentExpirationScheduler(expirationSvc consent.ExpirationService) {
+func startConsentExpirationScheduler(svc consent.ConsentService) {
 	logger := log.GetLogger()
 
 	cfg := config.Get()
@@ -78,7 +78,7 @@ func startConsentExpirationScheduler(expirationSvc consent.ExpirationService) {
 		ExpirableConsentStatuses: cfg.Consent.GetEligibleConsentStatuses(),
 	}
 
-	go consent.StartScheduler(context.Background(), expirationSvc, interval, statuses)
+	go consent.StartScheduler(context.Background(), svc, interval, statuses)
 	logger.Info("Consent expiration scheduler started", log.String("interval", interval.String()))
 }
 

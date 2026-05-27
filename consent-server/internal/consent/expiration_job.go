@@ -21,22 +21,13 @@ import (
 	"runtime/debug"
 	"time"
 
-	"github.com/wso2/openfgc/internal/consent/model"
-	"github.com/wso2/openfgc/internal/system/error/serviceerror"
 	"github.com/wso2/openfgc/internal/system/log"
 )
-
-// ExpirationService is the minimal interface required by the expiration job.
-// Both *consentService and test doubles satisfy this interface.
-type ExpirationService interface {
-	GetExpiredConsents(ctx context.Context, currentTimeMs int64, expirableStatuses []string) ([]model.Consent, *serviceerror.ServiceError)
-	ExpireConsent(ctx context.Context, consent *model.Consent, orgID string) error
-}
 
 // RunExpirationJob finds all consents whose VALIDITY_TIME has passed and marks them
 // as expired, along with all their auth resources.
 // Panics are recovered so a single job failure does not stop the scheduler.
-func RunExpirationJob(ctx context.Context, svc ExpirationService, statuses ExpirationStatuses) {
+func RunExpirationJob(ctx context.Context, svc ConsentService, statuses ExpirationStatuses) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "ConsentExpirationJob"))
 	defer func() {
 		if panicValue := recover(); panicValue != nil {

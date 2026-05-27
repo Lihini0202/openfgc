@@ -23,159 +23,81 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"github.com/wso2/openfgc/internal/consent/model"
-	dbmodel "github.com/wso2/openfgc/internal/system/database/model"
 	"github.com/wso2/openfgc/internal/system/error/serviceerror"
 )
 
-// stubConsentStore is a no-op implementation of interfaces.ConsentStore.
-// Tests embed this and override only the methods they need.
-type stubConsentStore struct {
+// expirationConsentService is a test double for ConsentService that covers only the
+// two methods exercised by the expiration job. All other methods panic via the embed.
+type expirationConsentService struct {
+	unimplementedConsentService
 	expiredConsents []model.Consent
 	expiredErr      error
 	expireErrMap    map[string]error
 	expiredCalls    []string
 }
 
-func (s *stubConsentStore) Create(_ dbmodel.TxInterface, _ *model.Consent) error { return nil }
-func (s *stubConsentStore) GetByID(_ context.Context, _, _ string) (*model.Consent, error) {
-	return nil, nil
+func (s *expirationConsentService) GetExpiredConsents(_ context.Context, _ int64, _ []string) ([]model.Consent, *serviceerror.ServiceError) {
+	if s.expiredErr != nil {
+		return nil, serviceerror.CustomServiceError(ErrorInternalServerError, s.expiredErr.Error())
+	}
+	return s.expiredConsents, nil
 }
-func (s *stubConsentStore) Search(_ context.Context, _ model.ConsentSearchFilters) ([]model.Consent, int, error) {
-	return nil, 0, nil
-}
-func (s *stubConsentStore) Update(_ dbmodel.TxInterface, _ *model.Consent) error { return nil }
-func (s *stubConsentStore) UpdateStatus(_ dbmodel.TxInterface, consentID, _, _ string, _ int64) error {
+
+func (s *expirationConsentService) ExpireConsent(_ context.Context, consent *model.Consent, _ string) error {
 	if s.expireErrMap != nil {
-		if err, ok := s.expireErrMap[consentID]; ok {
+		if err, ok := s.expireErrMap[consent.ConsentID]; ok {
 			return err
 		}
 	}
-	s.expiredCalls = append(s.expiredCalls, consentID)
+	s.expiredCalls = append(s.expiredCalls, consent.ConsentID)
 	return nil
-}
-func (s *stubConsentStore) CreateAttributes(_ dbmodel.TxInterface, _ []model.ConsentAttribute) error {
-	return nil
-}
-func (s *stubConsentStore) GetAttributesByConsentID(_ context.Context, _, _ string) ([]model.ConsentAttribute, error) {
-	return nil, nil
-}
-func (s *stubConsentStore) GetAttributesByConsentIDs(_ context.Context, _ []string, _ string) (map[string]map[string]string, error) {
-	return nil, nil
-}
-func (s *stubConsentStore) DeleteAttributesByConsentID(_ dbmodel.TxInterface, _, _ string) error {
-	return nil
-}
-func (s *stubConsentStore) FindConsentIDsByAttributeKey(_ context.Context, _, _ string) ([]string, error) {
-	return nil, nil
-}
-func (s *stubConsentStore) FindConsentIDsByAttribute(_ context.Context, _, _, _ string) ([]string, error) {
-	return nil, nil
-}
-func (s *stubConsentStore) CreateStatusAudit(_ dbmodel.TxInterface, _ *model.ConsentStatusAudit) error {
-	return nil
-}
-func (s *stubConsentStore) CreateConsentPurposeMapping(_ dbmodel.TxInterface, _, _, _ string) error {
-	return nil
-}
-func (s *stubConsentStore) CheckPurposeUsedInConsents(_ context.Context, _, _ string) (bool, error) {
-	return false, nil
-}
-func (s *stubConsentStore) GetConsentPurposeMappingsByConsentID(_ context.Context, _, _ string) ([]model.ConsentPurposeMapping, error) {
-	return nil, nil
-}
-func (s *stubConsentStore) CreatePurposeElementApproval(_ dbmodel.TxInterface, _ *model.ConsentElementApprovalRecord) error {
-	return nil
-}
-func (s *stubConsentStore) GetPurposeElementApprovalsByConsentID(_ context.Context, _, _ string) ([]model.ConsentElementApprovalRecord, error) {
-	return nil, nil
-}
-func (s *stubConsentStore) DeleteConsentPurposeMappingsByConsentID(_ dbmodel.TxInterface, _, _ string) error {
-	return nil
-}
-func (s *stubConsentStore) DeletePurposeElementApprovalsByConsentID(_ dbmodel.TxInterface, _, _ string) error {
-	return nil
-}
-func (s *stubConsentStore) GetExpiredConsents(_ context.Context, currentTimeMs int64, expirableStatuses []string) ([]model.Consent, error) {
-	return s.expiredConsents, s.expiredErr
-}
-
-// newTestConsentService builds a *consentService wired to the given stub store.
-// expirationServiceStub is a lightweight test implementation of ExpirationService
-// that calls into the provided stubConsentStore without touching the real DB.
-type expirationServiceStub struct {
-	store *stubConsentStore
-}
-
-func (e *expirationServiceStub) GetExpiredConsents(_ context.Context, _ int64, _ []string) ([]model.Consent, *serviceerror.ServiceError) {
-	if e.store.expiredErr != nil {
-		return nil, serviceerror.CustomServiceError(ErrorInternalServerError, e.store.expiredErr.Error())
-	}
-	return e.store.expiredConsents, nil
-}
-
-func (e *expirationServiceStub) ExpireConsent(_ context.Context, consent *model.Consent, _ string) error {
-	if e.store.expireErrMap != nil {
-		if err, ok := e.store.expireErrMap[consent.ConsentID]; ok {
-			return err
-		}
-	}
-	e.store.expiredCalls = append(e.store.expiredCalls, consent.ConsentID)
-	return nil
-}
-
-// newTestConsentService returns an ExpirationService backed by the stub store.
-func newTestConsentService(stub *stubConsentStore) ExpirationService {
-	return &expirationServiceStub{store: stub}
 }
 
 // TestRunExpirationJob_NoExpiredConsents
 // When GetExpiredConsents returns an empty list, ExpireConsent must never be called.
 func TestRunExpirationJob_NoExpiredConsents(t *testing.T) {
-	stub := &stubConsentStore{expiredConsents: []model.Consent{}}
-	svc := newTestConsentService(stub)
+	svc := &expirationConsentService{expiredConsents: []model.Consent{}}
 	statuses := ExpirationStatuses{ExpirableConsentStatuses: []string{"ACTIVE", "CREATED"}}
 
 	RunExpirationJob(context.Background(), svc, statuses)
 
-	require.Empty(t, stub.expiredCalls, "ExpireConsent must not be called when no consents are expired")
+	require.Empty(t, svc.expiredCalls, "ExpireConsent must not be called when no consents are expired")
 }
 
 // TestRunExpirationJob_GetExpiredConsentsFails
 // When GetExpiredConsents returns an error, the job must abort early and never call ExpireConsent.
 func TestRunExpirationJob_GetExpiredConsentsFails(t *testing.T) {
-	stub := &stubConsentStore{expiredErr: errors.New("db connection failed")}
-	svc := newTestConsentService(stub)
+	svc := &expirationConsentService{expiredErr: errors.New("db connection failed")}
 	statuses := ExpirationStatuses{ExpirableConsentStatuses: []string{"ACTIVE"}}
 
 	RunExpirationJob(context.Background(), svc, statuses)
 
-	require.Empty(t, stub.expiredCalls, "ExpireConsent must not be called when GetExpiredConsents fails")
+	require.Empty(t, svc.expiredCalls, "ExpireConsent must not be called when GetExpiredConsents fails")
 }
 
 // TestRunExpirationJob_ExpiresAllConsents
 // When GetExpiredConsents returns N consents, ExpireConsent must be called exactly N times.
 func TestRunExpirationJob_ExpiresAllConsents(t *testing.T) {
-	stub := &stubConsentStore{
+	svc := &expirationConsentService{
 		expiredConsents: []model.Consent{
 			{ConsentID: "consent-aaa", OrgID: "org-1", CurrentStatus: "ACTIVE"},
 			{ConsentID: "consent-bbb", OrgID: "org-2", CurrentStatus: "ACTIVE"},
 		},
 		expireErrMap: map[string]error{},
 	}
-	svc := newTestConsentService(stub)
 	statuses := ExpirationStatuses{ExpirableConsentStatuses: []string{"ACTIVE"}}
 
 	RunExpirationJob(context.Background(), svc, statuses)
 
-	require.Len(t, stub.expiredCalls, 2, "ExpireConsent must be called for each expired consent")
-	require.Contains(t, stub.expiredCalls, "consent-aaa")
-	require.Contains(t, stub.expiredCalls, "consent-bbb")
+	require.Len(t, svc.expiredCalls, 2, "ExpireConsent must be called for each expired consent")
+	require.Contains(t, svc.expiredCalls, "consent-aaa")
+	require.Contains(t, svc.expiredCalls, "consent-bbb")
 }
 
 // TestRunExpirationJob_ContinuesOnExpireError
 // When ExpireConsent fails for one consent, the job must continue and still attempt the remaining consents.
 func TestRunExpirationJob_ContinuesOnExpireError(t *testing.T) {
-	stub := &stubConsentStore{
+	svc := &expirationConsentService{
 		expiredConsents: []model.Consent{
 			{ConsentID: "consent-fail", OrgID: "org-1", CurrentStatus: "ACTIVE"},
 			{ConsentID: "consent-ok", OrgID: "org-2", CurrentStatus: "ACTIVE"},
@@ -184,12 +106,11 @@ func TestRunExpirationJob_ContinuesOnExpireError(t *testing.T) {
 			"consent-fail": errors.New("expire failed"),
 		},
 	}
-	svc := newTestConsentService(stub)
 	statuses := ExpirationStatuses{ExpirableConsentStatuses: []string{"ACTIVE"}}
 
 	RunExpirationJob(context.Background(), svc, statuses)
 
-	require.Contains(t, stub.expiredCalls, "consent-ok", "second consent must still be attempted after first fails")
+	require.Contains(t, svc.expiredCalls, "consent-ok", "second consent must still be attempted after first fails")
 }
 
 // TestRunExpirationJob_PanicRecovery
@@ -198,17 +119,15 @@ func TestRunExpirationJob_PanicRecovery(t *testing.T) {
 	statuses := ExpirationStatuses{ExpirableConsentStatuses: []string{"ACTIVE"}}
 
 	require.NotPanics(t, func() {
-		RunExpirationJob(context.Background(), &panicExpirationService{}, statuses)
+		RunExpirationJob(context.Background(), &panicConsentService{}, statuses)
 	})
 }
 
-// panicExpirationService satisfies ExpirationService and panics on GetExpiredConsents.
-type panicExpirationService struct{}
-
-func (p *panicExpirationService) GetExpiredConsents(_ context.Context, _ int64, _ []string) ([]model.Consent, *serviceerror.ServiceError) {
-	panic("intentional panic for test")
+// panicConsentService satisfies ConsentService and panics on GetExpiredConsents.
+type panicConsentService struct {
+	unimplementedConsentService
 }
 
-func (p *panicExpirationService) ExpireConsent(_ context.Context, _ *model.Consent, _ string) error {
-	return nil
+func (p *panicConsentService) GetExpiredConsents(_ context.Context, _ int64, _ []string) ([]model.Consent, *serviceerror.ServiceError) {
+	panic("intentional panic for test")
 }
