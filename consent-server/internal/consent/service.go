@@ -52,7 +52,7 @@ type consentService struct {
 	stores *stores.StoreRegistry
 }
 
-func newConsentService(registry *stores.StoreRegistry) *consentService {
+func newConsentService(registry *stores.StoreRegistry) ConsentService {
 	return &consentService{
 		stores: registry,
 	}
