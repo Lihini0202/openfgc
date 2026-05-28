@@ -53,7 +53,7 @@ func (unimplementedConsentService) SearchConsentsByAttribute(_ context.Context, 
 func (unimplementedConsentService) GetExpiredConsents(_ context.Context, _ int64, _ []string) ([]model.Consent, *serviceerror.ServiceError) {
 	panic("not implemented")
 }
-func (unimplementedConsentService) ExpireConsent(_ context.Context, _ *model.Consent, _ string) error {
+func (unimplementedConsentService) ExpireConsent(_ context.Context, _ *model.Consent, _ string) *serviceerror.ServiceError {
 	panic("not implemented")
 }
 
@@ -71,7 +71,7 @@ func (s *signalingConsentService) GetExpiredConsents(_ context.Context, _ int64,
 	return []model.Consent{}, nil
 }
 
-func (s *signalingConsentService) ExpireConsent(_ context.Context, _ *model.Consent, _ string) error {
+func (s *signalingConsentService) ExpireConsent(_ context.Context, _ *model.Consent, _ string) *serviceerror.ServiceError {
 	return nil
 }
 
