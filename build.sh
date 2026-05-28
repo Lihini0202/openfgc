@@ -68,6 +68,8 @@ OUTPUT_DIR="$TARGET_DIR/server"
 DIST_DIR="$TARGET_DIR/dist"
 SOURCE_DIR="consent-server/cmd/server"
 CONFIG_SOURCE="consent-server/cmd/server/repository/conf/deployment.yaml"
+CONFIG_TARGET="$OUTPUT_DIR/repository/conf/deployment.yaml"
+TEST_CONFIG_SOURCE="tests/integration/repository/conf/deployment.yaml"
 
 # Package naming
 PACKAGE_OS=$GO_OS
@@ -135,7 +137,7 @@ function build_binary() {
 
     # Copy configuration
     echo "Copying configuration..."
-    cp "$CONFIG_SOURCE" "$OUTPUT_DIR/repository/conf/deployment.yaml"
+    cp "$CONFIG_SOURCE" "$CONFIG_TARGET"
 
     # Copy start script
     echo "Copying start script..."
@@ -179,7 +181,7 @@ function build_binary() {
     echo "Build output:"
     echo "  Binary: $OUTPUT_DIR/$output_binary"
     echo "  Start Script: $OUTPUT_DIR/start.sh"
-    echo "  Config: $OUTPUT_DIR/repository/conf/deployment.yaml"
+    echo "  Config: $CONFIG_TARGET"
     if [ -d "$OUTPUT_DIR/dbscripts" ]; then
         echo "  DB Scripts: $OUTPUT_DIR/dbscripts/"
     fi
@@ -280,10 +282,15 @@ function test_integration() {
         build_binary
     fi
 
+    # Backup main config before overwriting with test config
+    echo "Backing up main configuration..."
+    cp "$CONFIG_TARGET" "${CONFIG_TARGET}.bak"
+    echo "✓ Main configuration backed up"
+
     # Replace app config with test config for integration tests
     echo "Copying test configuration..."
-    if [ -f "tests/integration/repository/conf/deployment.yaml" ]; then
-        cp tests/integration/repository/conf/deployment.yaml "$OUTPUT_DIR/repository/conf/deployment.yaml"
+    if [ -f "$TEST_CONFIG_SOURCE" ]; then
+        cp "$TEST_CONFIG_SOURCE" "$CONFIG_TARGET"
         echo "✓ Test configuration copied"
     else
         echo "⚠ Warning: Test configuration not found, using default config"
@@ -295,6 +302,12 @@ function test_integration() {
     go run main.go
     TEST_EXIT_CODE=$?
     cd "$SCRIPT_DIR" || exit 1
+
+    # Always restore main config after tests (even if tests failed)
+    echo "Restoring main configuration..."
+    cp "${CONFIG_TARGET}.bak" "$CONFIG_TARGET"
+    rm "${CONFIG_TARGET}.bak"
+    echo "✓ Main configuration restored"
 
     if [ $TEST_EXIT_CODE -ne 0 ]; then
         echo "✗ Integration tests failed"
