@@ -20,6 +20,7 @@ database:
 logging:
   level: info
 
+# Consent status configuration
 consent:
   # Periodical expiration job configuration.
   # When enabled, the scheduler runs at the given frequency and marks eligible
@@ -28,7 +29,7 @@ consent:
     # Set to false to disable the background expiration job entirely.
     enabled: true
     # How often the scheduler runs. Supports Go duration format: "30s", "5m", "1h", "24h"
-    frequency: "1h"
+    frequency: "30s"
     # Consents with these statuses are eligible to be checked for expiration.
     # Only consents matching these statuses will be picked up by the expiration job.
     eligible_statuses: ["ACTIVE"]

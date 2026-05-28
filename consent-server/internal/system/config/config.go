@@ -188,10 +188,15 @@ func Load(configPath string) (*Config, error) {
 	logger := log.GetLogger()
 	logger.Debug("Loading configuration", log.String("config_path", configPath))
 
+	// Determine config file path
 	var finalPath string
 	if configPath != "" {
 		finalPath = configPath
 	} else {
+
+		// Default configuration lookup order:
+		// 1. ./repository/conf/deployment.yaml (production - relative to binary)
+		// 2. ./cmd/server/repository/conf/deployment.yaml (development)
 		paths := []string{
 			"./repository/conf/deployment.yaml",
 			"./cmd/server/repository/conf/deployment.yaml",
@@ -206,6 +211,7 @@ func Load(configPath string) (*Config, error) {
 			}
 		}
 
+		// Read the config file
 		if finalPath == "" {
 			return nil, fmt.Errorf("no configuration file found in default paths")
 		}
@@ -218,6 +224,7 @@ func Load(configPath string) (*Config, error) {
 		return nil, fmt.Errorf("failed to read config file: %w", err)
 	}
 
+	// Substitute environment variables
 	data, err = substituteEnvironmentVariables(data)
 	if err != nil {
 		logger.Error("Failed to substitute environment variables", log.Error(err))
@@ -226,6 +233,7 @@ func Load(configPath string) (*Config, error) {
 
 	logger.Info("Config file loaded", log.String("file", finalPath))
 
+	// Unmarshal config
 	var config Config
 	decoder := yaml.NewDecoder(strings.NewReader(string(data)))
 	decoder.KnownFields(true)
@@ -234,6 +242,7 @@ func Load(configPath string) (*Config, error) {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 	}
 
+	// Validate config
 	if err := validateConfig(&config); err != nil {
 		logger.Error("Config validation failed", log.Error(err))
 		return nil, fmt.Errorf("config validation failed: %w", err)
@@ -251,6 +260,7 @@ func Load(configPath string) (*Config, error) {
 func substituteEnvironmentVariables(data []byte) ([]byte, error) {
 	content := string(data)
 
+	// Find all ${...} patterns using a moving index
 	pos := 0
 	for pos < len(content) {
 		start := strings.Index(content[pos:], "${")
@@ -264,9 +274,16 @@ func substituteEnvironmentVariables(data []byte) ([]byte, error) {
 		}
 		end += start
 
+		// Extract variable name
 		varName := content[start+2 : end]
+
+		// Get environment variable value
 		varValue := os.Getenv(varName)
+
+		// Replace the pattern with the value
 		content = content[:start] + varValue + content[end+1:]
+
+		// Move position past the replaced value to avoid re-expansion
 		pos = start + len(varValue)
 	}
 
@@ -346,6 +363,8 @@ func SetGlobal(cfg *Config) {
 }
 
 // GetDSN returns the database connection string appropriate for the configured database type.
+// For SQLite it returns the file path with optional query parameters.
+// For MySQL (default) it returns the standard TCP DSN.
 func (d *DatabaseConfig) GetDSN() string {
 	switch d.Type {
 	case "sqlite":

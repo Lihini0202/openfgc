@@ -715,6 +715,11 @@ func (s *store) DeletePurposeElementApprovalsByConsentID(tx dbmodel.TxInterface,
 
 // GetExpiredConsents retrieves consents that have expired based on the current time and specified expirable statuses.
 func (s *store) GetExpiredConsents(ctx context.Context, currentTimeMs int64, expirableStatuses []string) ([]model.Consent, error) {
+
+	if len(expirableStatuses) == 0 {
+		return []model.Consent{}, nil
+	}
+
 	dbClient, err := s.getDBClient()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get database client: %w", err)
