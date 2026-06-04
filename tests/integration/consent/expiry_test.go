@@ -25,6 +25,35 @@ import (
 	"time"
 )
 
+// =============================================================================
+// Scheduler expiry helper
+// =============================================================================
+
+// pollUntilExpiredInSearch polls GET /consents?consentStatuses=EXPIRED until
+// the given consent ID appears in the results, or until timeout is exceeded.
+// Returns true if the consent was found in the EXPIRED list.
+//
+// Using the list endpoint (not GET /consents/{id}) is deliberate: the GET
+// by-ID endpoint triggers the on-read expiry path, which would make it
+// impossible to tell whether the scheduler or the read handler expired the
+// consent. The list endpoint returns persisted state without side effects.
+func (ts *ConsentAPITestSuite) pollUntilExpiredInSearch(orgID, consentID string, timeout, interval time.Duration) bool {
+	ts.T().Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		status, resp := ts.doListConsents(orgID, url.Values{"consentStatuses": {"EXPIRED"}})
+		if status == http.StatusOK && resp != nil {
+			for _, c := range resp.Data {
+				if c.ID == consentID {
+					return true
+				}
+			}
+		}
+		time.Sleep(interval)
+	}
+	return false
+}
+
 // TestConsentExpiry covers the auto-expiry behaviour triggered on read operations.
 //
 // The service checks whether a consent's expirationTime has passed whenever the
@@ -204,7 +233,7 @@ func (ts *ConsentAPITestSuite) TestConsentExpiry() {
 			ExpirationTime: &past,
 		})
 		ts.mustCreateConsent(orgID, "grp-all-act", ConsentCreateRequest{
-			Type: "accounts",
+			Type:           "accounts",
 			Authorizations: []AuthorizationRequest{{Status: "APPROVED"}},
 		})
 
@@ -212,5 +241,211 @@ func (ts *ConsentAPITestSuite) TestConsentExpiry() {
 		ts.Require().Equal(http.StatusOK, status)
 		ts.Require().NotNil(resp)
 		ts.Equal(2, resp.Metadata.Total)
+	})
+}
+
+// =============================================================================
+// TestSchedulerExpiration — background scheduler expiry
+// =============================================================================
+
+// TestSchedulerExpiration covers the background consent expiration scheduler.
+//
+// Contrast with TestConsentExpiry above, which tests the *on-read* expiry path
+// (GET /consents/{id} and POST /consents/validate trigger inline expiry before
+// returning). Here we verify that the background scheduler independently
+// discovers and expires consents whose expirationTime has passed.
+//
+// Observation strategy:
+//   - Do NOT call GET /consents/{id} before asserting scheduler behaviour.
+//     That endpoint triggers on-read expiry, making it impossible to tell
+//     which path caused the status transition.
+//   - Use GET /consents (list/search) instead. The list endpoint returns the
+//     persisted DB state without triggering any inline expiry logic.
+//
+// Each test creates consents with expirationTime = now + 3 s (positive offset
+// so on-create expiry does not fire), then polls the list endpoint for up to
+// 60 s. Tests pass as soon as the scheduler fires — typically within a few
+// seconds in a CI environment.
+//
+// Negative-case tests (revoked, no expiry) pair a *sentinel* consent that
+// should expire alongside the subject under test. Only once the sentinel
+// appears as EXPIRED in the list (proving the scheduler has run at least once)
+// is the assertion on the subject meaningful.
+func (ts *ConsentAPITestSuite) TestSchedulerExpiration() {
+	const (
+		schedExpiry  = 3 * time.Second
+		pollTimeout  = 20 * time.Second
+		pollInterval = 500 * time.Millisecond
+	)
+
+	// -----------------------------------------------------------------------
+	// Happy path: ACTIVE consent transitions to EXPIRED
+	// -----------------------------------------------------------------------
+	ts.Run("ACTIVE consent is moved to EXPIRED after expirationTime passes", func() {
+		orgID := freshOrgID()
+		expiry := time.Now().Add(schedExpiry).UnixMilli()
+
+		c := ts.mustCreateConsent(orgID, "grp-sched-active", ConsentCreateRequest{
+			Type:           "accounts",
+			ExpirationTime: &expiry,
+			Authorizations: []AuthorizationRequest{{Status: "APPROVED"}},
+		})
+		ts.Require().Equal("ACTIVE", c.Status,
+			"consent must start ACTIVE — expirationTime is still in the future")
+
+		ts.Require().True(
+			ts.pollUntilExpiredInSearch(orgID, c.ID, pollTimeout, pollInterval),
+			"scheduler must transition consent to EXPIRED within %s", pollTimeout,
+		)
+	})
+
+	// -----------------------------------------------------------------------
+	// Auth resources are SYS_EXPIRED after scheduler expiry
+	// -----------------------------------------------------------------------
+	ts.Run("auth resources are set to SYS_EXPIRED after scheduler expiry", func() {
+		orgID := freshOrgID()
+		expiry := time.Now().Add(schedExpiry).UnixMilli()
+
+		c := ts.mustCreateConsent(orgID, "grp-sched-auth", ConsentCreateRequest{
+			Type:           "accounts",
+			ExpirationTime: &expiry,
+			Authorizations: []AuthorizationRequest{
+				{Type: "accounts", Status: "APPROVED"},
+				{Type: "savings", Status: "APPROVED"},
+			},
+		})
+		ts.Require().Equal("ACTIVE", c.Status)
+		ts.Require().Len(c.Authorizations, 2)
+
+		ts.Require().True(
+			ts.pollUntilExpiredInSearch(orgID, c.ID, pollTimeout, pollInterval),
+			"scheduler must expire the consent",
+		)
+
+		// The list endpoint batch-fetches auth resources — no need for GET.
+		_, list := ts.doListConsents(orgID, url.Values{"consentStatuses": {"EXPIRED"}})
+		ts.Require().NotNil(list)
+
+		var found *ConsentResponse
+		for i := range list.Data {
+			if list.Data[i].ID == c.ID {
+				found = &list.Data[i]
+				break
+			}
+		}
+		ts.Require().NotNil(found, "expired consent must appear in the EXPIRED search results")
+		ts.Require().Len(found.Authorizations, 2, "all auth resources must still be returned after expiry")
+		for _, auth := range found.Authorizations {
+			ts.Equal("SYS_EXPIRED", auth.Status,
+				"auth resource %s must be SYS_EXPIRED after scheduler expires the consent", auth.ID)
+		}
+	})
+
+	// -----------------------------------------------------------------------
+	// CREATED consent (no authorizations) is also expired by the scheduler
+	// -----------------------------------------------------------------------
+	ts.Run("CREATED consent with no authorizations is moved to EXPIRED by scheduler", func() {
+		orgID := freshOrgID()
+		expiry := time.Now().Add(schedExpiry).UnixMilli()
+
+		c := ts.mustCreateConsent(orgID, "grp-sched-created", ConsentCreateRequest{
+			Type:           "accounts",
+			ExpirationTime: &expiry,
+			// No authorizations → status starts as CREATED.
+		})
+		ts.Require().Equal("CREATED", c.Status,
+			"consent with no authorizations must start as CREATED")
+
+		ts.Require().True(
+			ts.pollUntilExpiredInSearch(orgID, c.ID, pollTimeout, pollInterval),
+			"scheduler must expire a CREATED consent after its expirationTime passes",
+		)
+	})
+
+	// -----------------------------------------------------------------------
+	// Negative: REVOKED consent is not re-expired by the scheduler
+	// -----------------------------------------------------------------------
+	ts.Run("REVOKED consent stays REVOKED after its expirationTime passes", func() {
+		orgID := freshOrgID()
+		expiry := time.Now().Add(schedExpiry).UnixMilli()
+
+		// Sentinel: an ACTIVE consent that will be expired by the scheduler.
+		// When the sentinel appears as EXPIRED in search, we know the scheduler
+		// has run at least once, making the negative assertion on the subject valid.
+		sentinel := ts.mustCreateConsent(orgID, "grp-sched-rev-s", ConsentCreateRequest{
+			Type:           "accounts",
+			ExpirationTime: &expiry,
+			Authorizations: []AuthorizationRequest{{Status: "APPROVED"}},
+		})
+
+		// Subject: revoke it before its expirationTime passes.
+		subject := ts.mustCreateConsent(orgID, "grp-sched-rev", ConsentCreateRequest{
+			Type:           "accounts",
+			ExpirationTime: &expiry,
+			Authorizations: []AuthorizationRequest{{Status: "APPROVED"}},
+		})
+		_, revokeResp := ts.doRevokeConsent(orgID, subject.ID, ConsentRevokeRequest{ActionBy: "test"})
+		ts.Require().NotNil(revokeResp, "revoke must succeed before asserting scheduler behaviour")
+
+		// Wait for the sentinel to expire — proves the scheduler has run.
+		ts.Require().True(
+			ts.pollUntilExpiredInSearch(orgID, sentinel.ID, pollTimeout, pollInterval),
+			"sentinel consent must be expired by the scheduler to validate the negative case",
+		)
+
+		// Subject must still appear as REVOKED, not EXPIRED.
+		_, list := ts.doListConsents(orgID, url.Values{"consentStatuses": {"REVOKED"}})
+		ts.Require().NotNil(list)
+		found := false
+		for _, c := range list.Data {
+			if c.ID == subject.ID {
+				ts.Equal("REVOKED", c.Status,
+					"REVOKED consent must not be re-expired by the scheduler")
+				found = true
+				break
+			}
+		}
+		ts.True(found, "REVOKED consent must still appear under the REVOKED status filter")
+	})
+
+	// -----------------------------------------------------------------------
+	// Negative: consent with no expirationTime is never expired by the scheduler
+	// -----------------------------------------------------------------------
+	ts.Run("consent with no expirationTime is never expired by scheduler", func() {
+		orgID := freshOrgID()
+		expiry := time.Now().Add(schedExpiry).UnixMilli()
+
+		// Sentinel: will be expired, proving the scheduler has run.
+		sentinel := ts.mustCreateConsent(orgID, "grp-sched-noexp-s", ConsentCreateRequest{
+			Type:           "accounts",
+			ExpirationTime: &expiry,
+			Authorizations: []AuthorizationRequest{{Status: "APPROVED"}},
+		})
+
+		// Subject: no expirationTime set — should never be expired.
+		subject := ts.mustCreateConsent(orgID, "grp-sched-noexp", ConsentCreateRequest{
+			Type:           "accounts",
+			Authorizations: []AuthorizationRequest{{Status: "APPROVED"}},
+		})
+		ts.Nil(subject.ExpirationTime, "subject must have no expirationTime")
+
+		// Wait for sentinel to expire.
+		ts.Require().True(
+			ts.pollUntilExpiredInSearch(orgID, sentinel.ID, pollTimeout, pollInterval),
+			"sentinel must expire to confirm the scheduler has run at least once",
+		)
+
+		// Subject must remain ACTIVE.
+		_, list := ts.doListConsents(orgID, url.Values{"consentStatuses": {"ACTIVE"}})
+		ts.Require().NotNil(list)
+		found := false
+		for _, c := range list.Data {
+			if c.ID == subject.ID {
+				ts.Equal("ACTIVE", c.Status)
+				found = true
+				break
+			}
+		}
+		ts.True(found, "consent with no expirationTime must remain ACTIVE after scheduler runs")
 	})
 }

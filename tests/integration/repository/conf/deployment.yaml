@@ -23,8 +23,8 @@ logging:
 consent:
   periodical_expiration:
     enabled: true
-    frequency: "10s"
-    eligible_statuses: ["ACTIVE"]
+    frequency: "5s"
+    eligible_statuses: ["ACTIVE", "CREATED"]
   status_mappings:
     active_status: ACTIVE
     expired_status: EXPIRED
