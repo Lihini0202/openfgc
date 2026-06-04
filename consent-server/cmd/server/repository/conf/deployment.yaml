@@ -26,7 +26,7 @@ consent:
   # When enabled, the scheduler runs at the given frequency and marks eligible
   # consents as expired based on their VALIDITY_TIME.
   periodical_expiration:
-    # Set to false to disable the background expiration job entirely.
+    # Set false to disable the background expiration job entirely.
     enabled: true
     # How often the scheduler runs. Supports Go duration format: "30s", "5m", "1h", "24h"
     frequency: "1h"

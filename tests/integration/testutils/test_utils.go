@@ -159,11 +159,12 @@ func StartServer() error {
 		return fmt.Errorf("failed to resolve binary path: %w", err)
 	}
 
-	cmd := exec.Command(absBinaryPath) // ✅ Use full path
+	cmd := exec.Command(absBinaryPath) // Use full path
 	cmd.Dir = "../../target/server"
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
+	// Set environment variables for test mode
 	port := GetServerPort()
 	cmd.Env = append(os.Environ(),
 		"SERVER_PORT="+port,

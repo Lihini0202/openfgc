@@ -211,12 +211,12 @@ func Load(configPath string) (*Config, error) {
 			}
 		}
 
-		// Read the config file
 		if finalPath == "" {
 			return nil, fmt.Errorf("no configuration file found in default paths")
 		}
 	}
 
+	// Read the config file
 	finalPath = filepath.Clean(finalPath)
 	data, err := os.ReadFile(finalPath)
 	if err != nil {
@@ -317,6 +317,7 @@ func validateConfig(config *Config) error {
 		}
 	}
 
+	// Validate consent status mappings
 	if config.Consent.StatusMappings.ActiveStatus == "" {
 		return fmt.Errorf("consent active status mapping is required")
 	}
@@ -333,6 +334,7 @@ func validateConfig(config *Config) error {
 		return fmt.Errorf("consent rejected status mapping is required")
 	}
 
+	// Validate auth status mappings
 	if config.Consent.AuthStatusMappings.ApprovedState == "" {
 		return fmt.Errorf("auth approved status mapping is required")
 	}
@@ -403,4 +405,3 @@ func (d *DatabaseConfig) GetDSN() string {
 		)
 	}
 }
-
