@@ -210,7 +210,13 @@ var (
 		PostgresQuery: "DELETE FROM CONSENT_ELEMENT_APPROVAL WHERE CONSENT_ID = $1 AND ORG_ID = $2",
 	}
 
-	// Dynamic query stubs — built at runtime based on filter values.
+	QueryGetExpiredConsents = dbmodel.DBQuery{
+		ID:            "GET_EXPIRED_CONSENTS",
+		Query:         "SELECT CONSENT_ID, CREATED_TIME, UPDATED_TIME, CLIENT_ID, CONSENT_TYPE, CURRENT_STATUS, CONSENT_FREQUENCY, VALIDITY_TIME, RECURRING_INDICATOR, DATA_ACCESS_VALIDITY_DURATION, ORG_ID FROM CONSENT WHERE VALIDITY_TIME < ? AND CURRENT_STATUS IN (%s)",
+		PostgresQuery: "SELECT CONSENT_ID, CREATED_TIME, UPDATED_TIME, CLIENT_ID, CONSENT_TYPE, CURRENT_STATUS, CONSENT_FREQUENCY, VALIDITY_TIME, RECURRING_INDICATOR, DATA_ACCESS_VALIDITY_DURATION, ORG_ID FROM CONSENT WHERE VALIDITY_TIME < $1 AND CURRENT_STATUS IN (%s)",
+	}
+
+	// QueryGetAttributesByConsentIDs Dynamic query stubs — built at runtime based on filter values.
 	QueryGetAttributesByConsentIDs = dbmodel.DBQuery{ID: "GET_ATTRIBUTES_BY_CONSENT_IDS", Query: ""}
 	QuerySearchConsentsCount       = dbmodel.DBQuery{ID: "COUNT_CONSENT_SEARCH_RESULTS", Query: ""}
 	QuerySearchConsentsData        = dbmodel.DBQuery{ID: "SEARCH_CONSENTS_DATA", Query: ""}
@@ -701,6 +707,48 @@ func (s *store) Search(ctx context.Context, filters model.ConsentSearchFilter) (
 		}
 	}
 	return consents, totalCount, nil
+}
+
+// GetExpiredConsents retrieves consents that have expired based on the current time and specified expirable statuses.
+func (s *store) GetExpiredConsents(ctx context.Context, currentTimeMs int64, expirableStatuses []string) ([]model.Consent, error) {
+
+	if len(expirableStatuses) == 0 {
+		return []model.Consent{}, nil
+	}
+
+	dbClient, err := s.getDBClient()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get database client: %w", err)
+	}
+
+	placeholders := make([]string, len(expirableStatuses))
+	args := []interface{}{currentTimeMs}
+	for i, status := range expirableStatuses {
+		placeholders[i] = "?"
+		args = append(args, status)
+	}
+
+	query := fmt.Sprintf(QueryGetExpiredConsents.Query, strings.Join(placeholders, ","))
+	postgresQuery := fmt.Sprintf(QueryGetExpiredConsents.PostgresQuery, strings.Join(placeholders, ","))
+
+	rows, err := dbClient.Query(dbmodel.DBQuery{
+		ID:            QueryGetExpiredConsents.ID,
+		Query:         query,
+		PostgresQuery: postgresQuery,
+	}, args...)
+	if err != nil {
+		return nil, err
+	}
+
+	consents := make([]model.Consent, 0, len(rows))
+	for _, row := range rows {
+		consent := mapToConsent(row)
+		if consent != nil {
+			consents = append(consents, *consent)
+		}
+	}
+
+	return consents, nil
 }
 
 // =============================================================================

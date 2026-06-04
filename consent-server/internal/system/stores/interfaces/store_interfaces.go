@@ -42,7 +42,9 @@ type ConsentStore interface {
 	GetByID(ctx context.Context, consentID, orgID string) (*consentModel.Consent, error)
 	// Search returns consents matching the filters along with the total count for pagination.
 	Search(ctx context.Context, filters consentModel.ConsentSearchFilter) ([]consentModel.Consent, int, error)
-
+	// GetExpiredConsents Get expired consents based on current time and expirable statuses.
+	GetExpiredConsents(ctx context.Context, currentTimeMs int64, expirableStatuses []string) ([]consentModel.Consent, error)
+	
 	// CreateAttributes inserts one or more CONSENT_ATTRIBUTE rows within a transaction.
 	CreateAttributes(tx dbmodel.TxInterface, attributes []consentModel.ConsentAttribute) error
 	// DeleteAttributesByConsentID removes all attributes for a consent within a transaction.
