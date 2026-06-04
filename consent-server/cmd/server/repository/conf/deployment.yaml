@@ -22,6 +22,18 @@ logging:
 
 # Consent status configuration
 consent:
+  # Periodical expiration job configuration.
+  # When enabled, the scheduler runs at the given frequency and marks eligible
+  # consents as expired based on their VALIDITY_TIME.
+  periodical_expiration:
+    # Set to false to disable the background expiration job entirely.
+    enabled: true
+    # How often the scheduler runs. Supports Go duration format: "30s", "5m", "1h", "24h"
+    frequency: "1h"
+    # Consents with these statuses are eligible to be checked for expiration.
+    # Only consents matching these statuses will be picked up by the expiration job.
+    eligible_statuses: ["ACTIVE"]
+
   status_mappings:
     # Status representing an active/authorized consent
     active_status: ACTIVE
@@ -33,6 +45,7 @@ consent:
     created_status: CREATED
     # Status representing a rejected consent
     rejected_status: REJECTED
+
   auth_status_mappings:
     # Authorization state indicating approval
     approved_state: APPROVED
