@@ -20,6 +20,7 @@ package validator
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 )
 
@@ -57,9 +58,15 @@ func NewTypeRegistry() *TypeRegistry {
 }
 
 // Register adds an element type to the registry.
-// Returns error if a type with the same key is already registered.
+// Returns error if et is nil, if the type key is empty, or if a type with the same key is already registered.
 func (registry *TypeRegistry) Register(et ElementType) error {
+	if et == nil {
+		return fmt.Errorf("element type must not be nil")
+	}
 	typeStr := et.GetType()
+	if strings.TrimSpace(typeStr) == "" {
+		return fmt.Errorf("element type key must not be empty")
+	}
 
 	registry.mu.Lock()
 	defer registry.mu.Unlock()

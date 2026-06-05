@@ -402,6 +402,34 @@ func TestService_ListElements_NegativeOffset(t *testing.T) {
 	require.NotNil(t, resp)
 }
 
+func TestService_CreateElementVersion_DescriptionTooLong(t *testing.T) {
+	mockStore := interfacesmock.NewConsentElementStore(t)
+	service := newConsentElementService(&stores.StoreRegistry{ConsentElement: mockStore})
+
+	latest := &model.ElementVersion{ID: testElementID, Name: "x", Type: "basic", VersionNum: 1}
+	mockStore.On("GetLatestVersion", mock.Anything, testElementID, testOrgID).Return(latest, nil)
+
+	desc := string(make([]byte, 1025))
+	v, err := service.CreateElementVersion(context.Background(), testElementID, model.CreateElementVersionInput{Description: &desc}, testOrgID)
+	require.Error(t, err)
+	require.Nil(t, v)
+	require.Equal(t, "CE-1008", err.Code)
+}
+
+func TestService_CreateElementVersion_InvalidSchemaForJSON(t *testing.T) {
+	mockStore := interfacesmock.NewConsentElementStore(t)
+	service := newConsentElementService(&stores.StoreRegistry{ConsentElement: mockStore})
+
+	// json type requires a non-nil schema — nil input.Schema triggers CE-5010.
+	latest := &model.ElementVersion{ID: testElementID, Name: "doc", Type: "json", VersionNum: 1}
+	mockStore.On("GetLatestVersion", mock.Anything, testElementID, testOrgID).Return(latest, nil)
+
+	v, err := service.CreateElementVersion(context.Background(), testElementID, model.CreateElementVersionInput{}, testOrgID)
+	require.Error(t, err)
+	require.Nil(t, v)
+	require.Equal(t, "CE-5010", err.Code)
+}
+
 // --- CreateElementVersion — additional paths ---
 
 func TestService_CreateElementVersion_DBError(t *testing.T) {

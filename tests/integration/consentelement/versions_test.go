@@ -21,6 +21,7 @@ package consentelement
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 )
 
 // TestListElementVersions covers GET /consent-elements/{elementId}/versions.
@@ -224,6 +225,31 @@ func (ts *ElementAPITestSuite) TestCreateElementVersion() {
 			omitOrgID:     true,
 			wantStatus:    http.StatusBadRequest,
 			wantErrorCode: "CE-1003",
+		},
+		{
+			name: "json element — nil schema on new version → 500 CE-5010",
+			setup: func(orgID string) string {
+				return ts.mustCreateElementWith(orgID, CreateElementRequest{
+					Name:   "cv-json-noschema",
+					Type:   "json",
+					Schema: []byte(`{"type":"object"}`),
+				})
+			},
+			// No Schema in the version request — json type requires one.
+			req:           CreateElementVersionRequest{},
+			wantStatus:    http.StatusInternalServerError,
+			wantErrorCode: "CE-5010",
+		},
+		{
+			name: "description too long on new version → 400 CE-1008",
+			setup: func(orgID string) string {
+				return ts.mustCreateElement(orgID, "cv-long-desc", "basic")
+			},
+			req: CreateElementVersionRequest{
+				Description: ptr(strings.Repeat("x", 1025)),
+			},
+			wantStatus:    http.StatusBadRequest,
+			wantErrorCode: "CE-1008",
 		},
 	}
 

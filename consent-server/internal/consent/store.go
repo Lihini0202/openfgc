@@ -128,10 +128,10 @@ var (
 	QueryCheckPurposeUsedInConsents = dbmodel.DBQuery{
 		ID: "CHECK_PURPOSE_USED_IN_CONSENTS",
 		Query: `SELECT COUNT(*) AS count FROM PURPOSE_CONSENT_MAPPING pcm
-			JOIN PURPOSE p ON pcm.PURPOSE_VERSION_ID = p.VERSION_ID
+			JOIN PURPOSE p ON pcm.PURPOSE_VERSION_ID = p.VERSION_ID AND pcm.ORG_ID = p.ORG_ID
 			WHERE p.ID = ? AND pcm.ORG_ID = ?`,
 		PostgresQuery: `SELECT COUNT(*) AS count FROM PURPOSE_CONSENT_MAPPING pcm
-			JOIN PURPOSE p ON pcm.PURPOSE_VERSION_ID = p.VERSION_ID
+			JOIN PURPOSE p ON pcm.PURPOSE_VERSION_ID = p.VERSION_ID AND pcm.ORG_ID = p.ORG_ID
 			WHERE p.ID = $1 AND pcm.ORG_ID = $2`,
 	}
 
@@ -150,10 +150,11 @@ var (
 				e.DISPLAY_NAME AS ELEMENT_DISPLAY_NAME, e.DESCRIPTION AS ELEMENT_DESCRIPTION,
 				m.MANDATORY, pa.APPROVED, pa.VALUE, pa.ORG_ID
 			FROM CONSENT_ELEMENT_APPROVAL pa
-			JOIN ELEMENT e ON pa.ELEMENT_VERSION_ID = e.VERSION_ID
+			JOIN ELEMENT e ON pa.ELEMENT_VERSION_ID = e.VERSION_ID AND pa.ORG_ID = e.ORG_ID
 			JOIN PURPOSE_ELEMENT_MAPPING m
 				ON pa.PURPOSE_VERSION_ID = m.PURPOSE_VERSION_ID
 				AND pa.ELEMENT_VERSION_ID = m.ELEMENT_VERSION_ID
+				AND pa.ORG_ID = m.ORG_ID
 			WHERE pa.CONSENT_ID = ? AND pa.ORG_ID = ?
 			ORDER BY pa.PURPOSE_VERSION_ID, e.NAME`,
 		PostgresQuery: `SELECT pa.CONSENT_ID, pa.PURPOSE_VERSION_ID, pa.ELEMENT_VERSION_ID,
@@ -162,10 +163,11 @@ var (
 				e.DISPLAY_NAME AS ELEMENT_DISPLAY_NAME, e.DESCRIPTION AS ELEMENT_DESCRIPTION,
 				m.MANDATORY, pa.APPROVED, pa.VALUE, pa.ORG_ID
 			FROM CONSENT_ELEMENT_APPROVAL pa
-			JOIN ELEMENT e ON pa.ELEMENT_VERSION_ID = e.VERSION_ID
+			JOIN ELEMENT e ON pa.ELEMENT_VERSION_ID = e.VERSION_ID AND pa.ORG_ID = e.ORG_ID
 			JOIN PURPOSE_ELEMENT_MAPPING m
 				ON pa.PURPOSE_VERSION_ID = m.PURPOSE_VERSION_ID
 				AND pa.ELEMENT_VERSION_ID = m.ELEMENT_VERSION_ID
+				AND pa.ORG_ID = m.ORG_ID
 			WHERE pa.CONSENT_ID = $1 AND pa.ORG_ID = $2
 			ORDER BY pa.PURPOSE_VERSION_ID, e.NAME`,
 	}
@@ -610,7 +612,7 @@ func (s *store) Search(ctx context.Context, filters model.ConsentSearchFilter) (
 	if filters.PurposeName != "" {
 		pattern, escapeClause := consentLikePattern(dbClient, filters.PurposeName)
 		existsSQL := "EXISTS (SELECT 1 FROM PURPOSE_CONSENT_MAPPING pcm" +
-			" JOIN PURPOSE p ON pcm.PURPOSE_VERSION_ID = p.VERSION_ID" +
+			" JOIN PURPOSE p ON pcm.PURPOSE_VERSION_ID = p.VERSION_ID AND pcm.ORG_ID = p.ORG_ID" +
 			" WHERE pcm.CONSENT_ID = CONSENT.CONSENT_ID AND pcm.ORG_ID = CONSENT.ORG_ID" +
 			" AND p.NAME LIKE ?" + escapeClause
 		purposeArgs := []interface{}{pattern}
@@ -645,8 +647,8 @@ func (s *store) Search(ctx context.Context, filters model.ConsentSearchFilter) (
 			elemArgs = append(elemArgs, *filters.ElementVersion)
 		}
 		existsSQL := "EXISTS (SELECT 1 FROM PURPOSE_CONSENT_MAPPING pcm2" +
-			" JOIN PURPOSE_ELEMENT_MAPPING pem ON pcm2.PURPOSE_VERSION_ID = pem.PURPOSE_VERSION_ID" +
-			" JOIN ELEMENT e ON pem.ELEMENT_VERSION_ID = e.VERSION_ID" +
+			" JOIN PURPOSE_ELEMENT_MAPPING pem ON pcm2.PURPOSE_VERSION_ID = pem.PURPOSE_VERSION_ID AND pcm2.ORG_ID = pem.ORG_ID" +
+			" JOIN ELEMENT e ON pem.ELEMENT_VERSION_ID = e.VERSION_ID AND pem.ORG_ID = e.ORG_ID" +
 			" WHERE " + strings.Join(elemClauses, " AND ") + ")"
 		whereConditions = append(whereConditions, existsSQL)
 		args = append(args, elemArgs...)

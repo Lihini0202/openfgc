@@ -39,6 +39,10 @@ func TestXMLElementType_ValidateSchema(t *testing.T) {
 	empty := ""
 	require.NotNil(t, et.ValidateSchema(&empty))
 
+	// whitespace-only — must fail
+	ws := "   "
+	require.NotNil(t, et.ValidateSchema(&ws))
+
 	// non-empty value is accepted
 	s := "<root/>"
 	require.Nil(t, et.ValidateSchema(&s))

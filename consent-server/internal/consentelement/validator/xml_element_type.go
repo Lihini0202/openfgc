@@ -18,7 +18,11 @@
 
 package validator
 
-import "github.com/wso2/openfgc/internal/consentelement/model"
+import (
+	"strings"
+
+	"github.com/wso2/openfgc/internal/consentelement/model"
+)
 
 // XMLElementType handles "xml" consent elements.
 // Schema is required and must be a non-empty string.
@@ -28,9 +32,9 @@ func (t *XMLElementType) GetType() string {
 	return model.ElementTypeXML
 }
 
-// ValidateSchema requires a non-nil, non-empty schema for xml elements.
+// ValidateSchema requires a non-nil, non-empty (and non-whitespace) schema for xml elements.
 func (t *XMLElementType) ValidateSchema(schema *string) *ValidationError {
-	if schema == nil || *schema == "" {
+	if schema == nil || strings.TrimSpace(*schema) == "" {
 		return &ValidationError{Field: "schema", Message: "schema is required for xml elements"}
 	}
 	return nil

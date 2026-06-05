@@ -127,7 +127,7 @@ func TestGet(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			registry := NewTypeRegistry()
 			for _, handler := range tc.setupHandlers {
-				_ = registry.Register(handler)
+				require.NoError(t, registry.Register(handler), "setup: Register(%v)", handler)
 			}
 
 			handler, err := registry.Get(tc.getType)
@@ -181,7 +181,7 @@ func TestGetAllTypes(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			registry := NewTypeRegistry()
 			for _, handler := range tc.setupHandlers {
-				_ = registry.Register(handler)
+				require.NoError(t, registry.Register(handler), "setup: Register(%v)", handler)
 			}
 
 			types := registry.GetAllTypes()

@@ -113,9 +113,12 @@ func (h *consentElementHandler) listElements(w http.ResponseWriter, r *http.Requ
 	if versionStr := query.Get("version"); versionStr != "" {
 		// Accept both "v2" and "2" for the query param
 		s := strings.TrimPrefix(versionStr, "v")
-		if n, err := strconv.Atoi(s); err == nil && n > 0 {
-			filters.Version = &n
+		n, err := strconv.Atoi(s)
+		if err != nil || n <= 0 {
+			utils.SendError(w, r, serviceerror.CustomServiceError(ErrorInvalidRequestBody, "version must be in vN format (e.g. v1)"))
+			return
 		}
+		filters.Version = &n
 	}
 	if limitStr := query.Get("limit"); limitStr != "" {
 		if n, err := strconv.Atoi(limitStr); err == nil && n > 0 && n <= 100 {

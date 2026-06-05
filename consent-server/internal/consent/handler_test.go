@@ -449,13 +449,13 @@ func TestHandlerRevokeConsent_Success(t *testing.T) {
 
 	handler := newConsentHandler(mockSvc)
 	mux := http.NewServeMux()
-	mux.HandleFunc("PUT /consents/{consentId}/revoke", handler.revokeConsent)
+	mux.HandleFunc("POST /consents/{consentId}/revoke", handler.revokeConsent)
 	server := httptest.NewServer(mux)
 	defer server.Close()
 
 	reqBody := model.ConsentRevokeRequest{ActionBy: "admin-user", RevocationReason: "user request"}
 	body, _ := json.Marshal(reqBody)
-	req, _ := http.NewRequest(http.MethodPut, fmt.Sprintf("%s/consents/%s/revoke", server.URL, handlerTestConsentID), bytes.NewBuffer(body))
+	req, _ := http.NewRequest(http.MethodPost, fmt.Sprintf("%s/consents/%s/revoke", server.URL, handlerTestConsentID), bytes.NewBuffer(body))
 	req.Header.Set(constants.HeaderOrgID, handlerTestOrgID)
 
 	resp, err := http.DefaultClient.Do(req)
@@ -474,13 +474,13 @@ func TestHandlerRevokeConsent_MissingOrgID(t *testing.T) {
 
 	handler := newConsentHandler(mockSvc)
 	mux := http.NewServeMux()
-	mux.HandleFunc("PUT /consents/{consentId}/revoke", handler.revokeConsent)
+	mux.HandleFunc("POST /consents/{consentId}/revoke", handler.revokeConsent)
 	server := httptest.NewServer(mux)
 	defer server.Close()
 
 	reqBody := model.ConsentRevokeRequest{ActionBy: "admin-user"}
 	body, _ := json.Marshal(reqBody)
-	req, _ := http.NewRequest(http.MethodPut, fmt.Sprintf("%s/consents/%s/revoke", server.URL, handlerTestConsentID), bytes.NewBuffer(body))
+	req, _ := http.NewRequest(http.MethodPost, fmt.Sprintf("%s/consents/%s/revoke", server.URL, handlerTestConsentID), bytes.NewBuffer(body))
 	// No org-id header
 
 	resp, err := http.DefaultClient.Do(req)
@@ -496,11 +496,11 @@ func TestHandlerRevokeConsent_InvalidJSON(t *testing.T) {
 
 	handler := newConsentHandler(mockSvc)
 	mux := http.NewServeMux()
-	mux.HandleFunc("PUT /consents/{consentId}/revoke", handler.revokeConsent)
+	mux.HandleFunc("POST /consents/{consentId}/revoke", handler.revokeConsent)
 	server := httptest.NewServer(mux)
 	defer server.Close()
 
-	req, _ := http.NewRequest(http.MethodPut, fmt.Sprintf("%s/consents/%s/revoke", server.URL, handlerTestConsentID), bytes.NewBufferString("{invalid"))
+	req, _ := http.NewRequest(http.MethodPost, fmt.Sprintf("%s/consents/%s/revoke", server.URL, handlerTestConsentID), bytes.NewBufferString("{invalid"))
 	req.Header.Set(constants.HeaderOrgID, handlerTestOrgID)
 
 	resp, err := http.DefaultClient.Do(req)
@@ -524,13 +524,13 @@ func TestHandlerRevokeConsent_ServiceError(t *testing.T) {
 
 	handler := newConsentHandler(mockSvc)
 	mux := http.NewServeMux()
-	mux.HandleFunc("PUT /consents/{consentId}/revoke", handler.revokeConsent)
+	mux.HandleFunc("POST /consents/{consentId}/revoke", handler.revokeConsent)
 	server := httptest.NewServer(mux)
 	defer server.Close()
 
 	reqBody := model.ConsentRevokeRequest{ActionBy: "admin-user"}
 	body, _ := json.Marshal(reqBody)
-	req, _ := http.NewRequest(http.MethodPut, fmt.Sprintf("%s/consents/%s/revoke", server.URL, handlerTestConsentID), bytes.NewBuffer(body))
+	req, _ := http.NewRequest(http.MethodPost, fmt.Sprintf("%s/consents/%s/revoke", server.URL, handlerTestConsentID), bytes.NewBuffer(body))
 	req.Header.Set(constants.HeaderOrgID, handlerTestOrgID)
 
 	resp, err := http.DefaultClient.Do(req)

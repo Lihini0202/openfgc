@@ -78,7 +78,11 @@ func TestCreatePurpose_GroupIDFromHeader(t *testing.T) {
 	mockSvc := NewMockConsentPurposeService(t)
 
 	pv := &model.PurposeOutput{ID: testPurposeID, Name: "P", GroupID: "grp-1", VersionNum: 1}
-	mockSvc.On("CreatePurpose", mock.Anything, mock.Anything, testOrgID).
+	mockSvc.On("CreatePurpose", mock.Anything,
+		mock.MatchedBy(func(input model.CreatePurposeInput) bool {
+			return input.GroupID == "grp-1"
+		}),
+		testOrgID).
 		Return(pv, nil)
 
 	handler := newConsentPurposeHandler(mockSvc)
@@ -91,8 +95,7 @@ func TestCreatePurpose_GroupIDFromHeader(t *testing.T) {
 	handler.createPurpose(rr, req)
 
 	require.Equal(t, http.StatusCreated, rr.Code)
-	// Verify the service was called (group-id was forwarded via input)
-	mockSvc.AssertCalled(t, "CreatePurpose", mock.Anything, mock.Anything, testOrgID)
+	mockSvc.AssertExpectations(t)
 }
 
 func TestCreatePurpose_MissingOrgID(t *testing.T) {

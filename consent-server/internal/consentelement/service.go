@@ -215,6 +215,10 @@ func (s *consentElementService) CreateElementVersion(ctx context.Context, elemen
 		return nil, serviceerror.CustomServiceError(ErrorElementNotFound, fmt.Sprintf("element '%s' not found", elementID))
 	}
 
+	if svcErr := validateVersionInput(latest.Type, input); svcErr != nil {
+		return nil, svcErr
+	}
+
 	nextVersionNum := latest.VersionNum + 1
 	elementVersion := &model.ElementVersion{
 		VersionID:   utils.GenerateUUID(),
@@ -277,6 +281,23 @@ func (s *consentElementService) DeleteElementVersion(ctx context.Context, elemen
 
 	if err := s.stores.ExecuteTransaction(txOps); err != nil {
 		return serviceerror.CustomServiceError(ErrorDeleteElement, fmt.Sprintf("failed to delete element version: %v", err))
+	}
+	return nil
+}
+
+// validateVersionInput validates the mutable fields of a new element version.
+// The element type is inherited from the existing element and cannot be changed.
+func validateVersionInput(elementType string, input model.CreateElementVersionInput) *serviceerror.ServiceError {
+	if input.Description != nil && len(*input.Description) > 1024 {
+		return &ErrorElementDescriptionTooLong
+	}
+	if elementTypeDef, err := validator.GetTypeRegistry().Get(elementType); err == nil {
+		if verr := elementTypeDef.ValidateSchema(input.Schema); verr != nil {
+			return serviceerror.CustomServiceError(ErrorValidateElement, verr.Message)
+		}
+		if errs := elementTypeDef.ValidateProperties(input.Properties); len(errs) > 0 {
+			return serviceerror.CustomServiceError(ErrorValidateElement, errs[0].Message)
+		}
 	}
 	return nil
 }

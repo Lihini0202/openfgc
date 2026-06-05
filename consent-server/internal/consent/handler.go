@@ -184,18 +184,24 @@ func (h *consentHandler) listConsents(w http.ResponseWriter, r *http.Request) {
 	// purposeName (single) + optional purposeVersion
 	filters.PurposeName = r.URL.Query().Get("purposeName")
 	if s := r.URL.Query().Get("purposeVersion"); s != "" {
-		if v, err := parseVersionString(s); err == nil {
-			filters.PurposeVersion = &v
+		v, err := parseVersionString(s)
+		if err != nil {
+			utils.SendError(w, r, serviceerror.CustomServiceError(ErrorValidationFailed, err.Error()))
+			return
 		}
+		filters.PurposeVersion = &v
 	}
 
 	// elementName + optional elementNamespace + elementVersion
 	filters.ElementName = r.URL.Query().Get("elementName")
 	filters.ElementNamespace = r.URL.Query().Get("elementNamespace")
 	if s := r.URL.Query().Get("elementVersion"); s != "" {
-		if v, err := parseVersionString(s); err == nil {
-			filters.ElementVersion = &v
+		v, err := parseVersionString(s)
+		if err != nil {
+			utils.SendError(w, r, serviceerror.CustomServiceError(ErrorValidationFailed, err.Error()))
+			return
 		}
+		filters.ElementVersion = &v
 	}
 
 	// fromTime / toTime (Unix ms)
