@@ -46,12 +46,12 @@ func (s *expirationConsentService) GetExpiredConsents(_ context.Context, _ int64
 }
 
 func (s *expirationConsentService) ExpireConsent(_ context.Context, consent *model.Consent, _ string) *serviceerror.ServiceError {
+	s.expiredCalls = append(s.expiredCalls, consent.ConsentID)
 	if s.expireErrMap != nil {
 		if err, ok := s.expireErrMap[consent.ConsentID]; ok {
 			return serviceerror.CustomServiceError(ErrorInternalServerError, err.Error())
 		}
 	}
-	s.expiredCalls = append(s.expiredCalls, consent.ConsentID)
 	return nil
 }
 

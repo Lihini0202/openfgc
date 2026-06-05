@@ -47,13 +47,24 @@ func RunExpirationJob(ctx context.Context, svc ConsentService, statuses Expirati
 	}
 	logger.Info("Found consents to expire", log.Int("count", len(consents)))
 	for _, consent := range consents {
-		if err := svc.ExpireConsent(ctx, &consent, consent.OrgID); err != nil {
-			logger.Error("Failed to expire consent",
-				log.Error(err),
-				log.String("consent_id", consent.ConsentID),
-			)
-			continue
-		}
-		logger.Info("Consent expired successfully", log.String("consent_id", consent.ConsentID))
+		func() {
+			defer func() {
+				if p := recover(); p != nil {
+					logger.Error("Panic recovered expiring consent",
+						log.Any("panic", p),
+						log.String("stack_trace", string(debug.Stack())),
+						log.String("consent_id", consent.ConsentID),
+					)
+				}
+			}()
+			if err := svc.ExpireConsent(ctx, &consent, consent.OrgID); err != nil {
+				logger.Error("Failed to expire consent",
+					log.Error(err),
+					log.String("consent_id", consent.ConsentID),
+				)
+				return
+			}
+			logger.Info("Consent expired successfully", log.String("consent_id", consent.ConsentID))
+		}()
 	}
 }

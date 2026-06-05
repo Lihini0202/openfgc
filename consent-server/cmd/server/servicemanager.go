@@ -33,6 +33,10 @@ import (
 	"github.com/wso2/openfgc/internal/system/stores"
 )
 
+// cancelScheduler holds the cancel function for the consent expiration scheduler goroutine.
+// It is set by startConsentExpirationScheduler and called by unregisterServices on shutdown.
+var cancelScheduler context.CancelFunc
+
 // registerServices registers all consent management services with the provided HTTP multiplexer.
 func registerServices(mux *http.ServeMux) {
 	logger := log.GetLogger()
@@ -82,7 +86,9 @@ func startConsentExpirationScheduler(svc consent.ConsentService) {
 		ExpirableConsentStatuses: cfg.Consent.GetEligibleConsentStatuses(),
 	}
 
-	go consent.StartScheduler(context.Background(), svc, interval, statuses)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancelScheduler = cancel
+	go consent.StartScheduler(ctx, svc, interval, statuses)
 	logger.Info("Consent expiration scheduler started", log.String("interval", interval.String()))
 }
 
@@ -101,8 +107,8 @@ func registerHealthCheckEndpoints(mux *http.ServeMux) {
 }
 
 // unregisterServices performs cleanup of all services during shutdown.
-// Currently a placeholder for future service cleanup needs.
 func unregisterServices() {
-	// Future: Add any service-specific cleanup logic here
-	// e.g., closing connections, flushing caches, etc.
+	if cancelScheduler != nil {
+		cancelScheduler()
+	}
 }

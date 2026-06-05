@@ -133,16 +133,24 @@ func (h *consentPurposeHandler) listPurposes(w http.ResponseWriter, r *http.Requ
 
 	var purposeVersion *int
 	if raw := q.Get("purposeVersion"); raw != "" {
-		if v, err := strconv.Atoi(strings.TrimPrefix(raw, "v")); err == nil && v > 0 {
-			purposeVersion = &v
+		v, err := strconv.Atoi(strings.TrimPrefix(raw, "v"))
+		if err != nil || v <= 0 {
+			utils.SendError(w, r, serviceerror.CustomServiceError(ErrorInvalidQueryParams,
+				"purposeVersion must be a positive integer in vN format (e.g. v1)"))
+			return
 		}
+		purposeVersion = &v
 	}
 
 	var elementVersion *int
 	if raw := q.Get("elementVersion"); raw != "" {
-		if v, err := strconv.Atoi(strings.TrimPrefix(raw, "v")); err == nil && v > 0 {
-			elementVersion = &v
+		v, err := strconv.Atoi(strings.TrimPrefix(raw, "v"))
+		if err != nil || v <= 0 {
+			utils.SendError(w, r, serviceerror.CustomServiceError(ErrorInvalidQueryParams,
+				"elementVersion must be a positive integer in vN format (e.g. v1)"))
+			return
 		}
+		elementVersion = &v
 	}
 
 	limit := 100

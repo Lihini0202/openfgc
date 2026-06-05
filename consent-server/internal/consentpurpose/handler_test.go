@@ -343,6 +343,32 @@ func TestListPurposes_InvalidPagination(t *testing.T) {
 	require.Equal(t, http.StatusOK, rr.Code)
 }
 
+func TestListPurposes_InvalidPurposeVersion(t *testing.T) {
+	mockSvc := NewMockConsentPurposeService(t)
+	handler := newConsentPurposeHandler(mockSvc)
+
+	for _, bad := range []string{"vbad", "v0", "v-1", "abc"} {
+		req := httptest.NewRequest(http.MethodGet, "/consent-purposes?purposeVersion="+bad, nil)
+		req.Header.Set(constants.HeaderOrgID, testOrgID)
+		rr := httptest.NewRecorder()
+		handler.listPurposes(rr, req)
+		require.Equal(t, http.StatusBadRequest, rr.Code, "purposeVersion=%q should return 400", bad)
+	}
+}
+
+func TestListPurposes_InvalidElementVersion(t *testing.T) {
+	mockSvc := NewMockConsentPurposeService(t)
+	handler := newConsentPurposeHandler(mockSvc)
+
+	for _, bad := range []string{"vbad", "v0", "v-1", "abc"} {
+		req := httptest.NewRequest(http.MethodGet, "/consent-purposes?elementVersion="+bad, nil)
+		req.Header.Set(constants.HeaderOrgID, testOrgID)
+		rr := httptest.NewRecorder()
+		handler.listPurposes(rr, req)
+		require.Equal(t, http.StatusBadRequest, rr.Code, "elementVersion=%q should return 400", bad)
+	}
+}
+
 // =============================================================================
 // listPurposeVersions
 // =============================================================================

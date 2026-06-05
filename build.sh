@@ -299,8 +299,10 @@ function test_integration() {
     # Run integration test suite
     echo "Starting integration test suite..."
     cd tests/integration || exit 1
+    set +e
     go run main.go
     TEST_EXIT_CODE=$?
+    set -e
     cd "$SCRIPT_DIR" || exit 1
 
     # Always restore main config after tests (even if tests failed)

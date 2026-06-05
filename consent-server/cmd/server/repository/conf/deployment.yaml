@@ -24,7 +24,7 @@ logging:
 consent:
   # Periodical expiration job configuration.
   # When enabled, the scheduler runs at the given frequency and marks eligible
-  # consents as expired based on their VALIDITY_TIME.
+  # consents as expired based on their expirationTime.
   periodical_expiration:
     # Set false to disable the background expiration job entirely.
     enabled: true
