@@ -923,6 +923,22 @@ func getInt(row map[string]interface{}, key string) int {
 		return int(v)
 	case int32:
 		return int(v)
+	case []byte:
+		s := strings.TrimSpace(string(v))
+		if s == "" {
+			return 0
+		}
+		if parsed, err := strconv.ParseInt(s, 10, 64); err == nil {
+			return int(parsed)
+		}
+	case string:
+		s := strings.TrimSpace(v)
+		if s == "" {
+			return 0
+		}
+		if parsed, err := strconv.ParseInt(s, 10, 64); err == nil {
+			return int(parsed)
+		}
 	}
 	return 0
 }

@@ -438,3 +438,35 @@ func TestDeleteElementVersion_ReferencedByPurpose(t *testing.T) {
 
 	require.Equal(t, http.StatusConflict, rr.Code)
 }
+
+// =============================================================================
+// schemaToString
+// =============================================================================
+
+func TestSchemaToString(t *testing.T) {
+	cases := []struct {
+		name    string
+		raw     json.RawMessage
+		wantNil bool
+		want    string
+	}{
+		{"nil/absent payload → nil", nil, true, ""},
+		{"empty payload → nil", json.RawMessage{}, true, ""},
+		{"JSON null → nil (not the literal string null)", json.RawMessage(`null`), true, ""},
+		{"JSON null with surrounding whitespace → nil", json.RawMessage("  null  "), true, ""},
+		{"JSON string → unwrapped value", json.RawMessage(`"my-schema"`), false, "my-schema"},
+		{"JSON object → kept as-is", json.RawMessage(`{"type":"object"}`), false, `{"type":"object"}`},
+		{"JSON array → kept as-is", json.RawMessage(`["a","b"]`), false, `["a","b"]`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := schemaToString(tc.raw)
+			if tc.wantNil {
+				require.Nil(t, got, "expected nil but got %q", got)
+			} else {
+				require.NotNil(t, got)
+				require.Equal(t, tc.want, *got)
+			}
+		})
+	}
+}

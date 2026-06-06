@@ -151,7 +151,15 @@ func TestGetInt(t *testing.T) {
 		{"int64 value", map[string]interface{}{"k": int64(3)}, "k", 3},
 		{"uint32 value", map[string]interface{}{"k": uint32(7)}, "k", 7},
 		{"int32 value", map[string]interface{}{"k": int32(5)}, "k", 5},
-		{"unhandled type returns 0", map[string]interface{}{"k": "nope"}, "k", 0},
+		{"string numeric value", map[string]interface{}{"k": "42"}, "k", 42},
+		{"string with spaces", map[string]interface{}{"k": " 10 "}, "k", 10},
+		{"string empty returns 0", map[string]interface{}{"k": ""}, "k", 0},
+		{"string non-numeric returns 0", map[string]interface{}{"k": "nope"}, "k", 0},
+		{"[]byte numeric value", map[string]interface{}{"k": []byte("99")}, "k", 99},
+		{"[]byte with spaces", map[string]interface{}{"k": []byte(" 7 ")}, "k", 7},
+		{"[]byte empty returns 0", map[string]interface{}{"k": []byte("")}, "k", 0},
+		{"[]byte non-numeric returns 0", map[string]interface{}{"k": []byte("bad")}, "k", 0},
+		{"nil value returns 0", map[string]interface{}{"k": nil}, "k", 0},
 		{"missing key returns 0", map[string]interface{}{}, "k", 0},
 	}
 	for _, tc := range cases {
@@ -268,17 +276,17 @@ func TestMapToConsent_FullRow(t *testing.T) {
 	dur := int64(86400000)
 
 	row := map[string]interface{}{
-		"consent_id":                   "cid-1",
-		"created_time":                 int64(1000000000000),
-		"updated_time":                 int64(1000000001000),
-		"group_id":                     "grp-abc",
-		"consent_type":                 "regulatory",
-		"current_status":               "ACTIVE",
-		"consent_frequency":            freq,
-		"expiration_time":              exp,
-		"recurring_indicator":          int64(1),
+		"consent_id":                    "cid-1",
+		"created_time":                  int64(1000000000000),
+		"updated_time":                  int64(1000000001000),
+		"group_id":                      "grp-abc",
+		"consent_type":                  "regulatory",
+		"current_status":                "ACTIVE",
+		"consent_frequency":             freq,
+		"expiration_time":               exp,
+		"recurring_indicator":           int64(1),
 		"data_access_validity_duration": dur,
-		"org_id":                       "org-xyz",
+		"org_id":                        "org-xyz",
 	}
 
 	c := mapToConsent(row)
@@ -307,17 +315,17 @@ func TestMapToConsent_FullRow(t *testing.T) {
 
 func TestMapToConsent_NullableFieldsAreNil(t *testing.T) {
 	row := map[string]interface{}{
-		"consent_id":                   "cid-2",
-		"created_time":                 int64(0),
-		"updated_time":                 int64(0),
-		"group_id":                     "grp-1",
-		"consent_type":                 "informational",
-		"current_status":               "REVOKED",
-		"consent_frequency":            nil,
-		"expiration_time":              nil,
-		"recurring_indicator":          nil,
+		"consent_id":                    "cid-2",
+		"created_time":                  int64(0),
+		"updated_time":                  int64(0),
+		"group_id":                      "grp-1",
+		"consent_type":                  "informational",
+		"current_status":                "REVOKED",
+		"consent_frequency":             nil,
+		"expiration_time":               nil,
+		"recurring_indicator":           nil,
 		"data_access_validity_duration": nil,
-		"org_id":                       "org-1",
+		"org_id":                        "org-1",
 	}
 	c := mapToConsent(row)
 	require.NotNil(t, c)
@@ -412,20 +420,20 @@ func TestMapToConsentApprovalRow_FullRow(t *testing.T) {
 	value := "user@example.com"
 
 	row := map[string]interface{}{
-		"consent_id":          "cid-1",
-		"purpose_version_id":  "pvid-1",
-		"element_version_id":  "evid-1",
-		"element_id":          "eid-1",
-		"element_name":        "user_email",
-		"element_namespace":   "identity",
-		"element_version":     int64(2),
-		"element_type":        "basic",
+		"consent_id":           "cid-1",
+		"purpose_version_id":   "pvid-1",
+		"element_version_id":   "evid-1",
+		"element_id":           "eid-1",
+		"element_name":         "user_email",
+		"element_namespace":    "identity",
+		"element_version":      int64(2),
+		"element_type":         "basic",
 		"element_display_name": dispName,
-		"element_description": elemDesc,
-		"mandatory":           true,
-		"approved":            true,
-		"value":               value,
-		"org_id":              "org-1",
+		"element_description":  elemDesc,
+		"mandatory":            true,
+		"approved":             true,
+		"value":                value,
+		"org_id":               "org-1",
 	}
 
 	ar := mapToConsentApprovalRow(row)
@@ -450,20 +458,20 @@ func TestMapToConsentApprovalRow_FullRow(t *testing.T) {
 
 func TestMapToConsentApprovalRow_NullableFieldsAreNil(t *testing.T) {
 	row := map[string]interface{}{
-		"consent_id":          "cid-2",
-		"purpose_version_id":  "pvid-2",
-		"element_version_id":  "evid-2",
-		"element_id":          "eid-2",
-		"element_name":        "user_phone",
-		"element_namespace":   "identity",
-		"element_version":     int64(1),
-		"element_type":        "basic",
+		"consent_id":           "cid-2",
+		"purpose_version_id":   "pvid-2",
+		"element_version_id":   "evid-2",
+		"element_id":           "eid-2",
+		"element_name":         "user_phone",
+		"element_namespace":    "identity",
+		"element_version":      int64(1),
+		"element_type":         "basic",
 		"element_display_name": nil,
-		"element_description": nil,
-		"mandatory":           false,
-		"approved":            false,
-		"value":               nil,
-		"org_id":              "org-2",
+		"element_description":  nil,
+		"mandatory":            false,
+		"approved":             false,
+		"value":                nil,
+		"org_id":               "org-2",
 	}
 
 	ar := mapToConsentApprovalRow(row)
