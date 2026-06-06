@@ -18,7 +18,11 @@
 
 package validator
 
-import "github.com/wso2/openfgc/internal/consentelement/model"
+import (
+	"strings"
+
+	"github.com/wso2/openfgc/internal/consentelement/model"
+)
 
 // JSONElementType handles "json" consent elements.
 // Schema is required and must be non-empty. It accepts either a JSON object
@@ -33,7 +37,7 @@ func (t *JSONElementType) GetType() string {
 
 // ValidateSchema requires a non-nil, non-empty schema for json elements.
 func (t *JSONElementType) ValidateSchema(schema *string) *ValidationError {
-	if schema == nil || *schema == "" {
+	if schema == nil || strings.TrimSpace(*schema) == "" {
 		return &ValidationError{Field: "schema", Message: "schema is required for json elements"}
 	}
 	return nil
