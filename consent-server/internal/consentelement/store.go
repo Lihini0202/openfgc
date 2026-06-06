@@ -347,7 +347,7 @@ func (s *store) buildListQuery(dbClient provider.DBClientInterface, orgID string
 	baseSQL := sb.String() + whereSQL
 
 	countSQL := "SELECT COUNT(*) AS cnt FROM (" + baseSQL + ") AS filtered"
-	dataSQL := baseSQL + " ORDER BY e.NAME ASC LIMIT ? OFFSET ?"
+	dataSQL := baseSQL + " ORDER BY e.NAME ASC, e.NAMESPACE ASC, e.ID ASC LIMIT ? OFFSET ?"
 
 	dataArgs = append(baseArgs, filters.Limit, filters.Offset)
 	countArgs = baseArgs

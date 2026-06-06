@@ -47,6 +47,10 @@ func TestJSONElementType_ValidateSchema(t *testing.T) {
 	plain := "email_address"
 	require.Nil(t, et.ValidateSchema(&plain))
 
+	// whitespace-only — must fail
+	ws := "   "
+	require.NotNil(t, et.ValidateSchema(&ws))
+
 	// any non-empty value is accepted by the validator
 	arr := `["a","b"]`
 	require.Nil(t, et.ValidateSchema(&arr))
