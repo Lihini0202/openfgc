@@ -68,12 +68,17 @@ func (s *authResourceService) CreateAuthResource(
 ) (*model.AuthResourceOutput, *serviceerror.ServiceError) {
 	logger := log.GetLogger().WithContext(ctx)
 
+	cfg := config.Get()
+	if cfg == nil {
+		return nil, serviceerror.CustomServiceError(ErrorInternalServerError, "configuration not initialized")
+	}
+
 	// Apply defaults for optional fields
 	if input.AuthType == "" {
 		input.AuthType = model.DefaultAuthType
 	}
 	if input.AuthStatus == "" {
-		input.AuthStatus = string(config.Get().Consent.GetApprovedAuthStatus())
+		input.AuthStatus = string(cfg.Consent.GetApprovedAuthStatus())
 	}
 
 	logger.Info("Creating auth resource",
@@ -87,10 +92,6 @@ func (s *authResourceService) CreateAuthResource(
 	}
 
 	// Validate that auth status is not a system-reserved status
-	cfg := config.Get()
-	if cfg == nil {
-		return nil, serviceerror.CustomServiceError(ErrorInternalServerError, "configuration not initialized")
-	}
 	if err := authvalidator.ValidateAuthStatus(input.AuthStatus, cfg.Consent.AuthStatusMappings); err != nil {
 		return nil, serviceerror.CustomServiceError(ErrorValidationFailed, err.Error())
 	}

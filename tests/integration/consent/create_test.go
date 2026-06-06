@@ -846,6 +846,74 @@ func (ts *ConsentAPITestSuite) TestCreateConsent() {
 			},
 		},
 		{
+			// Regression: before the fix, Value: "" was treated as absent and the server
+			// returned nil. After the fix, an empty string is a distinct stored value and
+			// must be returned as "" rather than omitted.
+			name:    "basic element with empty string value — stored and returned (not treated as absent)",
+			groupID: "grp-ev",
+			buildBody: func(orgID string) any {
+				ts.mustCreateElement(orgID, "ev-basic-empty", "basic")
+				ts.doRequest(http.MethodPost, "/api/v1/consent-purposes", orgID, "", map[string]any{
+					"name":     "ev-purp-basic-empty",
+					"elements": []map[string]any{{"name": "ev-basic-empty"}},
+				})
+				return ConsentCreateRequest{
+					Type: "accounts",
+					Purposes: []PurposeRefRequest{{
+						Name:     "ev-purp-basic-empty",
+						Elements: []ElementApprovalRequest{{Name: "ev-basic-empty", Approved: true, Value: ""}},
+					}},
+				}
+			},
+			wantStatus: http.StatusCreated,
+			checkResult: func(orgID, _ string, resp *ConsentResponse) {
+				ts.Require().Len(resp.Purposes[0].Elements, 1)
+				elem := resp.Purposes[0].Elements[0]
+				ts.NotNil(elem.Value, "empty string must not be treated as absent in create response")
+				ts.Equal("", elem.Value, "empty string value must be returned as empty string, not nil")
+
+				// GET must preserve it too (second call site: consentOutputToResponse).
+				_, got := ts.doGetConsent(orgID, resp.ID)
+				ts.Require().NotNil(got)
+				ts.Require().Len(got.Purposes[0].Elements, 1)
+				ts.NotNil(got.Purposes[0].Elements[0].Value, "empty string must survive GET round-trip")
+				ts.Equal("", got.Purposes[0].Elements[0].Value, "GET response must return empty string, not nil")
+			},
+		},
+		{
+			// Regression: validate endpoint uses consentOutputToValidateInfo which also calls
+			// valueStringToInterface. An empty string value must appear in consentInformation.
+			name:    "empty string value appears in validate consentInformation",
+			groupID: "grp-ev",
+			buildBody: func(orgID string) any {
+				ts.mustCreateElement(orgID, "ev-basic-empty-val", "basic")
+				ts.doRequest(http.MethodPost, "/api/v1/consent-purposes", orgID, "", map[string]any{
+					"name":     "ev-purp-basic-empty-val",
+					"elements": []map[string]any{{"name": "ev-basic-empty-val"}},
+				})
+				return ConsentCreateRequest{
+					Type:           "accounts",
+					Authorizations: []AuthorizationRequest{{UserID: "user-001", Status: "APPROVED"}},
+					Purposes: []PurposeRefRequest{{
+						Name:     "ev-purp-basic-empty-val",
+						Elements: []ElementApprovalRequest{{Name: "ev-basic-empty-val", Approved: true, Value: ""}},
+					}},
+				}
+			},
+			wantStatus: http.StatusCreated,
+			checkResult: func(orgID, _ string, resp *ConsentResponse) {
+				_, body := ts.doValidateConsent(orgID, ConsentValidateRequest{ConsentID: resp.ID})
+				var valResp ConsentValidateResponse
+				ts.Require().NoError(json.Unmarshal(body, &valResp))
+				ts.True(valResp.IsValid)
+				ts.Require().NotNil(valResp.ConsentInfo)
+				ts.Require().Len(valResp.ConsentInfo.Purposes[0].Elements, 1)
+				elem := valResp.ConsentInfo.Purposes[0].Elements[0]
+				ts.NotNil(elem.Value, "empty string must not be treated as absent in validate response")
+				ts.Equal("", elem.Value, "validate consentInformation must return empty string, not nil")
+			},
+		},
+		{
 			// create response carries the value; GET response must carry the same value.
 			name:    "basic element value round-trips through GET",
 			groupID: "grp-ev",

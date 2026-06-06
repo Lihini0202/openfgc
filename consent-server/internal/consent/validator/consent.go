@@ -93,7 +93,7 @@ func ValidateConsentUpdateRequest(req model.ConsentUpdateRequest) error {
 	if req.Type == "" && req.Frequency == nil &&
 		req.ExpirationTime == nil && req.RecurringIndicator == nil &&
 		req.DataAccessValidityDuration == nil &&
-		len(req.Attributes) == 0 && len(req.Authorizations) == 0 && len(req.Purposes) == 0 {
+		req.Attributes == nil && req.Authorizations == nil && req.Purposes == nil {
 		return fmt.Errorf("at least one field must be provided for update")
 	}
 

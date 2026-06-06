@@ -742,3 +742,46 @@ func TestHandlerToExpirationMillis_BoundaryValue(t *testing.T) {
 	require.NotNil(t, result)
 	require.Equal(t, int64(100_000_000_000), *result)
 }
+
+// =============================================================================
+// valueStringToInterface
+// =============================================================================
+
+func TestValueStringToInterface_Nil(t *testing.T) {
+	require.Nil(t, valueStringToInterface(nil, "basic"))
+	require.Nil(t, valueStringToInterface(nil, "json"))
+}
+
+func TestValueStringToInterface_EmptyStringPreserved(t *testing.T) {
+	empty := ""
+	// Non-nil pointer to empty string must NOT be treated as absent.
+	result := valueStringToInterface(&empty, "basic")
+	require.NotNil(t, result)
+	require.Equal(t, "", result)
+}
+
+func TestValueStringToInterface_NonEmptyBasic(t *testing.T) {
+	v := "hello"
+	require.Equal(t, "hello", valueStringToInterface(&v, "basic"))
+}
+
+func TestValueStringToInterface_JSONParsed(t *testing.T) {
+	v := `{"key":"val"}`
+	result := valueStringToInterface(&v, "json")
+	m, ok := result.(map[string]interface{})
+	require.True(t, ok)
+	require.Equal(t, "val", m["key"])
+}
+
+func TestValueStringToInterface_JSONInvalidFallsBackToString(t *testing.T) {
+	v := "not-json"
+	require.Equal(t, "not-json", valueStringToInterface(&v, "json"))
+}
+
+func TestValueStringToInterface_EmptyStringJSONFallsBackToString(t *testing.T) {
+	// Empty string is invalid JSON — must fall back to returning the empty string, not nil.
+	empty := ""
+	result := valueStringToInterface(&empty, "json")
+	require.NotNil(t, result)
+	require.Equal(t, "", result)
+}

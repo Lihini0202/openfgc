@@ -151,7 +151,15 @@ func TestGetInt(t *testing.T) {
 		{"int64 value", map[string]interface{}{"k": int64(3)}, "k", 3},
 		{"uint32 value", map[string]interface{}{"k": uint32(7)}, "k", 7},
 		{"int32 value", map[string]interface{}{"k": int32(5)}, "k", 5},
-		{"unhandled type returns 0", map[string]interface{}{"k": "nope"}, "k", 0},
+		{"string numeric value", map[string]interface{}{"k": "42"}, "k", 42},
+		{"string with spaces", map[string]interface{}{"k": " 10 "}, "k", 10},
+		{"string empty returns 0", map[string]interface{}{"k": ""}, "k", 0},
+		{"string non-numeric returns 0", map[string]interface{}{"k": "nope"}, "k", 0},
+		{"[]byte numeric value", map[string]interface{}{"k": []byte("99")}, "k", 99},
+		{"[]byte with spaces", map[string]interface{}{"k": []byte(" 7 ")}, "k", 7},
+		{"[]byte empty returns 0", map[string]interface{}{"k": []byte("")}, "k", 0},
+		{"[]byte non-numeric returns 0", map[string]interface{}{"k": []byte("bad")}, "k", 0},
+		{"nil value returns 0", map[string]interface{}{"k": nil}, "k", 0},
 		{"missing key returns 0", map[string]interface{}{}, "k", 0},
 	}
 	for _, tc := range cases {

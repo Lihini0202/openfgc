@@ -20,6 +20,7 @@
 package consentelement
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -337,9 +338,13 @@ func toElementListResponse(output *model.ElementListOutput) model.ElementListRes
 }
 
 // schemaToString normalizes a json.RawMessage schema to a *string for the service layer.
+// Returns nil for an absent payload, an empty payload, or a JSON null literal.
 // Plain JSON string values are unwrapped (quotes removed). JSON objects/arrays are kept as-is.
 func schemaToString(raw json.RawMessage) *string {
 	if len(raw) == 0 {
+		return nil
+	}
+	if string(bytes.TrimSpace(raw)) == "null" {
 		return nil
 	}
 	var s string

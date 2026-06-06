@@ -137,6 +137,28 @@ func TestValidateConsentUpdateRequest_NoFieldsProvided(t *testing.T) {
 	require.Contains(t, err.Error(), "at least one field must be provided")
 }
 
+func TestValidateConsentUpdateRequest_EmptySlicesAreValid(t *testing.T) {
+	// Explicitly empty slices/maps must count as provided — nil is the "absent" sentinel.
+	require.NoError(t, ValidateConsentUpdateRequest(model.ConsentUpdateRequest{
+		Authorizations: []model.AuthorizationRequest{},
+	}), "empty Authorizations slice must be a valid update")
+
+	require.NoError(t, ValidateConsentUpdateRequest(model.ConsentUpdateRequest{
+		Purposes: []model.ConsentPurposeRefRequest{},
+	}), "empty Purposes slice must be a valid update")
+
+	require.NoError(t, ValidateConsentUpdateRequest(model.ConsentUpdateRequest{
+		Attributes: map[string]string{},
+	}), "empty Attributes map must be a valid update")
+}
+
+func TestValidateConsentUpdateRequest_AllNilIsStillRejected(t *testing.T) {
+	// All fields nil/zero — still rejected; nil slices/maps are "not provided".
+	err := ValidateConsentUpdateRequest(model.ConsentUpdateRequest{})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "at least one field must be provided")
+}
+
 func TestValidateConsentUpdateRequest_TypeTooLong(t *testing.T) {
 	req := model.ConsentUpdateRequest{Type: string(make([]byte, 65))}
 	err := ValidateConsentUpdateRequest(req)

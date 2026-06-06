@@ -585,7 +585,7 @@ func consentListOutputToResponse(out *model.ConsentListOutput) *model.ConsentLis
 // For "json" element types the string is unmarshalled back to an interface{};
 // for all other types the raw string is returned as-is.
 func valueStringToInterface(v *string, elemType string) interface{} {
-	if v == nil || *v == "" {
+	if v == nil {
 		return nil
 	}
 	if elemType == "json" {
