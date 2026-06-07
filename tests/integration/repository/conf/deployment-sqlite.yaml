@@ -1,0 +1,36 @@
+server:
+  hostname: localhost
+  port: 3000
+  readTimeout: 30s
+  writeTimeout: 30s
+  idleTimeout: 120s
+
+database:
+  consent:
+    type: sqlite
+    path: repository/consentdb_test.db
+    options: "_pragma=journal_mode(WAL)&_pragma=cache_size(-16000)"
+    max_open_conns: 1
+    max_idle_conns: 1
+    conn_max_lifetime: 0s
+
+logging:
+  level: debug
+
+consent:
+  periodical_expiration:
+    enabled: true
+    frequency: "5s"
+    eligible_statuses: ["ACTIVE", "CREATED"]
+  status_mappings:
+    active_status: ACTIVE
+    expired_status: EXPIRED
+    revoked_status: REVOKED
+    created_status: CREATED
+    rejected_status: REJECTED
+  auth_status_mappings:
+    approved_state: APPROVED
+    rejected_state: REJECTED
+    created_state: CREATED
+    system_expired_state: SYS_EXPIRED
+    system_revoked_state: SYS_REVOKED

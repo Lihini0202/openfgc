@@ -31,11 +31,28 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// dbType holds the database type for the current test run ("sqlite" or "mysql").
+// Populated from the DB_TYPE environment variable; defaults to "sqlite".
+var dbType = func() string {
+	if t := os.Getenv("DB_TYPE"); t != "" {
+		return t
+	}
+	return "mysql"
+}()
+
 const (
 	ServerBinary        = "../../target/server/consent-server"
 	ServerBinaryWindows = "../../target/server/consent-server.exe"
-	ConfigPath          = "repository/conf/deployment.yaml" // Relative to tests/integration
 )
+
+// ConfigPath returns the integration test deployment config path for the active dbType.
+// Relative to the tests/integration/ directory.
+var ConfigPath = func() string {
+	if dbType == "sqlite" {
+		return "repository/conf/deployment-sqlite.yaml"
+	}
+	return "repository/conf/deployment.yaml"
+}()
 
 var serverCmd *exec.Cmd
 
@@ -90,11 +107,11 @@ func BuildServer() error {
 	return nil
 }
 
-// SetupDatabase runs database migration scripts
+// SetupDatabase cleans and re-initialises the test database.
+// It branches on dbType: "sqlite" uses the sqlite3 CLI, "mysql" uses the mysql CLI.
 func SetupDatabase() error {
-	fmt.Println("Cleaning and setting up test database configured in tests/integration/repository/conf/deployment.yaml...")
+	fmt.Printf("Setting up test database (type=%s)...\n", dbType)
 
-	// Read database config
 	data, err := os.ReadFile(ConfigPath)
 	if err != nil {
 		return fmt.Errorf("failed to read config file: %w", err)
@@ -103,6 +120,8 @@ func SetupDatabase() error {
 	var config struct {
 		Database struct {
 			Consent struct {
+				Type     string `yaml:"type"`
+				Path     string `yaml:"path"`
 				Hostname string `yaml:"hostname"`
 				Port     int    `yaml:"port"`
 				Database string `yaml:"database"`
@@ -118,19 +137,25 @@ func SetupDatabase() error {
 
 	dbConfig := config.Database.Consent
 
-	// Build mysql command to run schema
-	schemaFile := "../../consent-server/dbscripts/db_schema_mysql.sql"
+	if dbType == "sqlite" {
+		// Resolve the db file path: the server runs from target/server/,
+		// so prepend that to the relative path from the config.
+		serverDir := "../../target/server"
+		dbPath := filepath.Join(serverDir, dbConfig.Path)
+		schemaFile := "../../consent-server/dbscripts/db_schema_sqlite.sql"
+		return initSQLiteDB(dbPath, schemaFile)
+	}
 
-	// Check if schema file exists
+	// MySQL: drop and recreate the database, then apply the schema.
+	schemaFile := "../../consent-server/dbscripts/db_schema_mysql.sql"
 	if _, err := os.Stat(schemaFile); os.IsNotExist(err) {
 		return fmt.Errorf("schema file not found: %s", schemaFile)
 	}
 
-	// Run mysql command to create schema
-	// First disable foreign key checks, drop all tables, run the schema, then re-enable
-	// This ensures a clean database state for testing
-	sqlScript := fmt.Sprintf("SET FOREIGN_KEY_CHECKS=0; DROP DATABASE IF EXISTS %s; CREATE DATABASE %s; USE %s; source %s; SET FOREIGN_KEY_CHECKS=1;",
-		dbConfig.Database, dbConfig.Database, dbConfig.Database, schemaFile)
+	sqlScript := fmt.Sprintf(
+		"SET FOREIGN_KEY_CHECKS=0; DROP DATABASE IF EXISTS %s; CREATE DATABASE %s; USE %s; source %s; SET FOREIGN_KEY_CHECKS=1;",
+		dbConfig.Database, dbConfig.Database, dbConfig.Database, schemaFile,
+	)
 	cmd := exec.Command("mysql",
 		"-h", dbConfig.Hostname,
 		"-P", fmt.Sprintf("%d", dbConfig.Port),
@@ -144,6 +169,66 @@ func SetupDatabase() error {
 		return fmt.Errorf("failed to run database schema: %w\nOutput: %s", err, string(output))
 	}
 
+	return nil
+}
+
+// initSQLiteDB creates a fresh SQLite database from a schema file using the sqlite3 CLI.
+// Any existing database file is deleted first to guarantee a clean state.
+func initSQLiteDB(dbPath, schemaPath string) error {
+	// Fail fast if the sqlite3 CLI is not available.
+	if _, err := exec.LookPath("sqlite3"); err != nil {
+		return fmt.Errorf("sqlite3 CLI not found in PATH: please install sqlite3 to run SQLite integration tests")
+	}
+
+	absSchemaPath, err := filepath.Abs(schemaPath)
+	if err != nil {
+		return fmt.Errorf("failed to resolve schema path: %w", err)
+	}
+	if _, err := os.Stat(absSchemaPath); os.IsNotExist(err) {
+		return fmt.Errorf("schema file not found: %s", absSchemaPath)
+	}
+
+	absDbPath, err := filepath.Abs(dbPath)
+	if err != nil {
+		return fmt.Errorf("failed to resolve db path: %w", err)
+	}
+
+	// Ensure the parent directory exists.
+	if err := os.MkdirAll(filepath.Dir(absDbPath), 0755); err != nil {
+		return fmt.Errorf("failed to create database directory: %w", err)
+	}
+
+	// Remove old db and WAL files for a clean start.
+	for _, f := range []string{absDbPath, absDbPath + "-shm", absDbPath + "-wal"} {
+		if err := os.Remove(f); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("failed to remove existing database file %s: %w", f, err)
+		}
+	}
+
+	// Apply schema by piping the file into sqlite3 via stdin.
+	schemaFile, err := os.Open(absSchemaPath)
+	if err != nil {
+		return fmt.Errorf("failed to open schema file: %w", err)
+	}
+	defer schemaFile.Close()
+
+	cmd := exec.Command("sqlite3", absDbPath)
+	cmd.Stdin = schemaFile
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to apply SQLite schema: %w", err)
+	}
+
+	// Enable WAL mode.
+	cmd = exec.Command("sqlite3", absDbPath, "PRAGMA journal_mode=WAL;")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to enable WAL mode: %w", err)
+	}
+
+	fmt.Printf("✓ SQLite database initialized: %s\n", absDbPath)
 	return nil
 }
 
