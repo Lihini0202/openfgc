@@ -86,6 +86,13 @@ var (
 		Message:     "Authorization status conflict",
 		Description: "The authorization status does not allow this operation",
 	}
+	// ErrorConsentNotFound is returned when the parent consent referenced in the URL does not exist.
+	ErrorConsentNotFound = serviceerror.ServiceError{
+		Type:        serviceerror.ClientErrorType,
+		Code:        "AR-4043",
+		Message:     "Consent not found",
+		Description: "The specified consent does not exist in this organization",
+	}
 )
 
 // Server errors for authorization resource operations.

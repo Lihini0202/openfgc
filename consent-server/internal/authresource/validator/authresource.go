@@ -25,34 +25,35 @@ import (
 	"github.com/wso2/openfgc/internal/system/config"
 )
 
-// ValidateAuthResourceCreateRequest validates auth resource creation request
-func ValidateAuthResourceCreateRequest(req model.ConsentAuthResourceCreateRequest, consentID, orgID string) error {
+// ValidateAuthResourceCreateRequest validates an auth resource creation request.
+// Type is optional — the service defaults it to "default" when absent.
+// UserID is required — it identifies the user who performed the authorization.
+func ValidateAuthResourceCreateRequest(req model.AuthResourceCreateRequest, consentID, orgID string) error {
 	if consentID == "" {
 		return fmt.Errorf("consentID is required")
 	}
 	if orgID == "" {
 		return fmt.Errorf("orgID is required")
 	}
-	if req.AuthType == "" {
-		return fmt.Errorf("authType is required")
-	}
-	if req.AuthStatus == "" {
-		return fmt.Errorf("authStatus is required")
+	if req.UserID == nil || *req.UserID == "" {
+		return fmt.Errorf("userId is required")
 	}
 
-	// Validate auth status
-	cfg := config.Get()
-	if cfg == nil {
-		return fmt.Errorf("configuration not initialized")
-	}
-	if err := ValidateAuthStatus(req.AuthStatus, cfg.Consent.AuthStatusMappings); err != nil {
-		return err
+	// Validate status if provided (empty status is allowed; service applies the default).
+	if req.Status != "" {
+		cfg := config.Get()
+		if cfg == nil {
+			return fmt.Errorf("configuration not initialized")
+		}
+		if err := ValidateAuthStatus(req.Status, cfg.Consent.AuthStatusMappings); err != nil {
+			return err
+		}
 	}
 
 	return nil
 }
 
-// ValidateAuthStatus validates authorization status and rejects system-reserved statuses
+// ValidateAuthStatus rejects system-reserved statuses that users must not set directly.
 func ValidateAuthStatus(status string, mappings config.AuthStatusMappings) error {
 	if mappings.SystemExpiredState == status ||
 		mappings.SystemRevokedState == status {
@@ -61,20 +62,25 @@ func ValidateAuthStatus(status string, mappings config.AuthStatusMappings) error
 	return nil
 }
 
-// ValidateAuthResourceUpdateRequest validates auth resource update request
-func ValidateAuthResourceUpdateRequest(req model.ConsentAuthResourceUpdateRequest) error {
-	// At least one field must be provided
-	if req.AuthStatus == "" && req.UserID == nil && req.Resources == nil {
+// ValidateAuthResourceUpdateRequest validates an auth resource update request.
+// UserID is required — it identifies the user who performed the authorization.
+func ValidateAuthResourceUpdateRequest(req model.AuthResourceUpdateRequest) error {
+	if req.UserID == nil || *req.UserID == "" {
+		return fmt.Errorf("userId is required")
+	}
+
+	// At least one other field must also be provided.
+	if req.Status == "" && req.Type == "" && req.Resources == nil {
 		return fmt.Errorf("at least one field must be provided for update")
 	}
 
-	// Validate status if provided
-	if req.AuthStatus != "" {
+	// Validate status if provided.
+	if req.Status != "" {
 		cfg := config.Get()
 		if cfg == nil {
 			return fmt.Errorf("configuration not initialized")
 		}
-		if err := ValidateAuthStatus(req.AuthStatus, cfg.Consent.AuthStatusMappings); err != nil {
+		if err := ValidateAuthStatus(req.Status, cfg.Consent.AuthStatusMappings); err != nil {
 			return err
 		}
 	}

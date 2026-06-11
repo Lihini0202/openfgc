@@ -24,7 +24,6 @@ import (
 	"errors"
 	"log/slog"
 	"os"
-	"strings"
 	"sync"
 )
 
@@ -183,12 +182,4 @@ func convertFields(fields []Field) []any {
 		attrs[i] = slog.Any(field.Key, field.Value)
 	}
 	return attrs
-}
-
-// MaskString masks characters in a string except for the first and last characters.
-func MaskString(s string) string {
-	if len(s) <= 3 {
-		return strings.Repeat("*", len(s))
-	}
-	return s[:1] + strings.Repeat("*", len(s)-2) + s[len(s)-1:]
 }

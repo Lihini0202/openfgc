@@ -8,7 +8,6 @@ import (
 	authresourcemodel "github.com/wso2/openfgc/internal/authresource/model"
 
 	mock "github.com/stretchr/testify/mock"
-
 	model "github.com/wso2/openfgc/internal/system/database/model"
 )
 
@@ -26,7 +25,7 @@ func (_m *AuthResourceStore) EXPECT() *AuthResourceStore_Expecter {
 }
 
 // Create provides a mock function with given fields: tx, authResource
-func (_m *AuthResourceStore) Create(tx model.TxInterface, authResource *authresourcemodel.ConsentAuthResource) error {
+func (_m *AuthResourceStore) Create(tx model.TxInterface, authResource *authresourcemodel.AuthResource) error {
 	ret := _m.Called(tx, authResource)
 
 	if len(ret) == 0 {
@@ -34,7 +33,7 @@ func (_m *AuthResourceStore) Create(tx model.TxInterface, authResource *authreso
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(model.TxInterface, *authresourcemodel.ConsentAuthResource) error); ok {
+	if rf, ok := ret.Get(0).(func(model.TxInterface, *authresourcemodel.AuthResource) error); ok {
 		r0 = rf(tx, authResource)
 	} else {
 		r0 = ret.Error(0)
@@ -50,14 +49,14 @@ type AuthResourceStore_Create_Call struct {
 
 // Create is a helper method to define mock.On call
 //   - tx model.TxInterface
-//   - authResource *authresourcemodel.ConsentAuthResource
+//   - authResource *authresourcemodel.AuthResource
 func (_e *AuthResourceStore_Expecter) Create(tx interface{}, authResource interface{}) *AuthResourceStore_Create_Call {
 	return &AuthResourceStore_Create_Call{Call: _e.mock.On("Create", tx, authResource)}
 }
 
-func (_c *AuthResourceStore_Create_Call) Run(run func(tx model.TxInterface, authResource *authresourcemodel.ConsentAuthResource)) *AuthResourceStore_Create_Call {
+func (_c *AuthResourceStore_Create_Call) Run(run func(tx model.TxInterface, authResource *authresourcemodel.AuthResource)) *AuthResourceStore_Create_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(model.TxInterface), args[1].(*authresourcemodel.ConsentAuthResource))
+		run(args[0].(model.TxInterface), args[1].(*authresourcemodel.AuthResource))
 	})
 	return _c
 }
@@ -67,55 +66,7 @@ func (_c *AuthResourceStore_Create_Call) Return(_a0 error) *AuthResourceStore_Cr
 	return _c
 }
 
-func (_c *AuthResourceStore_Create_Call) RunAndReturn(run func(model.TxInterface, *authresourcemodel.ConsentAuthResource) error) *AuthResourceStore_Create_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
-// Delete provides a mock function with given fields: tx, authID, orgID
-func (_m *AuthResourceStore) Delete(tx model.TxInterface, authID string, orgID string) error {
-	ret := _m.Called(tx, authID, orgID)
-
-	if len(ret) == 0 {
-		panic("no return value specified for Delete")
-	}
-
-	var r0 error
-	if rf, ok := ret.Get(0).(func(model.TxInterface, string, string) error); ok {
-		r0 = rf(tx, authID, orgID)
-	} else {
-		r0 = ret.Error(0)
-	}
-
-	return r0
-}
-
-// AuthResourceStore_Delete_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Delete'
-type AuthResourceStore_Delete_Call struct {
-	*mock.Call
-}
-
-// Delete is a helper method to define mock.On call
-//   - tx model.TxInterface
-//   - authID string
-//   - orgID string
-func (_e *AuthResourceStore_Expecter) Delete(tx interface{}, authID interface{}, orgID interface{}) *AuthResourceStore_Delete_Call {
-	return &AuthResourceStore_Delete_Call{Call: _e.mock.On("Delete", tx, authID, orgID)}
-}
-
-func (_c *AuthResourceStore_Delete_Call) Run(run func(tx model.TxInterface, authID string, orgID string)) *AuthResourceStore_Delete_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(model.TxInterface), args[1].(string), args[2].(string))
-	})
-	return _c
-}
-
-func (_c *AuthResourceStore_Delete_Call) Return(_a0 error) *AuthResourceStore_Delete_Call {
-	_c.Call.Return(_a0)
-	return _c
-}
-
-func (_c *AuthResourceStore_Delete_Call) RunAndReturn(run func(model.TxInterface, string, string) error) *AuthResourceStore_Delete_Call {
+func (_c *AuthResourceStore_Create_Call) RunAndReturn(run func(model.TxInterface, *authresourcemodel.AuthResource) error) *AuthResourceStore_Create_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -168,82 +119,24 @@ func (_c *AuthResourceStore_DeleteByConsentID_Call) RunAndReturn(run func(model.
 	return _c
 }
 
-// Exists provides a mock function with given fields: ctx, authID, orgID
-func (_m *AuthResourceStore) Exists(ctx context.Context, authID string, orgID string) (bool, error) {
-	ret := _m.Called(ctx, authID, orgID)
-
-	if len(ret) == 0 {
-		panic("no return value specified for Exists")
-	}
-
-	var r0 bool
-	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, string, string) (bool, error)); ok {
-		return rf(ctx, authID, orgID)
-	}
-	if rf, ok := ret.Get(0).(func(context.Context, string, string) bool); ok {
-		r0 = rf(ctx, authID, orgID)
-	} else {
-		r0 = ret.Get(0).(bool)
-	}
-
-	if rf, ok := ret.Get(1).(func(context.Context, string, string) error); ok {
-		r1 = rf(ctx, authID, orgID)
-	} else {
-		r1 = ret.Error(1)
-	}
-
-	return r0, r1
-}
-
-// AuthResourceStore_Exists_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Exists'
-type AuthResourceStore_Exists_Call struct {
-	*mock.Call
-}
-
-// Exists is a helper method to define mock.On call
-//   - ctx context.Context
-//   - authID string
-//   - orgID string
-func (_e *AuthResourceStore_Expecter) Exists(ctx interface{}, authID interface{}, orgID interface{}) *AuthResourceStore_Exists_Call {
-	return &AuthResourceStore_Exists_Call{Call: _e.mock.On("Exists", ctx, authID, orgID)}
-}
-
-func (_c *AuthResourceStore_Exists_Call) Run(run func(ctx context.Context, authID string, orgID string)) *AuthResourceStore_Exists_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(string), args[2].(string))
-	})
-	return _c
-}
-
-func (_c *AuthResourceStore_Exists_Call) Return(_a0 bool, _a1 error) *AuthResourceStore_Exists_Call {
-	_c.Call.Return(_a0, _a1)
-	return _c
-}
-
-func (_c *AuthResourceStore_Exists_Call) RunAndReturn(run func(context.Context, string, string) (bool, error)) *AuthResourceStore_Exists_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
 // GetByConsentID provides a mock function with given fields: ctx, consentID, orgID
-func (_m *AuthResourceStore) GetByConsentID(ctx context.Context, consentID string, orgID string) ([]authresourcemodel.ConsentAuthResource, error) {
+func (_m *AuthResourceStore) GetByConsentID(ctx context.Context, consentID string, orgID string) ([]authresourcemodel.AuthResource, error) {
 	ret := _m.Called(ctx, consentID, orgID)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetByConsentID")
 	}
 
-	var r0 []authresourcemodel.ConsentAuthResource
+	var r0 []authresourcemodel.AuthResource
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, string, string) ([]authresourcemodel.ConsentAuthResource, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string, string) ([]authresourcemodel.AuthResource, error)); ok {
 		return rf(ctx, consentID, orgID)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, string, string) []authresourcemodel.ConsentAuthResource); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string, string) []authresourcemodel.AuthResource); ok {
 		r0 = rf(ctx, consentID, orgID)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]authresourcemodel.ConsentAuthResource)
+			r0 = ret.Get(0).([]authresourcemodel.AuthResource)
 		}
 	}
 
@@ -276,34 +169,34 @@ func (_c *AuthResourceStore_GetByConsentID_Call) Run(run func(ctx context.Contex
 	return _c
 }
 
-func (_c *AuthResourceStore_GetByConsentID_Call) Return(_a0 []authresourcemodel.ConsentAuthResource, _a1 error) *AuthResourceStore_GetByConsentID_Call {
+func (_c *AuthResourceStore_GetByConsentID_Call) Return(_a0 []authresourcemodel.AuthResource, _a1 error) *AuthResourceStore_GetByConsentID_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *AuthResourceStore_GetByConsentID_Call) RunAndReturn(run func(context.Context, string, string) ([]authresourcemodel.ConsentAuthResource, error)) *AuthResourceStore_GetByConsentID_Call {
+func (_c *AuthResourceStore_GetByConsentID_Call) RunAndReturn(run func(context.Context, string, string) ([]authresourcemodel.AuthResource, error)) *AuthResourceStore_GetByConsentID_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // GetByConsentIDs provides a mock function with given fields: ctx, consentIDs, orgID
-func (_m *AuthResourceStore) GetByConsentIDs(ctx context.Context, consentIDs []string, orgID string) ([]authresourcemodel.ConsentAuthResource, error) {
+func (_m *AuthResourceStore) GetByConsentIDs(ctx context.Context, consentIDs []string, orgID string) ([]authresourcemodel.AuthResource, error) {
 	ret := _m.Called(ctx, consentIDs, orgID)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetByConsentIDs")
 	}
 
-	var r0 []authresourcemodel.ConsentAuthResource
+	var r0 []authresourcemodel.AuthResource
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, []string, string) ([]authresourcemodel.ConsentAuthResource, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, []string, string) ([]authresourcemodel.AuthResource, error)); ok {
 		return rf(ctx, consentIDs, orgID)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, []string, string) []authresourcemodel.ConsentAuthResource); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, []string, string) []authresourcemodel.AuthResource); ok {
 		r0 = rf(ctx, consentIDs, orgID)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]authresourcemodel.ConsentAuthResource)
+			r0 = ret.Get(0).([]authresourcemodel.AuthResource)
 		}
 	}
 
@@ -336,34 +229,34 @@ func (_c *AuthResourceStore_GetByConsentIDs_Call) Run(run func(ctx context.Conte
 	return _c
 }
 
-func (_c *AuthResourceStore_GetByConsentIDs_Call) Return(_a0 []authresourcemodel.ConsentAuthResource, _a1 error) *AuthResourceStore_GetByConsentIDs_Call {
+func (_c *AuthResourceStore_GetByConsentIDs_Call) Return(_a0 []authresourcemodel.AuthResource, _a1 error) *AuthResourceStore_GetByConsentIDs_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *AuthResourceStore_GetByConsentIDs_Call) RunAndReturn(run func(context.Context, []string, string) ([]authresourcemodel.ConsentAuthResource, error)) *AuthResourceStore_GetByConsentIDs_Call {
+func (_c *AuthResourceStore_GetByConsentIDs_Call) RunAndReturn(run func(context.Context, []string, string) ([]authresourcemodel.AuthResource, error)) *AuthResourceStore_GetByConsentIDs_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // GetByID provides a mock function with given fields: ctx, authID, orgID
-func (_m *AuthResourceStore) GetByID(ctx context.Context, authID string, orgID string) (*authresourcemodel.ConsentAuthResource, error) {
+func (_m *AuthResourceStore) GetByID(ctx context.Context, authID string, orgID string) (*authresourcemodel.AuthResource, error) {
 	ret := _m.Called(ctx, authID, orgID)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetByID")
 	}
 
-	var r0 *authresourcemodel.ConsentAuthResource
+	var r0 *authresourcemodel.AuthResource
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, string, string) (*authresourcemodel.ConsentAuthResource, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string, string) (*authresourcemodel.AuthResource, error)); ok {
 		return rf(ctx, authID, orgID)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, string, string) *authresourcemodel.ConsentAuthResource); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string, string) *authresourcemodel.AuthResource); ok {
 		r0 = rf(ctx, authID, orgID)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*authresourcemodel.ConsentAuthResource)
+			r0 = ret.Get(0).(*authresourcemodel.AuthResource)
 		}
 	}
 
@@ -396,78 +289,18 @@ func (_c *AuthResourceStore_GetByID_Call) Run(run func(ctx context.Context, auth
 	return _c
 }
 
-func (_c *AuthResourceStore_GetByID_Call) Return(_a0 *authresourcemodel.ConsentAuthResource, _a1 error) *AuthResourceStore_GetByID_Call {
+func (_c *AuthResourceStore_GetByID_Call) Return(_a0 *authresourcemodel.AuthResource, _a1 error) *AuthResourceStore_GetByID_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *AuthResourceStore_GetByID_Call) RunAndReturn(run func(context.Context, string, string) (*authresourcemodel.ConsentAuthResource, error)) *AuthResourceStore_GetByID_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
-// GetByUserID provides a mock function with given fields: ctx, userID, orgID
-func (_m *AuthResourceStore) GetByUserID(ctx context.Context, userID string, orgID string) ([]authresourcemodel.ConsentAuthResource, error) {
-	ret := _m.Called(ctx, userID, orgID)
-
-	if len(ret) == 0 {
-		panic("no return value specified for GetByUserID")
-	}
-
-	var r0 []authresourcemodel.ConsentAuthResource
-	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, string, string) ([]authresourcemodel.ConsentAuthResource, error)); ok {
-		return rf(ctx, userID, orgID)
-	}
-	if rf, ok := ret.Get(0).(func(context.Context, string, string) []authresourcemodel.ConsentAuthResource); ok {
-		r0 = rf(ctx, userID, orgID)
-	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]authresourcemodel.ConsentAuthResource)
-		}
-	}
-
-	if rf, ok := ret.Get(1).(func(context.Context, string, string) error); ok {
-		r1 = rf(ctx, userID, orgID)
-	} else {
-		r1 = ret.Error(1)
-	}
-
-	return r0, r1
-}
-
-// AuthResourceStore_GetByUserID_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetByUserID'
-type AuthResourceStore_GetByUserID_Call struct {
-	*mock.Call
-}
-
-// GetByUserID is a helper method to define mock.On call
-//   - ctx context.Context
-//   - userID string
-//   - orgID string
-func (_e *AuthResourceStore_Expecter) GetByUserID(ctx interface{}, userID interface{}, orgID interface{}) *AuthResourceStore_GetByUserID_Call {
-	return &AuthResourceStore_GetByUserID_Call{Call: _e.mock.On("GetByUserID", ctx, userID, orgID)}
-}
-
-func (_c *AuthResourceStore_GetByUserID_Call) Run(run func(ctx context.Context, userID string, orgID string)) *AuthResourceStore_GetByUserID_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(string), args[2].(string))
-	})
-	return _c
-}
-
-func (_c *AuthResourceStore_GetByUserID_Call) Return(_a0 []authresourcemodel.ConsentAuthResource, _a1 error) *AuthResourceStore_GetByUserID_Call {
-	_c.Call.Return(_a0, _a1)
-	return _c
-}
-
-func (_c *AuthResourceStore_GetByUserID_Call) RunAndReturn(run func(context.Context, string, string) ([]authresourcemodel.ConsentAuthResource, error)) *AuthResourceStore_GetByUserID_Call {
+func (_c *AuthResourceStore_GetByID_Call) RunAndReturn(run func(context.Context, string, string) (*authresourcemodel.AuthResource, error)) *AuthResourceStore_GetByID_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // Update provides a mock function with given fields: tx, authResource
-func (_m *AuthResourceStore) Update(tx model.TxInterface, authResource *authresourcemodel.ConsentAuthResource) error {
+func (_m *AuthResourceStore) Update(tx model.TxInterface, authResource *authresourcemodel.AuthResource) error {
 	ret := _m.Called(tx, authResource)
 
 	if len(ret) == 0 {
@@ -475,7 +308,7 @@ func (_m *AuthResourceStore) Update(tx model.TxInterface, authResource *authreso
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(model.TxInterface, *authresourcemodel.ConsentAuthResource) error); ok {
+	if rf, ok := ret.Get(0).(func(model.TxInterface, *authresourcemodel.AuthResource) error); ok {
 		r0 = rf(tx, authResource)
 	} else {
 		r0 = ret.Error(0)
@@ -491,14 +324,14 @@ type AuthResourceStore_Update_Call struct {
 
 // Update is a helper method to define mock.On call
 //   - tx model.TxInterface
-//   - authResource *authresourcemodel.ConsentAuthResource
+//   - authResource *authresourcemodel.AuthResource
 func (_e *AuthResourceStore_Expecter) Update(tx interface{}, authResource interface{}) *AuthResourceStore_Update_Call {
 	return &AuthResourceStore_Update_Call{Call: _e.mock.On("Update", tx, authResource)}
 }
 
-func (_c *AuthResourceStore_Update_Call) Run(run func(tx model.TxInterface, authResource *authresourcemodel.ConsentAuthResource)) *AuthResourceStore_Update_Call {
+func (_c *AuthResourceStore_Update_Call) Run(run func(tx model.TxInterface, authResource *authresourcemodel.AuthResource)) *AuthResourceStore_Update_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(model.TxInterface), args[1].(*authresourcemodel.ConsentAuthResource))
+		run(args[0].(model.TxInterface), args[1].(*authresourcemodel.AuthResource))
 	})
 	return _c
 }
@@ -508,7 +341,7 @@ func (_c *AuthResourceStore_Update_Call) Return(_a0 error) *AuthResourceStore_Up
 	return _c
 }
 
-func (_c *AuthResourceStore_Update_Call) RunAndReturn(run func(model.TxInterface, *authresourcemodel.ConsentAuthResource) error) *AuthResourceStore_Update_Call {
+func (_c *AuthResourceStore_Update_Call) RunAndReturn(run func(model.TxInterface, *authresourcemodel.AuthResource) error) *AuthResourceStore_Update_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -559,56 +392,6 @@ func (_c *AuthResourceStore_UpdateAllStatusByConsentID_Call) Return(_a0 error) *
 }
 
 func (_c *AuthResourceStore_UpdateAllStatusByConsentID_Call) RunAndReturn(run func(model.TxInterface, string, string, string, int64) error) *AuthResourceStore_UpdateAllStatusByConsentID_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
-// UpdateStatus provides a mock function with given fields: tx, authID, orgID, status, updatedTime
-func (_m *AuthResourceStore) UpdateStatus(tx model.TxInterface, authID string, orgID string, status string, updatedTime int64) error {
-	ret := _m.Called(tx, authID, orgID, status, updatedTime)
-
-	if len(ret) == 0 {
-		panic("no return value specified for UpdateStatus")
-	}
-
-	var r0 error
-	if rf, ok := ret.Get(0).(func(model.TxInterface, string, string, string, int64) error); ok {
-		r0 = rf(tx, authID, orgID, status, updatedTime)
-	} else {
-		r0 = ret.Error(0)
-	}
-
-	return r0
-}
-
-// AuthResourceStore_UpdateStatus_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'UpdateStatus'
-type AuthResourceStore_UpdateStatus_Call struct {
-	*mock.Call
-}
-
-// UpdateStatus is a helper method to define mock.On call
-//   - tx model.TxInterface
-//   - authID string
-//   - orgID string
-//   - status string
-//   - updatedTime int64
-func (_e *AuthResourceStore_Expecter) UpdateStatus(tx interface{}, authID interface{}, orgID interface{}, status interface{}, updatedTime interface{}) *AuthResourceStore_UpdateStatus_Call {
-	return &AuthResourceStore_UpdateStatus_Call{Call: _e.mock.On("UpdateStatus", tx, authID, orgID, status, updatedTime)}
-}
-
-func (_c *AuthResourceStore_UpdateStatus_Call) Run(run func(tx model.TxInterface, authID string, orgID string, status string, updatedTime int64)) *AuthResourceStore_UpdateStatus_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(model.TxInterface), args[1].(string), args[2].(string), args[3].(string), args[4].(int64))
-	})
-	return _c
-}
-
-func (_c *AuthResourceStore_UpdateStatus_Call) Return(_a0 error) *AuthResourceStore_UpdateStatus_Call {
-	_c.Call.Return(_a0)
-	return _c
-}
-
-func (_c *AuthResourceStore_UpdateStatus_Call) RunAndReturn(run func(model.TxInterface, string, string, string, int64) error) *AuthResourceStore_UpdateStatus_Call {
 	_c.Call.Return(run)
 	return _c
 }

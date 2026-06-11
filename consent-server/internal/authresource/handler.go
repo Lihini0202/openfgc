@@ -20,210 +20,185 @@ package authresource
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 
 	"github.com/wso2/openfgc/internal/authresource/model"
+	authvalidator "github.com/wso2/openfgc/internal/authresource/validator"
 	"github.com/wso2/openfgc/internal/system/constants"
 	"github.com/wso2/openfgc/internal/system/error/serviceerror"
 	"github.com/wso2/openfgc/internal/system/utils"
 )
 
-// authResourceHandler handles HTTP requests for auth resources
+// authResourceHandler handles HTTP requests for auth resources.
 type authResourceHandler struct {
 	service AuthResourceServiceInterface
 }
 
-// newAuthResourceHandler creates a new auth resource handler
+// newAuthResourceHandler creates a new auth resource handler.
 func newAuthResourceHandler(service AuthResourceServiceInterface) *authResourceHandler {
-	return &authResourceHandler{
-		service: service,
-	}
+	return &authResourceHandler{service: service}
 }
 
 // handleCreate handles POST /consents/{consentId}/authorizations
 func (h *authResourceHandler) handleCreate(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-
-	// Extract path parameters
 	consentID := r.PathValue("consentId")
-	if consentID == "" {
-		utils.SendError(w, r, serviceerror.CustomServiceError(
-			ErrorConsentIDRequired,
-			"consent ID is required",
-		))
-		return
-	}
-
-	// Extract organization ID from header
 	orgID := r.Header.Get(constants.HeaderOrgID)
+
+	if consentID == "" {
+		utils.SendError(w, r, serviceerror.CustomServiceError(ErrorConsentIDRequired, "consent ID is required"))
+		return
+	}
 	if orgID == "" {
-		utils.SendError(w, r, serviceerror.CustomServiceError(
-			ErrorOrgIDRequired,
-			"organization ID header is required",
-		))
+		utils.SendError(w, r, serviceerror.CustomServiceError(ErrorOrgIDRequired, "organization ID header is required"))
 		return
 	}
 
-	// Parse request body
-	var request model.CreateRequest
-	if err := utils.DecodeJSONBody(r, &request); err != nil {
-		utils.SendError(w, r, serviceerror.CustomServiceError(
-			ErrorInvalidRequestBody,
-			fmt.Sprintf("invalid request body: %v", err),
-		))
+	var req model.AuthResourceCreateRequest
+	if err := utils.DecodeJSONBody(r, &req); err != nil {
+		utils.SendError(w, r, serviceerror.CustomServiceError(ErrorInvalidRequestBody, "invalid request body"))
 		return
 	}
 
-	// Call service
-	response, serviceErr := h.service.CreateAuthResource(ctx, consentID, orgID, &request)
+	if err := authvalidator.ValidateAuthResourceCreateRequest(req, consentID, orgID); err != nil {
+		utils.SendError(w, r, serviceerror.CustomServiceError(ErrorValidationFailed, err.Error()))
+		return
+	}
+
+	out, serviceErr := h.service.CreateAuthResource(ctx, consentID, orgID, model.CreateAuthResourceInput{
+		AuthType:   req.Type,
+		UserID:     req.UserID,
+		AuthStatus: req.Status,
+		Resources:  req.Resources,
+	})
 	if serviceErr != nil {
 		utils.SendError(w, r, serviceErr)
 		return
 	}
 
-	// Send response
 	w.Header().Set(constants.HeaderContentType, constants.ContentTypeJSON)
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(response)
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(authResourceOutputToResponse(out))
 }
 
 // handleGet handles GET /consents/{consentId}/authorizations/{authorizationId}
 func (h *authResourceHandler) handleGet(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-
-	// Extract path parameters
 	consentID := r.PathValue("consentId")
 	authID := r.PathValue("authorizationId")
+	orgID := r.Header.Get(constants.HeaderOrgID)
 
 	if consentID == "" {
-		utils.SendError(w, r, serviceerror.CustomServiceError(
-			ErrorConsentIDRequired,
-			"consent ID is required",
-		))
+		utils.SendError(w, r, serviceerror.CustomServiceError(ErrorConsentIDRequired, "consent ID is required"))
 		return
 	}
-
 	if authID == "" {
-		utils.SendError(w, r, serviceerror.CustomServiceError(
-			ErrorAuthResourceIDRequired,
-			"authorization ID is required",
-		))
+		utils.SendError(w, r, serviceerror.CustomServiceError(ErrorAuthResourceIDRequired, "authorization ID is required"))
 		return
 	}
-
-	// Extract organization ID from header
-	orgID := r.Header.Get(constants.HeaderOrgID)
 	if orgID == "" {
-		utils.SendError(w, r, serviceerror.CustomServiceError(
-			ErrorOrgIDRequired,
-			"organization ID header is required",
-		))
+		utils.SendError(w, r, serviceerror.CustomServiceError(ErrorOrgIDRequired, "organization ID header is required"))
 		return
 	}
 
-	// Call service
-	response, serviceErr := h.service.GetAuthResource(ctx, authID, consentID, orgID)
+	out, serviceErr := h.service.GetAuthResource(ctx, authID, consentID, orgID)
 	if serviceErr != nil {
 		utils.SendError(w, r, serviceErr)
 		return
 	}
 
-	// Send response
 	w.Header().Set(constants.HeaderContentType, constants.ContentTypeJSON)
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(response)
+	json.NewEncoder(w).Encode(authResourceOutputToResponse(out))
 }
 
 // handleListByConsent handles GET /consents/{consentId}/authorizations
 func (h *authResourceHandler) handleListByConsent(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-
-	// Extract path parameters
 	consentID := r.PathValue("consentId")
-	if consentID == "" {
-		utils.SendError(w, r, serviceerror.CustomServiceError(
-			ErrorConsentIDRequired,
-			"consent ID is required",
-		))
-		return
-	}
-
-	// Extract organization ID from header
 	orgID := r.Header.Get(constants.HeaderOrgID)
+
+	if consentID == "" {
+		utils.SendError(w, r, serviceerror.CustomServiceError(ErrorConsentIDRequired, "consent ID is required"))
+		return
+	}
 	if orgID == "" {
-		utils.SendError(w, r, serviceerror.CustomServiceError(
-			ErrorOrgIDRequired,
-			"organization ID header is required",
-		))
+		utils.SendError(w, r, serviceerror.CustomServiceError(ErrorOrgIDRequired, "organization ID header is required"))
 		return
 	}
 
-	// Call service
-	response, serviceErr := h.service.GetAuthResourcesByConsentID(ctx, consentID, orgID)
+	listOut, serviceErr := h.service.GetAuthResourcesByConsentID(ctx, consentID, orgID)
 	if serviceErr != nil {
 		utils.SendError(w, r, serviceErr)
 		return
 	}
 
-	// Send response
+	data := make([]model.AuthResourceResponse, 0, len(listOut.Data))
+	for _, o := range listOut.Data {
+		data = append(data, authResourceOutputToResponse(&o))
+	}
+
 	w.Header().Set(constants.HeaderContentType, constants.ContentTypeJSON)
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(response)
+	json.NewEncoder(w).Encode(data)
 }
 
 // handleUpdate handles PUT /consents/{consentId}/authorizations/{authorizationId}
 func (h *authResourceHandler) handleUpdate(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-
-	// Extract path parameters
 	consentID := r.PathValue("consentId")
 	authID := r.PathValue("authorizationId")
-	if consentID == "" {
-		utils.SendError(w, r, serviceerror.CustomServiceError(
-			ErrorConsentIDRequired,
-			"consent ID is required",
-		))
-		return
-	}
-
-	if authID == "" {
-		utils.SendError(w, r, serviceerror.CustomServiceError(
-			ErrorAuthResourceIDRequired,
-			"authorization ID is required",
-		))
-		return
-	}
-
-	// Extract organization ID from header
 	orgID := r.Header.Get(constants.HeaderOrgID)
+
+	if consentID == "" {
+		utils.SendError(w, r, serviceerror.CustomServiceError(ErrorConsentIDRequired, "consent ID is required"))
+		return
+	}
+	if authID == "" {
+		utils.SendError(w, r, serviceerror.CustomServiceError(ErrorAuthResourceIDRequired, "authorization ID is required"))
+		return
+	}
 	if orgID == "" {
-		utils.SendError(w, r, serviceerror.CustomServiceError(
-			ErrorOrgIDRequired,
-			"organization ID header is required",
-		))
+		utils.SendError(w, r, serviceerror.CustomServiceError(ErrorOrgIDRequired, "organization ID header is required"))
 		return
 	}
 
-	// Parse request body
-	var request model.UpdateRequest
-	if err := utils.DecodeJSONBody(r, &request); err != nil {
-		utils.SendError(w, r, serviceerror.CustomServiceError(
-			ErrorInvalidRequestBody,
-			fmt.Sprintf("invalid request body: %v", err),
-		))
+	var req model.AuthResourceUpdateRequest
+	if err := utils.DecodeJSONBody(r, &req); err != nil {
+		utils.SendError(w, r, serviceerror.CustomServiceError(ErrorInvalidRequestBody, "invalid request body"))
 		return
 	}
 
-	// Call service
-	response, serviceErr := h.service.UpdateAuthResource(ctx, authID, consentID, orgID, &request)
+	if err := authvalidator.ValidateAuthResourceUpdateRequest(req); err != nil {
+		utils.SendError(w, r, serviceerror.CustomServiceError(ErrorValidationFailed, err.Error()))
+		return
+	}
+
+	out, serviceErr := h.service.UpdateAuthResource(ctx, authID, consentID, orgID, model.UpdateAuthResourceInput{
+		AuthType:   req.Type,
+		UserID:     req.UserID,
+		AuthStatus: req.Status,
+		Resources:  req.Resources,
+	})
 	if serviceErr != nil {
 		utils.SendError(w, r, serviceErr)
 		return
 	}
 
-	// Send response
 	w.Header().Set(constants.HeaderContentType, constants.ContentTypeJSON)
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(response)
+	json.NewEncoder(w).Encode(authResourceOutputToResponse(out))
+}
+
+// authResourceOutputToResponse converts a service-layer AuthResourceOutput to the
+// JSON-ready AuthResourceResponse for API responses.
+func authResourceOutputToResponse(out *model.AuthResourceOutput) model.AuthResourceResponse {
+	return model.AuthResourceResponse{
+		ID:          out.AuthID,
+		UserID:      out.UserID,
+		Type:        out.AuthType,
+		Status:      out.AuthStatus,
+		UpdatedTime: out.UpdatedTime,
+		Resources:   out.Resources,
+	}
 }

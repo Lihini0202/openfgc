@@ -7,7 +7,6 @@ import (
 
 	mock "github.com/stretchr/testify/mock"
 	model "github.com/wso2/openfgc/internal/authresource/model"
-
 	serviceerror "github.com/wso2/openfgc/internal/system/error/serviceerror"
 )
 
@@ -16,29 +15,29 @@ type MockAuthResourceService struct {
 	mock.Mock
 }
 
-// CreateAuthResource provides a mock function with given fields: ctx, consentID, orgID, request
-func (_m *MockAuthResourceService) CreateAuthResource(ctx context.Context, consentID string, orgID string, request *model.ConsentAuthResourceCreateRequest) (*model.ConsentAuthResourceResponse, *serviceerror.ServiceError) {
-	ret := _m.Called(ctx, consentID, orgID, request)
+// CreateAuthResource provides a mock function with given fields: ctx, consentID, orgID, input
+func (_m *MockAuthResourceService) CreateAuthResource(ctx context.Context, consentID string, orgID string, input model.CreateAuthResourceInput) (*model.AuthResourceOutput, *serviceerror.ServiceError) {
+	ret := _m.Called(ctx, consentID, orgID, input)
 
 	if len(ret) == 0 {
 		panic("no return value specified for CreateAuthResource")
 	}
 
-	var r0 *model.ConsentAuthResourceResponse
+	var r0 *model.AuthResourceOutput
 	var r1 *serviceerror.ServiceError
-	if rf, ok := ret.Get(0).(func(context.Context, string, string, *model.ConsentAuthResourceCreateRequest) (*model.ConsentAuthResourceResponse, *serviceerror.ServiceError)); ok {
-		return rf(ctx, consentID, orgID, request)
+	if rf, ok := ret.Get(0).(func(context.Context, string, string, model.CreateAuthResourceInput) (*model.AuthResourceOutput, *serviceerror.ServiceError)); ok {
+		return rf(ctx, consentID, orgID, input)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, string, string, *model.ConsentAuthResourceCreateRequest) *model.ConsentAuthResourceResponse); ok {
-		r0 = rf(ctx, consentID, orgID, request)
+	if rf, ok := ret.Get(0).(func(context.Context, string, string, model.CreateAuthResourceInput) *model.AuthResourceOutput); ok {
+		r0 = rf(ctx, consentID, orgID, input)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*model.ConsentAuthResourceResponse)
+			r0 = ret.Get(0).(*model.AuthResourceOutput)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, string, string, *model.ConsentAuthResourceCreateRequest) *serviceerror.ServiceError); ok {
-		r1 = rf(ctx, consentID, orgID, request)
+	if rf, ok := ret.Get(1).(func(context.Context, string, string, model.CreateAuthResourceInput) *serviceerror.ServiceError); ok {
+		r1 = rf(ctx, consentID, orgID, input)
 	} else {
 		if ret.Get(1) != nil {
 			r1 = ret.Get(1).(*serviceerror.ServiceError)
@@ -49,23 +48,23 @@ func (_m *MockAuthResourceService) CreateAuthResource(ctx context.Context, conse
 }
 
 // GetAuthResource provides a mock function with given fields: ctx, authID, consentID, orgID
-func (_m *MockAuthResourceService) GetAuthResource(ctx context.Context, authID string, consentID string, orgID string) (*model.ConsentAuthResourceResponse, *serviceerror.ServiceError) {
+func (_m *MockAuthResourceService) GetAuthResource(ctx context.Context, authID string, consentID string, orgID string) (*model.AuthResourceOutput, *serviceerror.ServiceError) {
 	ret := _m.Called(ctx, authID, consentID, orgID)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetAuthResource")
 	}
 
-	var r0 *model.ConsentAuthResourceResponse
+	var r0 *model.AuthResourceOutput
 	var r1 *serviceerror.ServiceError
-	if rf, ok := ret.Get(0).(func(context.Context, string, string, string) (*model.ConsentAuthResourceResponse, *serviceerror.ServiceError)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string, string, string) (*model.AuthResourceOutput, *serviceerror.ServiceError)); ok {
 		return rf(ctx, authID, consentID, orgID)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, string, string, string) *model.ConsentAuthResourceResponse); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string, string, string) *model.AuthResourceOutput); ok {
 		r0 = rf(ctx, authID, consentID, orgID)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*model.ConsentAuthResourceResponse)
+			r0 = ret.Get(0).(*model.AuthResourceOutput)
 		}
 	}
 
@@ -81,23 +80,23 @@ func (_m *MockAuthResourceService) GetAuthResource(ctx context.Context, authID s
 }
 
 // GetAuthResourcesByConsentID provides a mock function with given fields: ctx, consentID, orgID
-func (_m *MockAuthResourceService) GetAuthResourcesByConsentID(ctx context.Context, consentID string, orgID string) (*model.ConsentAuthResourceListResponse, *serviceerror.ServiceError) {
+func (_m *MockAuthResourceService) GetAuthResourcesByConsentID(ctx context.Context, consentID string, orgID string) (*model.AuthResourceListOutput, *serviceerror.ServiceError) {
 	ret := _m.Called(ctx, consentID, orgID)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetAuthResourcesByConsentID")
 	}
 
-	var r0 *model.ConsentAuthResourceListResponse
+	var r0 *model.AuthResourceListOutput
 	var r1 *serviceerror.ServiceError
-	if rf, ok := ret.Get(0).(func(context.Context, string, string) (*model.ConsentAuthResourceListResponse, *serviceerror.ServiceError)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string, string) (*model.AuthResourceListOutput, *serviceerror.ServiceError)); ok {
 		return rf(ctx, consentID, orgID)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, string, string) *model.ConsentAuthResourceListResponse); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string, string) *model.AuthResourceListOutput); ok {
 		r0 = rf(ctx, consentID, orgID)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*model.ConsentAuthResourceListResponse)
+			r0 = ret.Get(0).(*model.AuthResourceListOutput)
 		}
 	}
 
@@ -132,29 +131,29 @@ func (_m *MockAuthResourceService) UpdateAllStatusByConsentID(ctx context.Contex
 	return r0
 }
 
-// UpdateAuthResource provides a mock function with given fields: ctx, authID, consentID, orgID, request
-func (_m *MockAuthResourceService) UpdateAuthResource(ctx context.Context, authID string, consentID string, orgID string, request *model.ConsentAuthResourceUpdateRequest) (*model.ConsentAuthResourceResponse, *serviceerror.ServiceError) {
-	ret := _m.Called(ctx, authID, consentID, orgID, request)
+// UpdateAuthResource provides a mock function with given fields: ctx, authID, consentID, orgID, input
+func (_m *MockAuthResourceService) UpdateAuthResource(ctx context.Context, authID string, consentID string, orgID string, input model.UpdateAuthResourceInput) (*model.AuthResourceOutput, *serviceerror.ServiceError) {
+	ret := _m.Called(ctx, authID, consentID, orgID, input)
 
 	if len(ret) == 0 {
 		panic("no return value specified for UpdateAuthResource")
 	}
 
-	var r0 *model.ConsentAuthResourceResponse
+	var r0 *model.AuthResourceOutput
 	var r1 *serviceerror.ServiceError
-	if rf, ok := ret.Get(0).(func(context.Context, string, string, string, *model.ConsentAuthResourceUpdateRequest) (*model.ConsentAuthResourceResponse, *serviceerror.ServiceError)); ok {
-		return rf(ctx, authID, consentID, orgID, request)
+	if rf, ok := ret.Get(0).(func(context.Context, string, string, string, model.UpdateAuthResourceInput) (*model.AuthResourceOutput, *serviceerror.ServiceError)); ok {
+		return rf(ctx, authID, consentID, orgID, input)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, string, string, string, *model.ConsentAuthResourceUpdateRequest) *model.ConsentAuthResourceResponse); ok {
-		r0 = rf(ctx, authID, consentID, orgID, request)
+	if rf, ok := ret.Get(0).(func(context.Context, string, string, string, model.UpdateAuthResourceInput) *model.AuthResourceOutput); ok {
+		r0 = rf(ctx, authID, consentID, orgID, input)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*model.ConsentAuthResourceResponse)
+			r0 = ret.Get(0).(*model.AuthResourceOutput)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, string, string, string, *model.ConsentAuthResourceUpdateRequest) *serviceerror.ServiceError); ok {
-		r1 = rf(ctx, authID, consentID, orgID, request)
+	if rf, ok := ret.Get(1).(func(context.Context, string, string, string, model.UpdateAuthResourceInput) *serviceerror.ServiceError); ok {
+		r1 = rf(ctx, authID, consentID, orgID, input)
 	} else {
 		if ret.Get(1) != nil {
 			r1 = ret.Get(1).(*serviceerror.ServiceError)

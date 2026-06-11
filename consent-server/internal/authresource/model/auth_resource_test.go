@@ -25,171 +25,151 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestConsentAuthResource_Structure(t *testing.T) {
+// =============================================================================
+// DB type tests
+// =============================================================================
+
+func TestAuthResource_Fields(t *testing.T) {
 	userID := "user-123"
 	resources := `{"accounts": ["acc1", "acc2"]}`
-
-	authResource := ConsentAuthResource{
+	r := AuthResource{
 		AuthID:      "auth-123",
 		ConsentID:   "consent-456",
 		AuthType:    "accounts",
 		UserID:      &userID,
-		AuthStatus:  "authorized",
+		AuthStatus:  "APPROVED",
 		UpdatedTime: 1234567890,
 		Resources:   &resources,
 		OrgID:       "org-123",
 	}
-
-	require.Equal(t, "auth-123", authResource.AuthID)
-	require.Equal(t, "consent-456", authResource.ConsentID)
-	require.Equal(t, "accounts", authResource.AuthType)
-	require.NotNil(t, authResource.UserID)
-	require.Equal(t, "user-123", *authResource.UserID)
-	require.Equal(t, "authorized", authResource.AuthStatus)
+	require.Equal(t, "auth-123", r.AuthID)
+	require.NotNil(t, r.UserID)
+	require.Equal(t, "user-123", *r.UserID)
 }
 
-func TestConsentAuthResourceCreateRequest_JSONMarshaling(t *testing.T) {
+func TestAuthResource_NilFields(t *testing.T) {
+	r := AuthResource{AuthID: "auth-1", AuthType: "default", AuthStatus: "APPROVED"}
+	require.Nil(t, r.UserID)
+	require.Nil(t, r.Resources)
+}
+
+// =============================================================================
+// Service input type tests
+// =============================================================================
+
+func TestCreateAuthResourceInput_TypeOptional(t *testing.T) {
+	// Type is optional — empty string signals "use DefaultAuthType"
+	in := CreateAuthResourceInput{AuthStatus: "APPROVED"}
+	require.Empty(t, in.AuthType)
+}
+
+func TestCreateAuthResourceInput_Fields(t *testing.T) {
 	userID := "user-123"
-	req := ConsentAuthResourceCreateRequest{
-		AuthType:   "accounts",
+	in := CreateAuthResourceInput{
+		AuthType:   "authorisation",
 		UserID:     &userID,
-		AuthStatus: "authorized",
+		AuthStatus: "APPROVED",
 		Resources:  map[string]interface{}{"accounts": []string{"acc1"}},
 	}
-
-	data, err := json.Marshal(req)
-	require.NoError(t, err)
-	require.NotEmpty(t, data)
-
-	var unmarshaled ConsentAuthResourceCreateRequest
-	err = json.Unmarshal(data, &unmarshaled)
-	require.NoError(t, err)
-	require.Equal(t, "accounts", unmarshaled.AuthType)
-	require.Equal(t, "authorized", unmarshaled.AuthStatus)
+	require.Equal(t, "authorisation", in.AuthType)
+	require.NotNil(t, in.UserID)
 }
 
-func TestConsentAuthResourceUpdateRequest_JSONMarshaling(t *testing.T) {
-	status := "revoked"
-	userID := "user-456"
-	req := ConsentAuthResourceUpdateRequest{
-		AuthStatus: status,
+func TestUpdateAuthResourceInput_Fields(t *testing.T) {
+	in := UpdateAuthResourceInput{AuthStatus: "REVOKED"}
+	require.Equal(t, "REVOKED", in.AuthStatus)
+	require.Empty(t, in.AuthType)
+}
+
+// =============================================================================
+// Service return type tests
+// =============================================================================
+
+func TestAuthResourceOutput_Fields(t *testing.T) {
+	userID := "user-1"
+	out := AuthResourceOutput{
+		AuthID:     "auth-1",
+		AuthType:   "default",
 		UserID:     &userID,
-		Resources:  map[string]interface{}{"reason": "user requested"},
+		AuthStatus: "APPROVED",
+		Resources:  map[string]interface{}{"accountIds": []string{"acc-1"}},
 	}
-
-	data, err := json.Marshal(req)
-	require.NoError(t, err)
-	require.NotEmpty(t, data)
-
-	var unmarshaled ConsentAuthResourceUpdateRequest
-	err = json.Unmarshal(data, &unmarshaled)
-	require.NoError(t, err)
-	require.Equal(t, "revoked", unmarshaled.AuthStatus)
+	require.Equal(t, "default", out.AuthType)
+	require.NotNil(t, out.Resources)
 }
 
-func TestConsentAuthResourceResponse_JSONMarshaling(t *testing.T) {
-	userID := "user-123"
-	resp := ConsentAuthResourceResponse{
-		AuthID:      "auth-123",
-		AuthType:    "accounts",
-		UserID:      &userID,
-		AuthStatus:  "authorized",
-		UpdatedTime: 1234567890,
-		Resources:   map[string]interface{}{"accounts": []string{"acc1"}},
-	}
-
-	data, err := json.Marshal(resp)
-	require.NoError(t, err)
-	require.NotEmpty(t, data)
-
-	var unmarshaled ConsentAuthResourceResponse
-	err = json.Unmarshal(data, &unmarshaled)
-	require.NoError(t, err)
-	require.Equal(t, "auth-123", unmarshaled.AuthID)
-	require.Equal(t, "accounts", unmarshaled.AuthType)
-}
-
-func TestConsentAuthResourceListResponse_Structure(t *testing.T) {
-	listResp := ConsentAuthResourceListResponse{
-		Data: []ConsentAuthResourceResponse{
-			{
-				AuthID:     "auth-1",
-				AuthType:   "accounts",
-				AuthStatus: "authorized",
-			},
-			{
-				AuthID:     "auth-2",
-				AuthType:   "payments",
-				AuthStatus: "pending",
-			},
+func TestAuthResourceListOutput_Fields(t *testing.T) {
+	out := AuthResourceListOutput{
+		Data: []AuthResourceOutput{
+			{AuthID: "auth-1", AuthType: "default"},
+			{AuthID: "auth-2", AuthType: "authorisation"},
 		},
 	}
-
-	require.Len(t, listResp.Data, 2)
-	require.Equal(t, "auth-1", listResp.Data[0].AuthID)
-	require.Equal(t, "auth-2", listResp.Data[1].AuthID)
+	require.Len(t, out.Data, 2)
 }
 
-func TestAuthResourceTypeAlias(t *testing.T) {
-	var authResource AuthResource
-	authResource.AuthID = "test-id"
-	require.Equal(t, "test-id", authResource.AuthID)
+// =============================================================================
+// API request type tests
+// =============================================================================
+
+func TestAuthResourceCreateRequest_TypeOmitted(t *testing.T) {
+	// Omitting type must produce no "type" key in JSON
+	req := AuthResourceCreateRequest{Status: "APPROVED"}
+	data, err := json.Marshal(req)
+	require.NoError(t, err)
+	require.NotContains(t, string(data), `"type"`, "omitted type must not appear in JSON")
 }
 
-func TestCreateRequestTypeAlias(t *testing.T) {
-	var req CreateRequest
-	req.AuthType = "accounts"
-	require.Equal(t, "accounts", req.AuthType)
-}
-
-func TestUpdateRequestTypeAlias(t *testing.T) {
-	var req UpdateRequest
-	status := "revoked"
-	req.AuthStatus = status
-	require.Equal(t, "revoked", req.AuthStatus)
-}
-
-func TestResponseTypeAlias(t *testing.T) {
-	var resp Response
-	resp.AuthID = "test-id"
-	require.Equal(t, "test-id", resp.AuthID)
-}
-
-func TestListResponseTypeAlias(t *testing.T) {
-	var listResp ListResponse
-	listResp.Data = []Response{{AuthID: "auth-1"}}
-	require.Len(t, listResp.Data, 1)
-}
-
-func TestConsentAuthResource_NilFields(t *testing.T) {
-	authResource := ConsentAuthResource{
-		AuthID:      "auth-123",
-		ConsentID:   "consent-456",
-		AuthType:    "accounts",
-		AuthStatus:  "authorized",
-		UpdatedTime: 1234567890,
-		OrgID:       "org-123",
+func TestAuthResourceCreateRequest_JSONMarshal(t *testing.T) {
+	userID := "user-1"
+	req := AuthResourceCreateRequest{
+		UserID:    &userID,
+		Type:      "authorisation",
+		Status:    "APPROVED",
+		Resources: map[string]interface{}{"accounts": []string{"acc1"}},
 	}
+	data, err := json.Marshal(req)
+	require.NoError(t, err)
 
-	require.Nil(t, authResource.UserID)
-	require.Nil(t, authResource.Resources)
-	require.Nil(t, authResource.ResourceObj)
+	var decoded AuthResourceCreateRequest
+	require.NoError(t, json.Unmarshal(data, &decoded))
+	require.Equal(t, "authorisation", decoded.Type)
+	require.Equal(t, "APPROVED", decoded.Status)
 }
 
-func TestConsentAuthResourceCreateRequest_OptionalFields(t *testing.T) {
-	req := ConsentAuthResourceCreateRequest{
-		AuthType:   "accounts",
-		AuthStatus: "authorized",
+func TestAuthResourceUpdateRequest_JSONMarshal(t *testing.T) {
+	req := AuthResourceUpdateRequest{Status: "REVOKED", Resources: map[string]interface{}{"reason": "user request"}}
+	data, err := json.Marshal(req)
+	require.NoError(t, err)
+
+	var decoded AuthResourceUpdateRequest
+	require.NoError(t, json.Unmarshal(data, &decoded))
+	require.Equal(t, "REVOKED", decoded.Status)
+}
+
+// =============================================================================
+// API response type tests
+// =============================================================================
+
+func TestAuthResourceResponse_JSONMarshal(t *testing.T) {
+	userID := "user-1"
+	resp := AuthResourceResponse{
+		ID:          "auth-1",
+		UserID:      &userID,
+		Type:        "authorisation",
+		Status:      "APPROVED",
+		UpdatedTime: 1702800000,
+		Resources:   map[string]interface{}{"accounts": []string{"acc1"}},
 	}
+	data, err := json.Marshal(resp)
+	require.NoError(t, err)
 
-	require.Nil(t, req.UserID)
-	require.Nil(t, req.Resources)
+	var decoded AuthResourceResponse
+	require.NoError(t, json.Unmarshal(data, &decoded))
+	require.Equal(t, "auth-1", decoded.ID)
+	require.Equal(t, "authorisation", decoded.Type)
 }
 
-func TestConsentAuthResourceUpdateRequest_EmptyFields(t *testing.T) {
-	req := ConsentAuthResourceUpdateRequest{}
-
-	require.Empty(t, req.AuthStatus)
-	require.Nil(t, req.UserID)
-	require.Nil(t, req.Resources)
+func TestDefaultAuthType_Constant(t *testing.T) {
+	require.Equal(t, "default", DefaultAuthType)
 }

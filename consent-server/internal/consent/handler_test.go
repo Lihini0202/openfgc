@@ -21,87 +21,152 @@ package consent
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+
 	"github.com/wso2/openfgc/internal/consent/model"
 	"github.com/wso2/openfgc/internal/system/constants"
 	"github.com/wso2/openfgc/internal/system/error/serviceerror"
 )
 
 const (
-	testOrgID    = "org-123"
-	testClientID = "client-456"
+	handlerTestOrgID     = "test-org-123"
+	handlerTestGroupID   = "test-group-456"
+	handlerTestConsentID = "550e8400-e29b-41d4-a716-446655440000"
 )
 
-func TestCreateConsent_Success(t *testing.T) {
-	mockService := NewMockConsentService(t)
+// =============================================================================
+// createConsent
+// =============================================================================
 
-	request := model.ConsentAPIRequest{
-		Type: "accounts",
-		Purposes: []model.ConsentPurposeItem{
-			{
-				PurposeName: "purpose-1",
-				Elements: []model.ConsentElementApprovalItem{
-					{ElementName: "element-1", IsUserApproved: true},
-				},
-			},
-		},
-		Authorizations: []model.AuthorizationAPIRequest{
-			{Type: "accounts"},
-		},
-	}
+func TestHandlerCreateConsent_Success(t *testing.T) {
+	mockSvc := NewMockConsentService(t)
 
-	expectedResponse := &model.ConsentResponse{
-		ConsentID:     "consent-123",
+	out := &model.ConsentOutput{
+		ConsentID:     handlerTestConsentID,
+		GroupID:       handlerTestGroupID,
 		ConsentType:   "accounts",
-		CurrentStatus: "awaitingAuthorization",
-		CreatedTime:   1234567890,
-		UpdatedTime:   1234567890,
+		CurrentStatus: "ACTIVE",
 	}
+	mockSvc.On("CreateConsent", mock.Anything, mock.Anything, handlerTestOrgID).
+		Return(out, nil)
 
-	mockService.On("CreateConsent", mock.Anything, request, testClientID, testOrgID).
-		Return(expectedResponse, nil)
-
-	handler := newConsentHandler(mockService)
-	body, _ := json.Marshal(request)
+	handler := newConsentHandler(mockSvc)
+	reqBody := model.ConsentCreateRequest{
+		Type: "accounts",
+		Purposes: []model.ConsentPurposeRefRequest{
+			{Name: "Marketing", Elements: []model.ConsentPurposeElementApprovalRequest{}},
+		},
+	}
+	body, _ := json.Marshal(reqBody)
 	req := httptest.NewRequest(http.MethodPost, "/consents", bytes.NewBuffer(body))
-	req.Header.Set(constants.HeaderOrgID, testOrgID)
-	req.Header.Set(constants.HeaderTPPClientID, testClientID)
+	req.Header.Set(constants.HeaderOrgID, handlerTestOrgID)
+	req.Header.Set(constants.HeaderGroupID, handlerTestGroupID)
 	rr := httptest.NewRecorder()
 
 	handler.createConsent(rr, req)
 
 	require.Equal(t, http.StatusCreated, rr.Code)
-	mockService.AssertExpectations(t)
+	require.Contains(t, rr.Header().Get(constants.HeaderContentType), "application/json")
+
+	var resp model.ConsentResponse
+	require.NoError(t, json.NewDecoder(rr.Body).Decode(&resp))
+	require.Equal(t, handlerTestConsentID, resp.ConsentID)
 }
 
-func TestCreateConsent_MissingOrgID(t *testing.T) {
-	mockService := NewMockConsentService(t)
-	handler := newConsentHandler(mockService)
+func TestHandlerCreateConsent_MissingOrgID(t *testing.T) {
+	mockSvc := NewMockConsentService(t)
+	handler := newConsentHandler(mockSvc)
 
-	request := model.ConsentAPIRequest{
+	reqBody := model.ConsentCreateRequest{Type: "accounts"}
+	body, _ := json.Marshal(reqBody)
+	req := httptest.NewRequest(http.MethodPost, "/consents", bytes.NewBuffer(body))
+	req.Header.Set(constants.HeaderGroupID, handlerTestGroupID)
+	rr := httptest.NewRecorder()
+
+	handler.createConsent(rr, req)
+
+	require.Equal(t, http.StatusBadRequest, rr.Code)
+	mockSvc.AssertNotCalled(t, "CreateConsent")
+}
+
+func TestHandlerCreateConsent_MissingGroupID(t *testing.T) {
+	mockSvc := NewMockConsentService(t)
+	handler := newConsentHandler(mockSvc)
+
+	reqBody := model.ConsentCreateRequest{Type: "accounts"}
+	body, _ := json.Marshal(reqBody)
+	req := httptest.NewRequest(http.MethodPost, "/consents", bytes.NewBuffer(body))
+	req.Header.Set(constants.HeaderOrgID, handlerTestOrgID)
+	// No group-id header
+	rr := httptest.NewRecorder()
+
+	handler.createConsent(rr, req)
+
+	require.Equal(t, http.StatusBadRequest, rr.Code)
+	mockSvc.AssertNotCalled(t, "CreateConsent")
+}
+
+func TestHandlerCreateConsent_InvalidJSON(t *testing.T) {
+	mockSvc := NewMockConsentService(t)
+	handler := newConsentHandler(mockSvc)
+
+	req := httptest.NewRequest(http.MethodPost, "/consents", bytes.NewBufferString("{invalid"))
+	req.Header.Set(constants.HeaderOrgID, handlerTestOrgID)
+	req.Header.Set(constants.HeaderGroupID, handlerTestGroupID)
+	rr := httptest.NewRecorder()
+
+	handler.createConsent(rr, req)
+
+	require.Equal(t, http.StatusBadRequest, rr.Code)
+	mockSvc.AssertNotCalled(t, "CreateConsent")
+}
+
+func TestHandlerCreateConsent_ValidationError_EmptyType(t *testing.T) {
+	mockSvc := NewMockConsentService(t)
+	handler := newConsentHandler(mockSvc)
+
+	// type is empty — validator should reject this
+	reqBody := model.ConsentCreateRequest{Type: ""}
+	body, _ := json.Marshal(reqBody)
+	req := httptest.NewRequest(http.MethodPost, "/consents", bytes.NewBuffer(body))
+	req.Header.Set(constants.HeaderOrgID, handlerTestOrgID)
+	req.Header.Set(constants.HeaderGroupID, handlerTestGroupID)
+	rr := httptest.NewRecorder()
+
+	handler.createConsent(rr, req)
+
+	require.Equal(t, http.StatusBadRequest, rr.Code)
+	mockSvc.AssertNotCalled(t, "CreateConsent")
+}
+
+func TestHandlerCreateConsent_ServiceError(t *testing.T) {
+	mockSvc := NewMockConsentService(t)
+
+	svcErr := &serviceerror.ServiceError{
+		Type:    serviceerror.ClientErrorType,
+		Code:    "CS-4002",
+		Message: "validation failed",
+	}
+	mockSvc.On("CreateConsent", mock.Anything, mock.Anything, handlerTestOrgID).
+		Return(nil, svcErr)
+
+	handler := newConsentHandler(mockSvc)
+	reqBody := model.ConsentCreateRequest{
 		Type: "accounts",
-		Purposes: []model.ConsentPurposeItem{
-			{
-				PurposeName: "purpose-1",
-				Elements: []model.ConsentElementApprovalItem{
-					{ElementName: "element-1", IsUserApproved: true},
-				},
-			},
-		},
-		Authorizations: []model.AuthorizationAPIRequest{
-			{Type: "accounts"},
+		Purposes: []model.ConsentPurposeRefRequest{
+			{Name: "Marketing", Elements: []model.ConsentPurposeElementApprovalRequest{}},
 		},
 	}
-
-	body, _ := json.Marshal(request)
+	body, _ := json.Marshal(reqBody)
 	req := httptest.NewRequest(http.MethodPost, "/consents", bytes.NewBuffer(body))
-	// Missing org-id header
-	req.Header.Set(constants.HeaderTPPClientID, testClientID)
+	req.Header.Set(constants.HeaderOrgID, handlerTestOrgID)
+	req.Header.Set(constants.HeaderGroupID, handlerTestGroupID)
 	rr := httptest.NewRecorder()
 
 	handler.createConsent(rr, req)
@@ -109,142 +174,289 @@ func TestCreateConsent_MissingOrgID(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, rr.Code)
 }
 
-func TestGetConsent_Success(t *testing.T) {
-	mockService := NewMockConsentService(t)
+// =============================================================================
+// getConsent
+// =============================================================================
 
-	expectedResponse := &model.ConsentResponse{
-		ConsentID:     "550e8400-e29b-41d4-a716-446655440000",
+func TestHandlerGetConsent_Success(t *testing.T) {
+	mockSvc := NewMockConsentService(t)
+
+	out := &model.ConsentOutput{
+		ConsentID:     handlerTestConsentID,
+		GroupID:       handlerTestGroupID,
 		ConsentType:   "accounts",
-		CurrentStatus: "active",
-		ClientID:      testClientID,
-		OrgID:         testOrgID,
+		CurrentStatus: "ACTIVE",
 	}
+	mockSvc.On("GetConsent", mock.Anything, handlerTestConsentID, handlerTestOrgID).Return(out, nil)
 
-	mockService.On("GetConsent", mock.Anything, "550e8400-e29b-41d4-a716-446655440000", testOrgID).
-		Return(expectedResponse, nil)
+	handler := newConsentHandler(mockSvc)
+	req := httptest.NewRequest(http.MethodGet, "/consents/"+handlerTestConsentID, nil)
+	req.Header.Set(constants.HeaderOrgID, handlerTestOrgID)
+	req.SetPathValue("consentId", handlerTestConsentID)
+	rr := httptest.NewRecorder()
 
-	handler := newConsentHandler(mockService)
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET "+constants.APIBasePath+"/consents/{consentId}", handler.getConsent)
+	handler.getConsent(rr, req)
 
-	server := httptest.NewServer(mux)
-	defer server.Close()
+	require.Equal(t, http.StatusOK, rr.Code)
 
-	req, err := http.NewRequest(http.MethodGet, server.URL+"/api/v1/consents/550e8400-e29b-41d4-a716-446655440000", nil)
-	require.NoError(t, err)
-	req.Header.Set(constants.HeaderOrgID, testOrgID)
-
-	resp, err := http.DefaultClient.Do(req)
-	require.NoError(t, err)
-	defer resp.Body.Close()
-
-	require.Equal(t, http.StatusOK, resp.StatusCode)
-
-	var response model.ConsentAPIResponse
-	err = json.NewDecoder(resp.Body).Decode(&response)
-	require.NoError(t, err)
-	require.Equal(t, "550e8400-e29b-41d4-a716-446655440000", response.ID)
-	require.Equal(t, "accounts", response.Type)
-	mockService.AssertExpectations(t)
+	var resp model.ConsentResponse
+	require.NoError(t, json.NewDecoder(rr.Body).Decode(&resp))
+	require.Equal(t, handlerTestConsentID, resp.ConsentID)
 }
 
-func TestGetConsent_NotFound(t *testing.T) {
-	mockService := NewMockConsentService(t)
+func TestHandlerGetConsent_NotFound(t *testing.T) {
+	mockSvc := NewMockConsentService(t)
 
-	mockService.On("GetConsent", mock.Anything, "550e8400-e29b-41d4-a716-446655440001", testOrgID).
-		Return(nil, serviceerror.CustomServiceError(
-			ErrorConsentNotFound,
-			"Consent not found",
-		))
+	mockSvc.On("GetConsent", mock.Anything, handlerTestConsentID, handlerTestOrgID).
+		Return(nil, &ErrorConsentNotFound)
 
-	handler := newConsentHandler(mockService)
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET "+constants.APIBasePath+"/consents/{consentId}", handler.getConsent)
+	handler := newConsentHandler(mockSvc)
+	req := httptest.NewRequest(http.MethodGet, "/consents/"+handlerTestConsentID, nil)
+	req.Header.Set(constants.HeaderOrgID, handlerTestOrgID)
+	req.SetPathValue("consentId", handlerTestConsentID)
+	rr := httptest.NewRecorder()
 
-	server := httptest.NewServer(mux)
-	defer server.Close()
+	handler.getConsent(rr, req)
 
-	req, err := http.NewRequest(http.MethodGet, server.URL+"/api/v1/consents/550e8400-e29b-41d4-a716-446655440001", nil)
-	require.NoError(t, err)
-	req.Header.Set(constants.HeaderOrgID, testOrgID)
-
-	resp, err := http.DefaultClient.Do(req)
-	require.NoError(t, err)
-	defer resp.Body.Close()
-
-	require.Equal(t, http.StatusNotFound, resp.StatusCode)
-	mockService.AssertExpectations(t)
+	require.Equal(t, http.StatusNotFound, rr.Code)
 }
 
-func TestListConsents_Success(t *testing.T) {
-	mockService := NewMockConsentService(t)
+func TestHandlerGetConsent_MissingOrgID(t *testing.T) {
+	mockSvc := NewMockConsentService(t)
+	handler := newConsentHandler(mockSvc)
 
-	expectedResponse := &model.ConsentDetailSearchResponse{
-		Data: []model.ConsentDetailResponse{
-			{
-				ID:     "consent-1",
-				Type:   "accounts",
-				Status: "active",
-			},
-		},
-		Metadata: model.ConsentSearchMetadata{
-			Total:  1,
-			Limit:  10,
-			Offset: 0,
-			Count:  1,
-		},
+	req := httptest.NewRequest(http.MethodGet, "/consents/"+handlerTestConsentID, nil)
+	req.SetPathValue("consentId", handlerTestConsentID)
+	rr := httptest.NewRecorder()
+
+	handler.getConsent(rr, req)
+
+	require.Equal(t, http.StatusBadRequest, rr.Code)
+	mockSvc.AssertNotCalled(t, "GetConsent")
+}
+
+// =============================================================================
+// listConsents
+// =============================================================================
+
+func TestHandlerListConsents_Success(t *testing.T) {
+	mockSvc := NewMockConsentService(t)
+
+	listOut := &model.ConsentListOutput{
+		Data:   []model.ConsentOutput{{ConsentID: handlerTestConsentID, ConsentType: "accounts", CurrentStatus: "ACTIVE"}},
+		Total:  1,
+		Count:  1,
+		Offset: 0,
+		Limit:  10,
 	}
+	mockSvc.On("SearchConsents", mock.Anything, mock.Anything).Return(listOut, nil)
 
-	mockService.On("SearchConsentsDetailed", mock.Anything, mock.AnythingOfType("model.ConsentSearchFilters")).
-		Return(expectedResponse, nil)
-
-	handler := newConsentHandler(mockService)
+	handler := newConsentHandler(mockSvc)
 	req := httptest.NewRequest(http.MethodGet, "/consents", nil)
-	req.Header.Set(constants.HeaderOrgID, testOrgID)
+	req.Header.Set(constants.HeaderOrgID, handlerTestOrgID)
 	rr := httptest.NewRecorder()
 
 	handler.listConsents(rr, req)
 
 	require.Equal(t, http.StatusOK, rr.Code)
 
-	var response model.ConsentDetailSearchResponse
-	err := json.NewDecoder(rr.Body).Decode(&response)
-	require.NoError(t, err)
-	require.Len(t, response.Data, 1)
-	mockService.AssertExpectations(t)
+	var resp model.ConsentListResponse
+	require.NoError(t, json.NewDecoder(rr.Body).Decode(&resp))
+	require.Len(t, resp.Data, 1)
 }
 
-func TestRevokeConsent_Success(t *testing.T) {
-	mockService := NewMockConsentService(t)
+func TestHandlerListConsents_MissingOrgID(t *testing.T) {
+	mockSvc := NewMockConsentService(t)
+	handler := newConsentHandler(mockSvc)
 
-	revokeRequest := model.ConsentRevokeRequest{
-		ActionBy:         "user-123",
-		RevocationReason: "User requested revocation",
+	req := httptest.NewRequest(http.MethodGet, "/consents", nil)
+	rr := httptest.NewRecorder()
+
+	handler.listConsents(rr, req)
+
+	require.Equal(t, http.StatusBadRequest, rr.Code)
+	mockSvc.AssertNotCalled(t, "SearchConsents")
+}
+
+func TestHandlerListConsents_PurposeVersionWithoutPurposeName(t *testing.T) {
+	mockSvc := NewMockConsentService(t)
+	handler := newConsentHandler(mockSvc)
+
+	req := httptest.NewRequest(http.MethodGet, "/consents?purposeVersion=v1", nil)
+	req.Header.Set(constants.HeaderOrgID, handlerTestOrgID)
+	rr := httptest.NewRecorder()
+
+	handler.listConsents(rr, req)
+
+	require.Equal(t, http.StatusBadRequest, rr.Code)
+	mockSvc.AssertNotCalled(t, "SearchConsents")
+}
+
+func TestHandlerListConsents_ElementVersionWithoutElementNameOrNamespace(t *testing.T) {
+	mockSvc := NewMockConsentService(t)
+	handler := newConsentHandler(mockSvc)
+
+	req := httptest.NewRequest(http.MethodGet, "/consents?elementVersion=v1", nil)
+	req.Header.Set(constants.HeaderOrgID, handlerTestOrgID)
+	rr := httptest.NewRecorder()
+
+	handler.listConsents(rr, req)
+
+	require.Equal(t, http.StatusBadRequest, rr.Code)
+	mockSvc.AssertNotCalled(t, "SearchConsents")
+}
+
+func TestHandlerListConsents_ValidPurposeVersionAndName(t *testing.T) {
+	mockSvc := NewMockConsentService(t)
+
+	listOut := &model.ConsentListOutput{
+		Data:  []model.ConsentOutput{},
+		Total: 0, Count: 0, Offset: 0, Limit: 10,
 	}
 
-	expectedResponse := &model.ConsentRevokeResponse{
-		ActionTime:       1234567890,
-		ActionBy:         "user-123",
-		RevocationReason: "User requested revocation",
+	v1 := 1
+	mockSvc.On("SearchConsents", mock.Anything, model.ConsentSearchFilter{
+		OrgID:          handlerTestOrgID,
+		Limit:          10,
+		Offset:         0,
+		PurposeName:    "Marketing",
+		PurposeVersion: &v1,
+	}).Return(listOut, nil)
+
+	handler := newConsentHandler(mockSvc)
+	req := httptest.NewRequest(http.MethodGet, "/consents?purposeName=Marketing&purposeVersion=v1", nil)
+	req.Header.Set(constants.HeaderOrgID, handlerTestOrgID)
+	rr := httptest.NewRecorder()
+
+	handler.listConsents(rr, req)
+
+	require.Equal(t, http.StatusOK, rr.Code)
+}
+
+func TestHandlerListConsents_ServiceError(t *testing.T) {
+	mockSvc := NewMockConsentService(t)
+
+	svcErr := &serviceerror.ServiceError{
+		Type:    serviceerror.ServerErrorType,
+		Code:    "CS-5000",
+		Message: "internal server error",
 	}
+	mockSvc.On("SearchConsents", mock.Anything, mock.Anything).Return(nil, svcErr)
 
-	mockService.On("RevokeConsent", mock.Anything, "550e8400-e29b-41d4-a716-446655440000", testOrgID, revokeRequest).
-		Return(expectedResponse, nil)
+	handler := newConsentHandler(mockSvc)
+	req := httptest.NewRequest(http.MethodGet, "/consents", nil)
+	req.Header.Set(constants.HeaderOrgID, handlerTestOrgID)
+	rr := httptest.NewRecorder()
 
-	handler := newConsentHandler(mockService)
+	handler.listConsents(rr, req)
+
+	require.Equal(t, http.StatusInternalServerError, rr.Code)
+}
+
+// =============================================================================
+// updateConsent
+// =============================================================================
+
+func TestHandlerUpdateConsent_Success(t *testing.T) {
+	mockSvc := NewMockConsentService(t)
+
+	out := &model.ConsentOutput{
+		ConsentID:     handlerTestConsentID,
+		GroupID:       handlerTestGroupID,
+		ConsentType:   "accounts",
+		CurrentStatus: "ACTIVE",
+	}
+	mockSvc.On("UpdateConsent", mock.Anything, handlerTestConsentID, mock.Anything, handlerTestOrgID, mock.Anything).
+		Return(out, nil)
+
+	handler := newConsentHandler(mockSvc)
 	mux := http.NewServeMux()
-	mux.HandleFunc("PUT "+constants.APIBasePath+"/consents/{consentId}/revoke", handler.revokeConsent)
-
+	mux.HandleFunc("PUT /consents/{consentId}", handler.updateConsent)
 	server := httptest.NewServer(mux)
 	defer server.Close()
 
-	body, err := json.Marshal(revokeRequest)
-	require.NoError(t, err)
+	reqBody := model.ConsentUpdateRequest{
+		Type: "accounts",
+	}
+	body, _ := json.Marshal(reqBody)
+	req, _ := http.NewRequest(http.MethodPut, fmt.Sprintf("%s/consents/%s", server.URL, handlerTestConsentID), bytes.NewBuffer(body))
+	req.Header.Set(constants.HeaderOrgID, handlerTestOrgID)
+	req.Header.Set(constants.HeaderGroupID, handlerTestGroupID)
 
-	req, err := http.NewRequest(http.MethodPut, server.URL+"/api/v1/consents/550e8400-e29b-41d4-a716-446655440000/revoke", bytes.NewBuffer(body))
+	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
-	req.Header.Set(constants.HeaderOrgID, testOrgID)
-	req.Header.Set(constants.HeaderContentType, constants.ContentTypeJSON)
+	defer resp.Body.Close()
+
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+}
+
+func TestHandlerUpdateConsent_MissingOrgID(t *testing.T) {
+	mockSvc := NewMockConsentService(t)
+
+	handler := newConsentHandler(mockSvc)
+	mux := http.NewServeMux()
+	mux.HandleFunc("PUT /consents/{consentId}", handler.updateConsent)
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	reqBody := model.ConsentUpdateRequest{Type: "accounts"}
+	body, _ := json.Marshal(reqBody)
+	req, _ := http.NewRequest(http.MethodPut, fmt.Sprintf("%s/consents/%s", server.URL, handlerTestConsentID), bytes.NewBuffer(body))
+	// No org-id header
+
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	mockSvc.AssertNotCalled(t, "UpdateConsent")
+}
+
+func TestHandlerUpdateConsent_InvalidJSON(t *testing.T) {
+	mockSvc := NewMockConsentService(t)
+
+	handler := newConsentHandler(mockSvc)
+	mux := http.NewServeMux()
+	mux.HandleFunc("PUT /consents/{consentId}", handler.updateConsent)
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	req, _ := http.NewRequest(http.MethodPut, fmt.Sprintf("%s/consents/%s", server.URL, handlerTestConsentID), bytes.NewBufferString("{invalid"))
+	req.Header.Set(constants.HeaderOrgID, handlerTestOrgID)
+
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	mockSvc.AssertNotCalled(t, "UpdateConsent")
+}
+
+// =============================================================================
+// revokeConsent
+// =============================================================================
+
+func TestHandlerRevokeConsent_Success(t *testing.T) {
+	mockSvc := NewMockConsentService(t)
+
+	revokeOut := &model.ConsentRevokeOutput{
+		ActionTime: 1700000000000,
+		ActionBy:   "admin-user",
+		Reason:     "user request",
+	}
+	mockSvc.On("RevokeConsent", mock.Anything, handlerTestConsentID, handlerTestOrgID, mock.Anything).
+		Return(revokeOut, nil)
+
+	handler := newConsentHandler(mockSvc)
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /consents/{consentId}/revoke", handler.revokeConsent)
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	reqBody := model.ConsentRevokeRequest{ActionBy: "admin-user", RevocationReason: "user request"}
+	body, _ := json.Marshal(reqBody)
+	req, _ := http.NewRequest(http.MethodPost, fmt.Sprintf("%s/consents/%s/revoke", server.URL, handlerTestConsentID), bytes.NewBuffer(body))
+	req.Header.Set(constants.HeaderOrgID, handlerTestOrgID)
 
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
@@ -252,513 +464,324 @@ func TestRevokeConsent_Success(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 
-	var response model.ConsentRevokeResponse
-	err = json.NewDecoder(resp.Body).Decode(&response)
-	require.NoError(t, err)
-	require.Equal(t, "user-123", response.ActionBy)
-	require.Equal(t, "User requested revocation", response.RevocationReason)
-	mockService.AssertExpectations(t)
+	var revokeResp model.ConsentRevokeResponse
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&revokeResp))
+	require.Equal(t, "admin-user", revokeResp.ActionBy)
 }
 
-func TestValidateConsent_Success(t *testing.T) {
-	mockService := NewMockConsentService(t)
+func TestHandlerRevokeConsent_MissingOrgID(t *testing.T) {
+	mockSvc := NewMockConsentService(t)
 
-	validateRequest := model.ValidateRequest{
-		ConsentID: "consent-123",
+	handler := newConsentHandler(mockSvc)
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /consents/{consentId}/revoke", handler.revokeConsent)
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	reqBody := model.ConsentRevokeRequest{ActionBy: "admin-user"}
+	body, _ := json.Marshal(reqBody)
+	req, _ := http.NewRequest(http.MethodPost, fmt.Sprintf("%s/consents/%s/revoke", server.URL, handlerTestConsentID), bytes.NewBuffer(body))
+	// No org-id header
+
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	mockSvc.AssertNotCalled(t, "RevokeConsent")
+}
+
+func TestHandlerRevokeConsent_InvalidJSON(t *testing.T) {
+	mockSvc := NewMockConsentService(t)
+
+	handler := newConsentHandler(mockSvc)
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /consents/{consentId}/revoke", handler.revokeConsent)
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	req, _ := http.NewRequest(http.MethodPost, fmt.Sprintf("%s/consents/%s/revoke", server.URL, handlerTestConsentID), bytes.NewBufferString("{invalid"))
+	req.Header.Set(constants.HeaderOrgID, handlerTestOrgID)
+
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	mockSvc.AssertNotCalled(t, "RevokeConsent")
+}
+
+func TestHandlerRevokeConsent_ServiceError(t *testing.T) {
+	mockSvc := NewMockConsentService(t)
+
+	svcErr := &serviceerror.ServiceError{
+		Type:    serviceerror.ClientErrorType,
+		Code:    "CS-4041",
+		Message: "consent already revoked",
 	}
+	mockSvc.On("RevokeConsent", mock.Anything, handlerTestConsentID, handlerTestOrgID, mock.Anything).
+		Return(nil, svcErr)
 
-	expectedResponse := &model.ValidateResponse{
+	handler := newConsentHandler(mockSvc)
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /consents/{consentId}/revoke", handler.revokeConsent)
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	reqBody := model.ConsentRevokeRequest{ActionBy: "admin-user"}
+	body, _ := json.Marshal(reqBody)
+	req, _ := http.NewRequest(http.MethodPost, fmt.Sprintf("%s/consents/%s/revoke", server.URL, handlerTestConsentID), bytes.NewBuffer(body))
+	req.Header.Set(constants.HeaderOrgID, handlerTestOrgID)
+
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	require.Equal(t, http.StatusConflict, resp.StatusCode)
+}
+
+// =============================================================================
+// validateConsent
+// =============================================================================
+
+func TestHandlerValidateConsent_Success_IsValid(t *testing.T) {
+	mockSvc := NewMockConsentService(t)
+
+	validateOut := &model.ConsentValidateOutput{
 		IsValid: true,
-		ConsentInformation: &model.ValidateConsentAPIResponse{
-			ID:   "consent-123",
-			Type: "accounts",
-		},
 	}
+	mockSvc.On("ValidateConsent", mock.Anything, mock.Anything, handlerTestOrgID).
+		Return(validateOut, nil)
 
-	mockService.On("ValidateConsent", mock.Anything, validateRequest, testOrgID).
-		Return(expectedResponse, nil)
-
-	handler := newConsentHandler(mockService)
-	body, _ := json.Marshal(validateRequest)
+	handler := newConsentHandler(mockSvc)
+	reqBody := model.ConsentValidateRequest{
+		ConsentID: handlerTestConsentID,
+		GroupID:   handlerTestGroupID,
+	}
+	body, _ := json.Marshal(reqBody)
 	req := httptest.NewRequest(http.MethodPost, "/consents/validate", bytes.NewBuffer(body))
-	req.Header.Set(constants.HeaderOrgID, testOrgID)
+	req.Header.Set(constants.HeaderOrgID, handlerTestOrgID)
 	rr := httptest.NewRecorder()
 
 	handler.validateConsent(rr, req)
 
 	require.Equal(t, http.StatusOK, rr.Code)
 
-	var response model.ValidateResponse
-	err := json.NewDecoder(rr.Body).Decode(&response)
-	require.NoError(t, err)
-	require.True(t, response.IsValid)
-	mockService.AssertExpectations(t)
+	var resp model.ConsentValidateResponse
+	require.NoError(t, json.NewDecoder(rr.Body).Decode(&resp))
+	require.True(t, resp.IsValid)
 }
 
-func TestHandler_InvalidJSON(t *testing.T) {
-	mockService := NewMockConsentService(t)
-	handler := newConsentHandler(mockService)
+func TestHandlerValidateConsent_Success_IsInvalid(t *testing.T) {
+	mockSvc := NewMockConsentService(t)
 
-	req := httptest.NewRequest(http.MethodPost, "/consents", bytes.NewBuffer([]byte("invalid json")))
-	req.Header.Set(constants.HeaderOrgID, testOrgID)
-	req.Header.Set(constants.HeaderTPPClientID, testClientID)
-	rr := httptest.NewRecorder()
-
-	handler.createConsent(rr, req)
-
-	require.Equal(t, http.StatusBadRequest, rr.Code)
-}
-
-func TestCreateConsent_MissingClientID(t *testing.T) {
-	mockService := NewMockConsentService(t)
-	handler := newConsentHandler(mockService)
-
-	request := model.ConsentAPIRequest{
-		Type: "accounts",
-		Purposes: []model.ConsentPurposeItem{
-			{
-				PurposeName: "purpose-1",
-				Elements: []model.ConsentElementApprovalItem{
-					{ElementName: "element-1", IsUserApproved: true},
-				},
-			},
-		},
-		Authorizations: []model.AuthorizationAPIRequest{
-			{Type: "accounts"},
-		},
-	}
-
-	body, _ := json.Marshal(request)
-	req := httptest.NewRequest(http.MethodPost, "/consents", bytes.NewBuffer(body))
-	req.Header.Set(constants.HeaderOrgID, testOrgID)
-	// Missing client-id header
-	rr := httptest.NewRecorder()
-
-	handler.createConsent(rr, req)
-
-	require.Equal(t, http.StatusBadRequest, rr.Code)
-}
-
-func TestListConsents_MissingOrgID(t *testing.T) {
-	mockService := NewMockConsentService(t)
-	handler := newConsentHandler(mockService)
-
-	req := httptest.NewRequest(http.MethodGet, "/consents", nil)
-	// Missing org-id header
-	rr := httptest.NewRecorder()
-
-	handler.listConsents(rr, req)
-
-	require.Equal(t, http.StatusBadRequest, rr.Code)
-}
-
-func TestListConsents_InvalidLimit(t *testing.T) {
-	mockService := NewMockConsentService(t)
-
-	// Mock the call with default limit (10) since invalid param uses default
-	mockService.On("SearchConsentsDetailed", mock.Anything, mock.AnythingOfType("model.ConsentSearchFilters")).
-		Return(&model.ConsentDetailSearchResponse{
-			Data:     []model.ConsentDetailResponse{},
-			Metadata: model.ConsentSearchMetadata{Total: 0, Limit: 10, Offset: 0, Count: 0},
-		}, nil)
-
-	handler := newConsentHandler(mockService)
-
-	req := httptest.NewRequest(http.MethodGet, "/consents?limit=invalid", nil)
-	req.Header.Set(constants.HeaderOrgID, testOrgID)
-	rr := httptest.NewRecorder()
-
-	handler.listConsents(rr, req)
-
-	// Should succeed with default limit
-	require.Equal(t, http.StatusOK, rr.Code)
-}
-
-func TestListConsents_InvalidOffset(t *testing.T) {
-	mockService := NewMockConsentService(t)
-
-	// Mock the call with default offset (0) since invalid param uses default
-	mockService.On("SearchConsentsDetailed", mock.Anything, mock.AnythingOfType("model.ConsentSearchFilters")).
-		Return(&model.ConsentDetailSearchResponse{
-			Data:     []model.ConsentDetailResponse{},
-			Metadata: model.ConsentSearchMetadata{Total: 0, Limit: 10, Offset: 0, Count: 0},
-		}, nil)
-
-	handler := newConsentHandler(mockService)
-
-	req := httptest.NewRequest(http.MethodGet, "/consents?offset=invalid", nil)
-	req.Header.Set(constants.HeaderOrgID, testOrgID)
-	rr := httptest.NewRecorder()
-
-	handler.listConsents(rr, req)
-
-	// Should succeed with default offset
-	require.Equal(t, http.StatusOK, rr.Code)
-}
-
-func TestListConsents_ServiceError(t *testing.T) {
-	mockService := NewMockConsentService(t)
-
-	mockService.On("SearchConsentsDetailed", mock.Anything, mock.AnythingOfType("model.ConsentSearchFilters")).
-		Return(nil, &ErrorInternalServerError)
-
-	handler := newConsentHandler(mockService)
-	req := httptest.NewRequest(http.MethodGet, "/consents", nil)
-	req.Header.Set(constants.HeaderOrgID, testOrgID)
-	rr := httptest.NewRecorder()
-
-	handler.listConsents(rr, req)
-
-	require.Equal(t, http.StatusInternalServerError, rr.Code)
-	mockService.AssertExpectations(t)
-}
-
-func TestValidateConsent_InvalidJSON(t *testing.T) {
-	mockService := NewMockConsentService(t)
-	handler := newConsentHandler(mockService)
-
-	req := httptest.NewRequest(http.MethodPost, "/consents/validate", bytes.NewBuffer([]byte("invalid")))
-	req.Header.Set(constants.HeaderOrgID, testOrgID)
-	rr := httptest.NewRecorder()
-
-	handler.validateConsent(rr, req)
-
-	require.Equal(t, http.StatusBadRequest, rr.Code)
-}
-
-func TestValidateConsent_MissingOrgID(t *testing.T) {
-	mockService := NewMockConsentService(t)
-	handler := newConsentHandler(mockService)
-
-	validateRequest := model.ValidateRequest{
-		ConsentID: "consent-123",
-	}
-
-	body, _ := json.Marshal(validateRequest)
-	req := httptest.NewRequest(http.MethodPost, "/consents/validate", bytes.NewBuffer(body))
-	// Missing org-id header
-	rr := httptest.NewRecorder()
-
-	handler.validateConsent(rr, req)
-
-	require.Equal(t, http.StatusBadRequest, rr.Code)
-}
-
-func TestValidateConsent_ServiceError(t *testing.T) {
-	mockService := NewMockConsentService(t)
-
-	validateRequest := model.ValidateRequest{
-		ConsentID: "consent-123",
-	}
-
-	mockService.On("ValidateConsent", mock.Anything, validateRequest, testOrgID).
-		Return(nil, &ErrorInternalServerError)
-
-	handler := newConsentHandler(mockService)
-	body, _ := json.Marshal(validateRequest)
-	req := httptest.NewRequest(http.MethodPost, "/consents/validate", bytes.NewBuffer(body))
-	req.Header.Set(constants.HeaderOrgID, testOrgID)
-	rr := httptest.NewRecorder()
-
-	handler.validateConsent(rr, req)
-
-	require.Equal(t, http.StatusInternalServerError, rr.Code)
-	mockService.AssertExpectations(t)
-}
-
-func TestCreateConsent_ServiceValidationError(t *testing.T) {
-	mockService := NewMockConsentService(t)
-
-	request := model.ConsentAPIRequest{
-		Type: "accounts",
-		Purposes: []model.ConsentPurposeItem{
-			{
-				PurposeName: "purpose-1",
-				Elements: []model.ConsentElementApprovalItem{
-					{ElementName: "element-1", IsUserApproved: true},
-				},
-			},
-		},
-		Authorizations: []model.AuthorizationAPIRequest{
-			{Type: "accounts"},
-		},
-	}
-
-	mockService.On("CreateConsent", mock.Anything, request, testClientID, testOrgID).
-		Return(nil, &ErrorValidationFailed)
-
-	handler := newConsentHandler(mockService)
-	body, _ := json.Marshal(request)
-	req := httptest.NewRequest(http.MethodPost, "/consents", bytes.NewBuffer(body))
-	req.Header.Set(constants.HeaderOrgID, testOrgID)
-	req.Header.Set(constants.HeaderTPPClientID, testClientID)
-	rr := httptest.NewRecorder()
-
-	handler.createConsent(rr, req)
-
-	require.Equal(t, http.StatusBadRequest, rr.Code)
-	mockService.AssertExpectations(t)
-}
-
-func TestListConsents_WithFilters(t *testing.T) {
-	mockService := NewMockConsentService(t)
-
-	expectedResponse := &model.ConsentDetailSearchResponse{
-		Data: []model.ConsentDetailResponse{
-			{
-				ID:     "consent-1",
-				Type:   "accounts",
-				Status: "active",
-			},
-			{
-				ID:     "consent-2",
-				Type:   "payments",
-				Status: "active",
-			},
-		},
-		Metadata: model.ConsentSearchMetadata{
-			Total:  2,
-			Limit:  10,
-			Offset: 0,
-			Count:  2,
-		},
-	}
-
-	mockService.On("SearchConsentsDetailed", mock.Anything, mock.AnythingOfType("model.ConsentSearchFilters")).
-		Return(expectedResponse, nil)
-
-	handler := newConsentHandler(mockService)
-	req := httptest.NewRequest(http.MethodGet, "/consents?consentType=accounts&status=active&limit=10&offset=0", nil)
-	req.Header.Set(constants.HeaderOrgID, testOrgID)
-	rr := httptest.NewRecorder()
-
-	handler.listConsents(rr, req)
-
-	require.Equal(t, http.StatusOK, rr.Code)
-
-	var response model.ConsentDetailSearchResponse
-	err := json.NewDecoder(rr.Body).Decode(&response)
-	require.NoError(t, err)
-	require.Len(t, response.Data, 2)
-	require.Equal(t, 2, response.Metadata.Total)
-	mockService.AssertExpectations(t)
-}
-
-func TestListConsents_EmptyResult(t *testing.T) {
-	mockService := NewMockConsentService(t)
-
-	expectedResponse := &model.ConsentDetailSearchResponse{
-		Data: []model.ConsentDetailResponse{},
-		Metadata: model.ConsentSearchMetadata{
-			Total:  0,
-			Limit:  10,
-			Offset: 0,
-			Count:  0,
-		},
-	}
-
-	mockService.On("SearchConsentsDetailed", mock.Anything, mock.AnythingOfType("model.ConsentSearchFilters")).
-		Return(expectedResponse, nil)
-
-	handler := newConsentHandler(mockService)
-	req := httptest.NewRequest(http.MethodGet, "/consents", nil)
-	req.Header.Set(constants.HeaderOrgID, testOrgID)
-	rr := httptest.NewRecorder()
-
-	handler.listConsents(rr, req)
-
-	require.Equal(t, http.StatusOK, rr.Code)
-
-	var response model.ConsentDetailSearchResponse
-	err := json.NewDecoder(rr.Body).Decode(&response)
-	require.NoError(t, err)
-	require.Empty(t, response.Data)
-	require.Equal(t, 0, response.Metadata.Total)
-	mockService.AssertExpectations(t)
-}
-
-func TestValidateConsent_InvalidConsentResponse(t *testing.T) {
-	mockService := NewMockConsentService(t)
-
-	validateRequest := model.ValidateRequest{
-		ConsentID: "invalid-consent",
-	}
-
-	expectedResponse := &model.ValidateResponse{
+	validateOut := &model.ConsentValidateOutput{
 		IsValid:          false,
-		ErrorCode:        404,
-		ErrorMessage:     "invalid_consent",
-		ErrorDescription: "Consent not found",
+		ErrorCode:        1001,
+		ErrorMessage:     "consent expired",
+		ErrorDescription: "the consent has expired",
 	}
+	mockSvc.On("ValidateConsent", mock.Anything, mock.Anything, handlerTestOrgID).
+		Return(validateOut, nil)
 
-	mockService.On("ValidateConsent", mock.Anything, validateRequest, testOrgID).
-		Return(expectedResponse, nil)
-
-	handler := newConsentHandler(mockService)
-	body, _ := json.Marshal(validateRequest)
+	handler := newConsentHandler(mockSvc)
+	reqBody := model.ConsentValidateRequest{
+		ConsentID: handlerTestConsentID,
+	}
+	body, _ := json.Marshal(reqBody)
 	req := httptest.NewRequest(http.MethodPost, "/consents/validate", bytes.NewBuffer(body))
-	req.Header.Set(constants.HeaderOrgID, testOrgID)
+	req.Header.Set(constants.HeaderOrgID, handlerTestOrgID)
 	rr := httptest.NewRecorder()
 
 	handler.validateConsent(rr, req)
 
+	// validate always returns 200; validity is in the body
 	require.Equal(t, http.StatusOK, rr.Code)
 
-	var response model.ValidateResponse
-	err := json.NewDecoder(rr.Body).Decode(&response)
-	require.NoError(t, err)
-	require.False(t, response.IsValid)
-	require.Equal(t, 404, response.ErrorCode)
-	mockService.AssertExpectations(t)
+	var resp model.ConsentValidateResponse
+	require.NoError(t, json.NewDecoder(rr.Body).Decode(&resp))
+	require.False(t, resp.IsValid)
 }
 
-func TestRevokeConsent_MissingOrgID(t *testing.T) {
-	mockService := NewMockConsentService(t)
-	handler := newConsentHandler(mockService)
+func TestHandlerValidateConsent_MissingOrgID(t *testing.T) {
+	mockSvc := NewMockConsentService(t)
+	handler := newConsentHandler(mockSvc)
 
-	revokeReq := model.ConsentRevokeRequest{
-		ActionBy: "user-123",
+	reqBody := model.ConsentValidateRequest{ConsentID: handlerTestConsentID}
+	body, _ := json.Marshal(reqBody)
+	req := httptest.NewRequest(http.MethodPost, "/consents/validate", bytes.NewBuffer(body))
+	rr := httptest.NewRecorder()
+
+	handler.validateConsent(rr, req)
+
+	require.Equal(t, http.StatusBadRequest, rr.Code)
+	mockSvc.AssertNotCalled(t, "ValidateConsent")
+}
+
+func TestHandlerValidateConsent_InvalidJSON(t *testing.T) {
+	mockSvc := NewMockConsentService(t)
+	handler := newConsentHandler(mockSvc)
+
+	req := httptest.NewRequest(http.MethodPost, "/consents/validate", bytes.NewBufferString("{invalid"))
+	req.Header.Set(constants.HeaderOrgID, handlerTestOrgID)
+	rr := httptest.NewRecorder()
+
+	handler.validateConsent(rr, req)
+
+	require.Equal(t, http.StatusBadRequest, rr.Code)
+	mockSvc.AssertNotCalled(t, "ValidateConsent")
+}
+
+// =============================================================================
+// searchConsentsByAttribute
+// =============================================================================
+
+func TestHandlerSearchConsentsByAttribute_SuccessWithKeyAndValue(t *testing.T) {
+	mockSvc := NewMockConsentService(t)
+
+	attrOut := &model.ConsentAttributeSearchOutput{
+		ConsentIDs: []string{handlerTestConsentID},
+		Count:      1,
 	}
-	body, _ := json.Marshal(revokeReq)
-	req := httptest.NewRequest(http.MethodPost, "/consents/consent-123/revoke", bytes.NewBuffer(body))
-	// Missing org-id header
+	mockSvc.On("SearchConsentsByAttribute", mock.Anything, "purpose", "marketing", handlerTestOrgID).
+		Return(attrOut, nil)
+
+	handler := newConsentHandler(mockSvc)
+	req := httptest.NewRequest(http.MethodGet, "/consents/attributes?key=purpose&value=marketing", nil)
+	req.Header.Set(constants.HeaderOrgID, handlerTestOrgID)
 	rr := httptest.NewRecorder()
 
-	handler.revokeConsent(rr, req)
+	handler.searchConsentsByAttribute(rr, req)
 
-	require.Equal(t, http.StatusBadRequest, rr.Code)
+	require.Equal(t, http.StatusOK, rr.Code)
+
+	var resp model.ConsentAttributeSearchResponse
+	require.NoError(t, json.NewDecoder(rr.Body).Decode(&resp))
+	require.Equal(t, 1, resp.Count)
+	require.Equal(t, handlerTestConsentID, resp.ConsentIDs[0])
 }
 
-func TestRevokeConsent_InvalidJSON(t *testing.T) {
-	mockService := NewMockConsentService(t)
-	handler := newConsentHandler(mockService)
+func TestHandlerSearchConsentsByAttribute_SuccessWithKeyOnly(t *testing.T) {
+	mockSvc := NewMockConsentService(t)
 
-	req := httptest.NewRequest(http.MethodPost, "/consents/consent-123/revoke", bytes.NewBuffer([]byte("invalid json")))
-	req.Header.Set(constants.HeaderOrgID, testOrgID)
-	rr := httptest.NewRecorder()
-
-	handler.revokeConsent(rr, req)
-
-	require.Equal(t, http.StatusBadRequest, rr.Code)
-}
-
-func TestUpdateConsent_Success(t *testing.T) {
-	mockService := NewMockConsentService(t)
-
-	updateRequest := model.ConsentAPIUpdateRequest{
-		Type: "accounts",
-		Purposes: []model.ConsentPurposeItem{
-			{
-				PurposeName: "purpose-1",
-				Elements: []model.ConsentElementApprovalItem{
-					{ElementName: "element-1", IsUserApproved: true},
-				},
-			},
-		},
-	}
-
-	expectedResponse := &model.ConsentResponse{
-		ConsentID:     "550e8400-e29b-41d4-a716-446655440000",
-		ConsentType:   "accounts",
-		CurrentStatus: "active",
-		ClientID:      testClientID,
-		OrgID:         testOrgID,
-	}
-
-	mockService.On("UpdateConsent", mock.Anything, updateRequest, testClientID, testOrgID, "550e8400-e29b-41d4-a716-446655440000").
-		Return(expectedResponse, nil)
-
-	handler := newConsentHandler(mockService)
-	mux := http.NewServeMux()
-	mux.HandleFunc("PUT "+constants.APIBasePath+"/consents/{consentId}", handler.updateConsent)
-
-	server := httptest.NewServer(mux)
-	defer server.Close()
-
-	body, err := json.Marshal(updateRequest)
-	require.NoError(t, err)
-
-	req, err := http.NewRequest(http.MethodPut, server.URL+"/api/v1/consents/550e8400-e29b-41d4-a716-446655440000", bytes.NewBuffer(body))
-	require.NoError(t, err)
-	req.Header.Set(constants.HeaderOrgID, testOrgID)
-	req.Header.Set(constants.HeaderTPPClientID, testClientID)
-	req.Header.Set(constants.HeaderContentType, constants.ContentTypeJSON)
-
-	resp, err := http.DefaultClient.Do(req)
-	require.NoError(t, err)
-	defer resp.Body.Close()
-
-	require.Equal(t, http.StatusOK, resp.StatusCode)
-
-	var response model.ConsentAPIResponse
-	err = json.NewDecoder(resp.Body).Decode(&response)
-	require.NoError(t, err)
-	require.Equal(t, "550e8400-e29b-41d4-a716-446655440000", response.ID)
-	require.Equal(t, "accounts", response.Type)
-	mockService.AssertExpectations(t)
-}
-
-func TestUpdateConsent_MissingOrgID(t *testing.T) {
-	mockService := NewMockConsentService(t)
-	handler := newConsentHandler(mockService)
-
-	updateReq := model.ConsentAPIUpdateRequest{}
-	body, _ := json.Marshal(updateReq)
-	req := httptest.NewRequest(http.MethodPut, "/consents/consent-123", bytes.NewBuffer(body))
-	// Missing org-id header
-	req.Header.Set(constants.HeaderTPPClientID, testClientID)
-	rr := httptest.NewRecorder()
-
-	handler.updateConsent(rr, req)
-
-	require.Equal(t, http.StatusBadRequest, rr.Code)
-}
-
-func TestUpdateConsent_InvalidJSON(t *testing.T) {
-	mockService := NewMockConsentService(t)
-	handler := newConsentHandler(mockService)
-
-	req := httptest.NewRequest(http.MethodPut, "/consents/consent-123", bytes.NewBuffer([]byte("invalid json")))
-	req.Header.Set(constants.HeaderOrgID, testOrgID)
-	req.Header.Set(constants.HeaderTPPClientID, testClientID)
-	rr := httptest.NewRecorder()
-
-	handler.updateConsent(rr, req)
-
-	require.Equal(t, http.StatusBadRequest, rr.Code)
-}
-
-func TestSearchConsentsByAttribute_Success(t *testing.T) {
-	mockService := NewMockConsentService(t)
-	handler := newConsentHandler(mockService)
-
-	expectedResponse := &model.ConsentAttributeSearchResponse{
-		ConsentIDs: []string{"consent-123", "consent-456"},
+	attrOut := &model.ConsentAttributeSearchOutput{
+		ConsentIDs: []string{handlerTestConsentID, "consent-other"},
 		Count:      2,
 	}
+	mockSvc.On("SearchConsentsByAttribute", mock.Anything, "purpose", "", handlerTestOrgID).
+		Return(attrOut, nil)
 
-	mockService.On("SearchConsentsByAttribute", mock.Anything, "key1", "value1", testOrgID).
-		Return(expectedResponse, nil)
-
-	req := httptest.NewRequest(http.MethodGet, "/consents/search?key=key1&value=value1", nil)
-	req.Header.Set(constants.HeaderOrgID, testOrgID)
+	handler := newConsentHandler(mockSvc)
+	req := httptest.NewRequest(http.MethodGet, "/consents/attributes?key=purpose", nil)
+	req.Header.Set(constants.HeaderOrgID, handlerTestOrgID)
 	rr := httptest.NewRecorder()
 
 	handler.searchConsentsByAttribute(rr, req)
 
 	require.Equal(t, http.StatusOK, rr.Code)
-	mockService.AssertExpectations(t)
+
+	var resp model.ConsentAttributeSearchResponse
+	require.NoError(t, json.NewDecoder(rr.Body).Decode(&resp))
+	require.Equal(t, 2, resp.Count)
 }
 
-func TestSearchConsentsByAttribute_MissingOrgID(t *testing.T) {
-	mockService := NewMockConsentService(t)
-	handler := newConsentHandler(mockService)
+func TestHandlerSearchConsentsByAttribute_MissingOrgID(t *testing.T) {
+	mockSvc := NewMockConsentService(t)
+	handler := newConsentHandler(mockSvc)
 
-	req := httptest.NewRequest(http.MethodGet, "/consents/search?key=key1", nil)
-	// Missing org-id header
+	req := httptest.NewRequest(http.MethodGet, "/consents/attributes?key=purpose", nil)
 	rr := httptest.NewRecorder()
 
 	handler.searchConsentsByAttribute(rr, req)
 
 	require.Equal(t, http.StatusBadRequest, rr.Code)
+	mockSvc.AssertNotCalled(t, "SearchConsentsByAttribute")
+}
+
+func TestHandlerSearchConsentsByAttribute_MissingKey(t *testing.T) {
+	mockSvc := NewMockConsentService(t)
+	handler := newConsentHandler(mockSvc)
+
+	req := httptest.NewRequest(http.MethodGet, "/consents/attributes", nil)
+	req.Header.Set(constants.HeaderOrgID, handlerTestOrgID)
+	rr := httptest.NewRecorder()
+
+	handler.searchConsentsByAttribute(rr, req)
+
+	require.Equal(t, http.StatusBadRequest, rr.Code)
+	mockSvc.AssertNotCalled(t, "SearchConsentsByAttribute")
+}
+
+// =============================================================================
+// toExpirationMillis
+// =============================================================================
+
+func TestHandlerToExpirationMillis_Nil(t *testing.T) {
+	result := toExpirationMillis(nil)
+	require.Nil(t, result)
+}
+
+func TestHandlerToExpirationMillis_AlreadyMilliseconds(t *testing.T) {
+	ms := int64(1_700_000_000_000) // already >= 100_000_000_000
+	result := toExpirationMillis(&ms)
+	require.NotNil(t, result)
+	require.Equal(t, int64(1_700_000_000_000), *result)
+}
+
+func TestHandlerToExpirationMillis_Seconds_ConvertedToMilliseconds(t *testing.T) {
+	secs := int64(1_000_000) // < 100_000_000_000 → treated as seconds
+	result := toExpirationMillis(&secs)
+	require.NotNil(t, result)
+	require.Equal(t, int64(1_000_000_000), *result)
+}
+
+func TestHandlerToExpirationMillis_BoundaryValue(t *testing.T) {
+	// Exactly at the cutoff (100_000_000_000) → already ms, unchanged
+	v := int64(100_000_000_000)
+	result := toExpirationMillis(&v)
+	require.NotNil(t, result)
+	require.Equal(t, int64(100_000_000_000), *result)
+}
+
+// =============================================================================
+// valueStringToInterface
+// =============================================================================
+
+func TestValueStringToInterface_Nil(t *testing.T) {
+	require.Nil(t, valueStringToInterface(nil, "basic"))
+	require.Nil(t, valueStringToInterface(nil, "json"))
+}
+
+func TestValueStringToInterface_EmptyStringPreserved(t *testing.T) {
+	empty := ""
+	// Non-nil pointer to empty string must NOT be treated as absent.
+	result := valueStringToInterface(&empty, "basic")
+	require.NotNil(t, result)
+	require.Equal(t, "", result)
+}
+
+func TestValueStringToInterface_NonEmptyBasic(t *testing.T) {
+	v := "hello"
+	require.Equal(t, "hello", valueStringToInterface(&v, "basic"))
+}
+
+func TestValueStringToInterface_JSONParsed(t *testing.T) {
+	v := `{"key":"val"}`
+	result := valueStringToInterface(&v, "json")
+	m, ok := result.(map[string]interface{})
+	require.True(t, ok)
+	require.Equal(t, "val", m["key"])
+}
+
+func TestValueStringToInterface_JSONInvalidFallsBackToString(t *testing.T) {
+	v := "not-json"
+	require.Equal(t, "not-json", valueStringToInterface(&v, "json"))
+}
+
+func TestValueStringToInterface_EmptyStringJSONFallsBackToString(t *testing.T) {
+	// Empty string is invalid JSON — must fall back to returning the empty string, not nil.
+	empty := ""
+	result := valueStringToInterface(&empty, "json")
+	require.NotNil(t, result)
+	require.Equal(t, "", result)
 }

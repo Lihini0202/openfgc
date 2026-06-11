@@ -18,34 +18,43 @@
 
 package model
 
-// ConsentAttribute represents the CONSENT_ATTRIBUTE table
+// =============================================================================
+// DB types — store layer only, db tags, no json tags
+// =============================================================================
+
+// ConsentAttribute is one row from the CONSENT_ATTRIBUTE table.
 type ConsentAttribute struct {
-	ConsentID string `db:"CONSENT_ID" json:"consentId"`
-	AttKey    string `db:"ATT_KEY" json:"key"`
-	AttValue  string `db:"ATT_VALUE" json:"value"`
-	OrgID     string `db:"ORG_ID" json:"orgId"`
+	ConsentID string `db:"CONSENT_ID"`
+	AttKey    string `db:"ATT_KEY"`
+	AttValue  string `db:"ATT_VALUE"`
+	OrgID     string `db:"ORG_ID"`
 }
 
-// ConsentAttributeCreateRequest represents the request for creating consent attributes
-type ConsentAttributeCreateRequest struct {
-	ConsentID  string            `json:"consentId" binding:"required"`
-	Attributes map[string]string `json:"attributes" binding:"required"`
+// =============================================================================
+// Service input types — handler → service, no tags
+// =============================================================================
+
+// ConsentAttributeCreateInput holds the key-value map to persist for a given consent.
+type ConsentAttributeCreateInput struct {
+	ConsentID  string
+	Attributes map[string]string
 }
 
-// ConsentAttributeUpdateRequest represents the request for updating consent attributes
-type ConsentAttributeUpdateRequest struct {
-	Attributes map[string]string `json:"attributes" binding:"required"`
+// ConsentAttributeSearchInput holds the query parameters for the attribute search endpoint.
+// Key is required; Value is optional — when empty only the key is matched.
+type ConsentAttributeSearchInput struct {
+	Key   string
+	Value string // empty = match by key only
+	OrgID string
 }
 
-// ConsentAttributeResponse represents the response for attribute operations
-type ConsentAttributeResponse struct {
-	ConsentID  string            `json:"consentId"`
-	Attributes map[string]string `json:"attributes"`
-	OrgID      string            `json:"orgId"`
-}
+// =============================================================================
+// Service return types — service → handler, no tags
+// =============================================================================
 
-// ConsentAttributeSearchResponse represents the response for attribute search
-type ConsentAttributeSearchResponse struct {
-	ConsentIDs []string `json:"consentIds"`
-	Count      int      `json:"count"`
+// ConsentAttributeOutput is the service-layer representation of one consent's attributes.
+type ConsentAttributeOutput struct {
+	ConsentID  string
+	Attributes map[string]string
+	OrgID      string
 }

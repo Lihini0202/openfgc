@@ -21,6 +21,7 @@ package authresource
 import (
 	"context"
 	"fmt"
+	"strconv"
 
 	"github.com/wso2/openfgc/internal/authresource/model"
 	dbmodel "github.com/wso2/openfgc/internal/system/database/model"
@@ -29,24 +30,27 @@ import (
 	"github.com/wso2/openfgc/internal/system/stores/interfaces"
 )
 
-// DBQuery objects for all auth resource operations
+// authResourceColumns is the SELECT column list shared across CONSENT_AUTH_RESOURCE table queries.
+const authResourceColumns = "AUTH_ID, CONSENT_ID, AUTH_TYPE, USER_ID, AUTH_STATUS, UPDATED_TIME, RESOURCES, ORG_ID"
+
+// Pre-defined DBQuery objects for simple, single-path operations.
 var (
 	QueryCreateAuthResource = dbmodel.DBQuery{
 		ID:            "CREATE_AUTH_RESOURCE",
-		Query:         "INSERT INTO CONSENT_AUTH_RESOURCE (AUTH_ID, CONSENT_ID, AUTH_TYPE, USER_ID, AUTH_STATUS, UPDATED_TIME, RESOURCES, ORG_ID) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-		PostgresQuery: "INSERT INTO CONSENT_AUTH_RESOURCE (AUTH_ID, CONSENT_ID, AUTH_TYPE, USER_ID, AUTH_STATUS, UPDATED_TIME, RESOURCES, ORG_ID) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+		Query:         "INSERT INTO CONSENT_AUTH_RESOURCE (" + authResourceColumns + ") VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+		PostgresQuery: "INSERT INTO CONSENT_AUTH_RESOURCE (" + authResourceColumns + ") VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
 	}
 
 	QueryGetAuthResourceByID = dbmodel.DBQuery{
 		ID:            "GET_AUTH_RESOURCE_BY_ID",
-		Query:         "SELECT AUTH_ID, CONSENT_ID, AUTH_TYPE, USER_ID, AUTH_STATUS, UPDATED_TIME, RESOURCES, ORG_ID FROM CONSENT_AUTH_RESOURCE WHERE AUTH_ID = ? AND ORG_ID = ?",
-		PostgresQuery: "SELECT AUTH_ID, CONSENT_ID, AUTH_TYPE, USER_ID, AUTH_STATUS, UPDATED_TIME, RESOURCES, ORG_ID FROM CONSENT_AUTH_RESOURCE WHERE AUTH_ID = $1 AND ORG_ID = $2",
+		Query:         "SELECT " + authResourceColumns + " FROM CONSENT_AUTH_RESOURCE WHERE AUTH_ID = ? AND ORG_ID = ?",
+		PostgresQuery: "SELECT " + authResourceColumns + " FROM CONSENT_AUTH_RESOURCE WHERE AUTH_ID = $1 AND ORG_ID = $2",
 	}
 
 	QueryGetAuthResourcesByConsentID = dbmodel.DBQuery{
 		ID:            "GET_AUTH_RESOURCES_BY_CONSENT_ID",
-		Query:         "SELECT AUTH_ID, CONSENT_ID, AUTH_TYPE, USER_ID, AUTH_STATUS, UPDATED_TIME, RESOURCES, ORG_ID FROM CONSENT_AUTH_RESOURCE WHERE CONSENT_ID = ? AND ORG_ID = ?",
-		PostgresQuery: "SELECT AUTH_ID, CONSENT_ID, AUTH_TYPE, USER_ID, AUTH_STATUS, UPDATED_TIME, RESOURCES, ORG_ID FROM CONSENT_AUTH_RESOURCE WHERE CONSENT_ID = $1 AND ORG_ID = $2",
+		Query:         "SELECT " + authResourceColumns + " FROM CONSENT_AUTH_RESOURCE WHERE CONSENT_ID = ? AND ORG_ID = ?",
+		PostgresQuery: "SELECT " + authResourceColumns + " FROM CONSENT_AUTH_RESOURCE WHERE CONSENT_ID = $1 AND ORG_ID = $2",
 	}
 
 	QueryUpdateAuthResource = dbmodel.DBQuery{
@@ -67,27 +71,27 @@ var (
 		PostgresQuery: "UPDATE CONSENT_AUTH_RESOURCE SET AUTH_STATUS = $1, UPDATED_TIME = $2 WHERE CONSENT_ID = $3 AND ORG_ID = $4",
 	}
 
-	QueryGetAuthResourcesByConsentIDs = dbmodel.DBQuery{
-		ID:    "GET_AUTH_RESOURCES_BY_CONSENT_IDS",
-		Query: "", // Built dynamically
-	}
+	// Dynamic query stub — built at runtime based on the number of consent IDs.
+	QueryGetAuthResourcesByConsentIDs = dbmodel.DBQuery{ID: "GET_AUTH_RESOURCES_BY_CONSENT_IDS", Query: ""}
 )
 
-// store implements interfaces.AuthResourceStore
-type store struct {
-}
+// store implements the interfaces.AuthResourceStore interface.
+type store struct{}
 
-// NewAuthResourceStore creates a new auth resource store
+// NewAuthResourceStore creates a new auth resource store.
 func NewAuthResourceStore() interfaces.AuthResourceStore {
 	return &store{}
 }
 
-// getDBClient retrieves the database client from the provider
 func (s *store) getDBClient() (provider.DBClientInterface, error) {
 	return provider.GetDBProvider().GetConsentDBClient()
 }
 
-// Create creates a new auth resource within a transaction
+// =============================================================================
+// Write operations (transactional)
+// =============================================================================
+
+// Create inserts a new CONSENT_AUTH_RESOURCE row within a transaction.
 func (s *store) Create(tx dbmodel.TxInterface, authResource *model.AuthResource) error {
 	_, err := tx.Exec(QueryCreateAuthResource,
 		authResource.AuthID,
@@ -102,7 +106,38 @@ func (s *store) Create(tx dbmodel.TxInterface, authResource *model.AuthResource)
 	return err
 }
 
-// GetByID retrieves an auth resource by ID
+// Update overwrites AUTH_STATUS, USER_ID, RESOURCES, and UPDATED_TIME for an auth resource
+// within a transaction. AUTH_ID and ORG_ID are used as the lookup key.
+func (s *store) Update(tx dbmodel.TxInterface, authResource *model.AuthResource) error {
+	_, err := tx.Exec(QueryUpdateAuthResource,
+		authResource.AuthStatus,
+		authResource.UserID,
+		authResource.Resources,
+		authResource.UpdatedTime,
+		authResource.AuthID,
+		authResource.OrgID,
+	)
+	return err
+}
+
+// DeleteByConsentID removes all CONSENT_AUTH_RESOURCE rows for a consent within a transaction.
+func (s *store) DeleteByConsentID(tx dbmodel.TxInterface, consentID, orgID string) error {
+	_, err := tx.Exec(QueryDeleteAuthResourcesByConsentID, consentID, orgID)
+	return err
+}
+
+// UpdateAllStatusByConsentID sets AUTH_STATUS and UPDATED_TIME for every auth resource
+// belonging to a consent within a transaction.
+func (s *store) UpdateAllStatusByConsentID(tx dbmodel.TxInterface, consentID, orgID, status string, updatedTime int64) error {
+	_, err := tx.Exec(QueryUpdateAllStatusByConsentID, status, updatedTime, consentID, orgID)
+	return err
+}
+
+// =============================================================================
+// Read operations
+// =============================================================================
+
+// GetByID returns the CONSENT_AUTH_RESOURCE row for the given AUTH_ID, or nil if not found.
 func (s *store) GetByID(ctx context.Context, authID, orgID string) (*model.AuthResource, error) {
 	dbClient, err := s.getDBClient()
 	if err != nil {
@@ -119,7 +154,7 @@ func (s *store) GetByID(ctx context.Context, authID, orgID string) (*model.AuthR
 	return mapToAuthResource(results[0]), nil
 }
 
-// GetByConsentID retrieves all auth resources for a consent
+// GetByConsentID returns all auth resource rows for a consent.
 func (s *store) GetByConsentID(ctx context.Context, consentID, orgID string) ([]model.AuthResource, error) {
 	dbClient, err := s.getDBClient()
 	if err != nil {
@@ -138,51 +173,29 @@ func (s *store) GetByConsentID(ctx context.Context, consentID, orgID string) ([]
 	return authResources, nil
 }
 
-// Update updates an auth resource within a transaction
-func (s *store) Update(tx dbmodel.TxInterface, authResource *model.AuthResource) error {
-	_, err := tx.Exec(QueryUpdateAuthResource,
-		authResource.AuthStatus,
-		authResource.UserID,
-		authResource.Resources,
-		authResource.UpdatedTime,
-		authResource.AuthID,
-		authResource.OrgID,
-	)
-	return err
-}
-
-// DeleteByConsentID deletes all auth resources for a consent within a transaction
-func (s *store) DeleteByConsentID(tx dbmodel.TxInterface, consentID, orgID string) error {
-	_, err := tx.Exec(QueryDeleteAuthResourcesByConsentID, consentID, orgID)
-	return err
-}
-
-// UpdateAllStatusByConsentID updates status for all auth resources of a consent within a transaction
-func (s *store) UpdateAllStatusByConsentID(tx dbmodel.TxInterface, consentID, orgID, status string, updatedTime int64) error {
-	_, err := tx.Exec(QueryUpdateAllStatusByConsentID, status, updatedTime, consentID, orgID)
-	return err
-}
-
-// GetByConsentIDs retrieves auth resources for multiple consents
+// GetByConsentIDs returns auth resource rows for multiple consents in one query.
+// Returns an empty slice (not an error) when consentIDs is empty.
 func (s *store) GetByConsentIDs(ctx context.Context, consentIDs []string, orgID string) ([]model.AuthResource, error) {
 	if len(consentIDs) == 0 {
 		return []model.AuthResource{}, nil
 	}
 
-	// Build placeholders for IN clause
-	placeholders := ""
+	// Build the IN-clause placeholders and argument list dynamically.
+	placeholders := make([]byte, 0, len(consentIDs)*3)
 	args := make([]interface{}, 0, len(consentIDs)+1)
 	for i, id := range consentIDs {
 		if i > 0 {
-			placeholders += ", "
+			placeholders = append(placeholders, ',', ' ')
 		}
-		placeholders += "?"
+		placeholders = append(placeholders, '?')
 		args = append(args, id)
 	}
 	args = append(args, orgID)
 
-	// Build dynamic query
-	mysqlQuery := fmt.Sprintf("SELECT AUTH_ID, CONSENT_ID, AUTH_TYPE, USER_ID, AUTH_STATUS, UPDATED_TIME, RESOURCES, ORG_ID FROM CONSENT_AUTH_RESOURCE WHERE CONSENT_ID IN (%s) AND ORG_ID = ?", placeholders)
+	mysqlQuery := fmt.Sprintf(
+		"SELECT "+authResourceColumns+" FROM CONSENT_AUTH_RESOURCE WHERE CONSENT_ID IN (%s) AND ORG_ID = ?",
+		placeholders,
+	)
 	query := dbmodel.DBQuery{
 		ID:            QueryGetAuthResourcesByConsentIDs.ID,
 		Query:         mysqlQuery,
@@ -206,39 +219,10 @@ func (s *store) GetByConsentIDs(ctx context.Context, consentIDs []string, orgID 
 	return authResources, nil
 }
 
-// getString extracts a string value from a row, handling both string and []byte types
-func getString(row map[string]interface{}, key string) string {
-	if v, ok := row[key].(string); ok {
-		return v
-	}
-	if v, ok := row[key].([]byte); ok {
-		return string(v)
-	}
-	return ""
-}
+// =============================================================================
+// Mappers — DBClient normalizes column names to lowercase.
+// =============================================================================
 
-// getStringPtr extracts a string pointer from a row, handling both string and []byte types
-func getStringPtr(row map[string]interface{}, key string) *string {
-	if v, ok := row[key].(string); ok {
-		return &v
-	}
-	if v, ok := row[key].([]byte); ok {
-		str := string(v)
-		return &str
-	}
-	return nil
-}
-
-// getInt64 extracts an int64 value from a row
-func getInt64(row map[string]interface{}, key string) int64 {
-	if v, ok := row[key].(int64); ok {
-		return v
-	}
-	return 0
-}
-
-// mapToAuthResource converts a database row map to AuthResource
-// Note: DBClient normalizes column names to lowercase
 func mapToAuthResource(row map[string]interface{}) *model.AuthResource {
 	return &model.AuthResource{
 		AuthID:      getString(row, "auth_id"),
@@ -250,4 +234,51 @@ func mapToAuthResource(row map[string]interface{}) *model.AuthResource {
 		Resources:   getStringPtr(row, "resources"),
 		OrgID:       getString(row, "org_id"),
 	}
+}
+
+// =============================================================================
+// DB row helpers
+// =============================================================================
+
+func getString(row map[string]interface{}, key string) string {
+	switch v := row[key].(type) {
+	case string:
+		return v
+	case []byte:
+		return string(v)
+	}
+	return ""
+}
+
+func getStringPtr(row map[string]interface{}, key string) *string {
+	switch v := row[key].(type) {
+	case string:
+		return &v
+	case []byte:
+		s := string(v)
+		return &s
+	}
+	return nil
+}
+
+func getInt64(row map[string]interface{}, key string) int64 {
+	switch v := row[key].(type) {
+	case int64:
+		return v
+	case int32:
+		return int64(v)
+	case int:
+		return int64(v)
+	case float64:
+		return int64(v)
+	case []uint8:
+		if parsed, err := strconv.ParseInt(string(v), 10, 64); err == nil {
+			return parsed
+		}
+	case string:
+		if parsed, err := strconv.ParseInt(v, 10, 64); err == nil {
+			return parsed
+		}
+	}
+	return 0
 }

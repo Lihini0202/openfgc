@@ -79,12 +79,27 @@ var (
 		Message:     "Purpose ID required",
 		Description: "Purpose ID is required",
 	}
-	// ErrorClientIDRequired is the error returned when client ID is missing.
-	ErrorClientIDRequired = serviceerror.ServiceError{
+	// ErrorInvalidQueryParams is returned when query parameter combination is invalid.
+	ErrorInvalidQueryParams = serviceerror.ServiceError{
 		Type:        serviceerror.ClientErrorType,
-		Code:        "CP-4006",
-		Message:     "Client ID required",
-		Description: "Client ID is required",
+		Code:        "CP-4008",
+		Message:     "Invalid query parameters",
+		Description: "Invalid query parameter combination",
+	}
+	// ErrorInvalidVersionFormat is returned when the version path segment is not in "vN" format.
+	ErrorInvalidVersionFormat = serviceerror.ServiceError{
+		Type:        serviceerror.ClientErrorType,
+		Code:        "CP-4007",
+		Message:     "Invalid version format",
+		Description: "Version must be in the format vN (e.g. v1, v2)",
+	}
+	// ErrorPurposeVersionInUse is returned when a purpose version cannot be deleted because
+	// it is referenced by one or more consents.
+	ErrorPurposeVersionInUse = serviceerror.ServiceError{
+		Type:        serviceerror.ClientErrorType,
+		Code:        "CP-4091",
+		Message:     "Purpose version in use",
+		Description: "Cannot delete purpose version as it is referenced by one or more consents",
 	}
 )
 

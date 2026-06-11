@@ -211,12 +211,12 @@ func Load(configPath string) (*Config, error) {
 			}
 		}
 
-		// Read the config file
 		if finalPath == "" {
 			return nil, fmt.Errorf("no configuration file found in default paths")
 		}
 	}
 
+	// Read the config file
 	finalPath = filepath.Clean(finalPath)
 	data, err := os.ReadFile(finalPath)
 	if err != nil {
@@ -317,6 +317,7 @@ func validateConfig(config *Config) error {
 		}
 	}
 
+	// Validate consent status mappings
 	if config.Consent.StatusMappings.ActiveStatus == "" {
 		return fmt.Errorf("consent active status mapping is required")
 	}
@@ -333,6 +334,7 @@ func validateConfig(config *Config) error {
 		return fmt.Errorf("consent rejected status mapping is required")
 	}
 
+	// Validate auth status mappings
 	if config.Consent.AuthStatusMappings.ApprovedState == "" {
 		return fmt.Errorf("auth approved status mapping is required")
 	}
@@ -401,80 +403,5 @@ func (d *DatabaseConfig) GetDSN() string {
 			d.Port,
 			d.Database,
 		)
-	}
-}
-
-// GetServerAddress returns the server address in host:port format
-func (s *ServerConfig) GetServerAddress() string {
-	return fmt.Sprintf("%s:%d", s.Hostname, s.Port)
-}
-
-// IsStatusAllowed checks if a given status is a valid consent status
-func (c *ConsentConfig) IsStatusAllowed(status ConsentStatus) bool {
-	return status == c.GetActiveConsentStatus() ||
-		status == c.GetExpiredConsentStatus() ||
-		status == c.GetRevokedConsentStatus() ||
-		status == c.GetCreatedConsentStatus() ||
-		status == c.GetRejectedConsentStatus()
-}
-
-// IsActiveStatus checks if the given status represents an active consent
-func (c *ConsentConfig) IsActiveStatus(status ConsentStatus) bool {
-	return status == c.GetActiveConsentStatus()
-}
-
-// IsExpiredStatus checks if the given status represents an expired consent
-func (c *ConsentConfig) IsExpiredStatus(status ConsentStatus) bool {
-	return status == c.GetExpiredConsentStatus()
-}
-
-// IsRevokedStatus checks if the given status represents a revoked consent
-func (c *ConsentConfig) IsRevokedStatus(status ConsentStatus) bool {
-	return status == c.GetRevokedConsentStatus()
-}
-
-// IsCreatedStatus checks if the given status represents a created consent
-func (c *ConsentConfig) IsCreatedStatus(status ConsentStatus) bool {
-	return status == c.GetCreatedConsentStatus()
-}
-
-// IsRejectedStatus checks if the given status represents a rejected consent
-func (c *ConsentConfig) IsRejectedStatus(status ConsentStatus) bool {
-	return status == c.GetRejectedConsentStatus()
-}
-
-// IsTerminalStatus checks if the given status is a terminal state (expired or revoked)
-func (c *ConsentConfig) IsTerminalStatus(status ConsentStatus) bool {
-	return c.IsExpiredStatus(status) || c.IsRevokedStatus(status)
-}
-
-// GetAllowedConsentStatuses returns a list of all valid consent statuses
-func (c *ConsentConfig) GetAllowedConsentStatuses() []ConsentStatus {
-	return []ConsentStatus{
-		c.GetCreatedConsentStatus(),
-		c.GetActiveConsentStatus(),
-		c.GetRejectedConsentStatus(),
-		c.GetRevokedConsentStatus(),
-		c.GetExpiredConsentStatus(),
-	}
-}
-
-// IsAuthStatusAllowed checks if a given status is a valid authorization status
-func (c *ConsentConfig) IsAuthStatusAllowed(status AuthStatus) bool {
-	return status == c.GetCreatedAuthStatus() ||
-		status == c.GetApprovedAuthStatus() ||
-		status == c.GetRejectedAuthStatus() ||
-		status == c.GetSystemExpiredAuthStatus() ||
-		status == c.GetSystemRevokedAuthStatus()
-}
-
-// GetAllowedAuthStatuses returns a list of all valid authorization statuses
-func (c *ConsentConfig) GetAllowedAuthStatuses() []AuthStatus {
-	return []AuthStatus{
-		c.GetCreatedAuthStatus(),
-		c.GetApprovedAuthStatus(),
-		c.GetRejectedAuthStatus(),
-		c.GetSystemExpiredAuthStatus(),
-		c.GetSystemRevokedAuthStatus(),
 	}
 }

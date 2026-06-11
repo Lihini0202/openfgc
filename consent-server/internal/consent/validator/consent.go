@@ -28,28 +28,52 @@ import (
 	"github.com/wso2/openfgc/internal/system/config"
 )
 
-// ValidateConsentCreateRequest validates consent creation request
-func ValidateConsentCreateRequest(req model.ConsentAPIRequest, clientID, orgID string) error {
-	// Required fields
+// minExpirationTimestamp is the smallest raw value accepted for expirationTime.
+// It equals 10^9 (September 9, 2001 in Unix seconds).
+// Values below this threshold are not valid Unix timestamps in either the seconds
+// or milliseconds format that the server accepts, so they are rejected outright.
+const minExpirationTimestamp = int64(1_000_000_000)
+
+// ValidateConsentCreateRequest validates a consent creation request.
+// groupID is read from the group-id request header, not the body.
+// Authorization type is optional — the service defaults it to "default" when absent.
+func ValidateConsentCreateRequest(req model.ConsentCreateRequest, groupID, orgID string) error {
 	if req.Type == "" {
 		return fmt.Errorf("type is required")
 	}
 	if len(req.Type) > 64 {
 		return fmt.Errorf("type must be at most 64 characters")
 	}
-	if clientID == "" {
-		return fmt.Errorf("clientID is required")
+	if groupID == "" {
+		return fmt.Errorf("group-id header is required")
 	}
 	if orgID == "" {
 		return fmt.Errorf("orgID is required")
 	}
 
-	// Validate auth resources (Authorizations field)
-	for i, authReq := range req.Authorizations {
-		if authReq.Type == "" {
-			return fmt.Errorf("authorizations[%d].type is required", i)
+	if req.ExpirationTime != nil && *req.ExpirationTime < 0 {
+		return fmt.Errorf("expirationTime must be non-negative")
+	}
+	if req.ExpirationTime != nil && *req.ExpirationTime > 0 && *req.ExpirationTime < minExpirationTimestamp {
+		return fmt.Errorf("expirationTime is not a valid Unix timestamp; provide seconds (10 digits) or milliseconds (13 digits)")
+	}
+	if req.Frequency != nil && *req.Frequency < 0 {
+		return fmt.Errorf("frequency must be non-negative")
+	}
+
+	for key, value := range req.Attributes {
+		if len(key) > 255 {
+			return fmt.Errorf("attribute key %q exceeds maximum length of 255 characters", key)
 		}
-		// Status is optional and defaults to "created" in ToAuthResourceCreateRequest (or "approved" in consent-embedded flows)
+		if len(value) > 1024 {
+			return fmt.Errorf("attribute value for key %q exceeds maximum length of 1024 characters", key)
+		}
+	}
+
+	for i, authReq := range req.Authorizations {
+		if authReq.UserID == "" {
+			return fmt.Errorf("authorizations[%d]: userId is required", i)
+		}
 		if authReq.Status != "" {
 			cfg := config.Get()
 			if cfg == nil {
@@ -61,60 +85,51 @@ func ValidateConsentCreateRequest(req model.ConsentAPIRequest, clientID, orgID s
 		}
 	}
 
-	// Validate validity time if provided
-	if req.ValidityTime != nil && *req.ValidityTime < 0 {
-		return fmt.Errorf("validityTime must be non-negative")
-	}
-
-	// Validate frequency if provided
-	if req.Frequency != nil && *req.Frequency < 0 {
-		return fmt.Errorf("frequency must be non-negative")
-	}
-
 	return nil
 }
 
-// ValidateConsentUpdateRequest validates consent update request (keeping for future use)
-func ValidateConsentUpdateRequest(req model.ConsentAPIUpdateRequest) error {
-	// At least one field must be provided (check if nil, not if empty)
-	// Empty arrays are valid - they indicate removal of all items
+// ValidateConsentUpdateRequest validates a consent update request.
+func ValidateConsentUpdateRequest(req model.ConsentUpdateRequest) error {
 	if req.Type == "" && req.Frequency == nil &&
-		req.ValidityTime == nil && req.RecurringIndicator == nil &&
-		req.Attributes == nil && req.Authorizations == nil && req.Purposes == nil &&
-		req.DataAccessValidityDuration == nil {
+		req.ExpirationTime == nil && req.RecurringIndicator == nil &&
+		req.DataAccessValidityDuration == nil &&
+		req.Attributes == nil && req.Authorizations == nil && req.Purposes == nil {
 		return fmt.Errorf("at least one field must be provided for update")
 	}
 
-	// Validate Type length if provided (match create constraint)
 	if req.Type != "" && len(req.Type) > 64 {
 		return fmt.Errorf("type must be at most 64 characters")
 	}
-
-	// Validate validity time if provided
-	if req.ValidityTime != nil && *req.ValidityTime < 0 {
-		return fmt.Errorf("validityTime must be non-negative")
+	if req.ExpirationTime != nil && *req.ExpirationTime < 0 {
+		return fmt.Errorf("expirationTime must be non-negative")
 	}
-
-	// Validate frequency if provided
+	if req.ExpirationTime != nil && *req.ExpirationTime > 0 && *req.ExpirationTime < minExpirationTimestamp {
+		return fmt.Errorf("expirationTime is not a valid Unix timestamp; provide seconds (10 digits) or milliseconds (13 digits)")
+	}
 	if req.Frequency != nil && *req.Frequency < 0 {
 		return fmt.Errorf("frequency must be non-negative")
 	}
 
-	// Validate auth resources if provided
-	if req.Authorizations != nil {
-		for i, authReq := range req.Authorizations {
-			if authReq.Type == "" {
-				return fmt.Errorf("authorizations[%d].type is required", i)
+	for key, value := range req.Attributes {
+		if len(key) > 255 {
+			return fmt.Errorf("attribute key %q exceeds maximum length of 255 characters", key)
+		}
+		if len(value) > 1024 {
+			return fmt.Errorf("attribute value for key %q exceeds maximum length of 1024 characters", key)
+		}
+	}
+
+	for i, authReq := range req.Authorizations {
+		if authReq.UserID == "" {
+			return fmt.Errorf("authorizations[%d]: userId is required", i)
+		}
+		if authReq.Status != "" {
+			cfg := config.Get()
+			if cfg == nil {
+				return fmt.Errorf("configuration not initialized")
 			}
-			// Validate auth status if provided
-			if authReq.Status != "" {
-				cfg := config.Get()
-				if cfg == nil {
-					return fmt.Errorf("configuration not initialized")
-				}
-				if err := authvalidator.ValidateAuthStatus(authReq.Status, cfg.Consent.AuthStatusMappings); err != nil {
-					return fmt.Errorf("authorizations[%d]: %w", i, err)
-				}
+			if err := authvalidator.ValidateAuthStatus(authReq.Status, cfg.Consent.AuthStatusMappings); err != nil {
+				return fmt.Errorf("authorizations[%d]: %w", i, err)
 			}
 		}
 	}
@@ -122,7 +137,7 @@ func ValidateConsentUpdateRequest(req model.ConsentAPIUpdateRequest) error {
 	return nil
 }
 
-// ValidateConsentGetRequest validates consent retrieval request parameters
+// ValidateConsentGetRequest validates consent retrieval request parameters.
 func ValidateConsentGetRequest(consentID, orgID string) error {
 	if consentID == "" {
 		return fmt.Errorf("consent ID cannot be empty")
@@ -140,8 +155,7 @@ func ValidateConsentGetRequest(consentID, orgID string) error {
 }
 
 // EvaluateConsentStatusFromAuthStatuses determines consent status from a list of auth status strings.
-// This is a helper function for authresource package to avoid import cycles.
-// Uses the same priority logic as EvaluateConsentStatus.
+// Priority: rejected > created > active.
 func EvaluateConsentStatusFromAuthStatuses(authStatuses []string) string {
 	cfg := config.Get()
 	if cfg == nil {
@@ -197,31 +211,15 @@ func EvaluateConsentStatusFromAuthStatuses(authStatuses []string) string {
 		return string(consentConfig.GetCreatedConsentStatus())
 	} else if allApproved {
 		return string(consentConfig.GetActiveConsentStatus())
-	} else {
-		return string(consentConfig.GetCreatedConsentStatus())
 	}
+	return string(consentConfig.GetCreatedConsentStatus())
 }
 
-// IsExpired checks if a given validity time has expired
-func IsConsentExpired(validityTime int64) bool {
-	if validityTime == 0 {
-		return false // No expiry set
+// IsConsentExpired reports whether the given expiration timestamp (Unix milliseconds) has passed.
+// Returns false if expirationTime is 0 (no expiry set).
+func IsConsentExpired(expirationTime int64) bool {
+	if expirationTime == 0 {
+		return false
 	}
-
-	// Detect if timestamp is in seconds or milliseconds
-	// A reasonable cutoff: timestamps > 10^11 are likely in milliseconds
-	// This works until year 5138 in seconds (safely covers our use case)
-	const timestampCutoff = 100000000000 // 10^11
-
-	var validityTimeMillis int64
-	if validityTime < timestampCutoff {
-		// Timestamp is in seconds, convert to milliseconds
-		validityTimeMillis = validityTime * 1000
-	} else {
-		// Timestamp is already in milliseconds
-		validityTimeMillis = validityTime
-	}
-
-	currentTimeMillis := time.Now().UnixNano() / int64(time.Millisecond)
-	return currentTimeMillis > validityTimeMillis
+	return time.Now().UnixMilli() > expirationTime
 }

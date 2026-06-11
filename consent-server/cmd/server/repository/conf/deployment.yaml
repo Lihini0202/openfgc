@@ -1,21 +1,21 @@
 server:
-  hostname: 0.0.0.0
-  port: 8080
+  hostname: localhost
+  port: 3000
   readTimeout: 30s
   writeTimeout: 30s
   idleTimeout: 120s
 
 database:
   consent:
-    type: ${OPENFGC_DB_TYPE}
-    hostname: ${OPENFGC_DB_HOSTNAME}
-    port: ${OPENFGC_DB_PORT}
-    database: ${OPENFGC_DB_NAME}
+    type: mysql
+    hostname: localhost
+    port: 3306
+    database: consent_mgt
     max_open_conns: 25
     max_idle_conns: 5
     conn_max_lifetime: 5m
-    user: ${OPENFGC_DB_USER}
-    password: ${OPENFGC_DB_PASSWORD}
+    user: root
+    password: password
 
 logging:
   level: info
@@ -24,9 +24,9 @@ logging:
 consent:
   # Periodical expiration job configuration.
   # When enabled, the scheduler runs at the given frequency and marks eligible
-  # consents as expired based on their VALIDITY_TIME.
+  # consents as expired based on their expirationTime.
   periodical_expiration:
-    # Set to false to disable the background expiration job entirely.
+    # Set false to disable the background expiration job entirely.
     enabled: true
     # How often the scheduler runs. Supports Go duration format: "30s", "5m", "1h", "24h"
     frequency: "1h"

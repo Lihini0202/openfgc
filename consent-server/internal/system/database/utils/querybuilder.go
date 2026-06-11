@@ -23,20 +23,6 @@ import (
 	"strings"
 )
 
-// BuildPaginationQuery adds LIMIT and OFFSET clauses to a query.
-func BuildPaginationQuery(baseQuery string, limit, offset int) string {
-	return fmt.Sprintf("%s LIMIT %d OFFSET %d", baseQuery, limit, offset)
-}
-
-// BuildOrderByQuery adds ORDER BY clause to a query.
-func BuildOrderByQuery(baseQuery string, orderBy string, ascending bool) string {
-	direction := "ASC"
-	if !ascending {
-		direction = "DESC"
-	}
-	return fmt.Sprintf("%s ORDER BY %s %s", baseQuery, orderBy, direction)
-}
-
 // ConvertToPostgresParams converts ? placeholders to $1, $2, etc. for PostgreSQL.
 func ConvertToPostgresParams(query string) string {
 	paramIndex := 1

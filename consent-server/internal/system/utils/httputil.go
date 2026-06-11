@@ -19,7 +19,6 @@
 package utils
 
 import (
-	"bytes"
 	"encoding/json"
 	"net/http"
 	"strings"
@@ -30,26 +29,9 @@ import (
 	"github.com/wso2/openfgc/internal/system/log"
 )
 
+// DecodeJSONBody decodes the JSON request body into v.
 func DecodeJSONBody(r *http.Request, v interface{}) error {
 	return json.NewDecoder(r.Body).Decode(v)
-}
-
-// WriteErrorResponse writes a JSON error response with the given status code and error details.
-func WriteErrorResponse(w http.ResponseWriter, statusCode int, errorResp apierror.ErrorResponse) {
-	logger := log.GetLogger()
-
-	// Encode to buffer first to ensure encoding succeeds before sending headers
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(errorResp); err != nil {
-		logger.Error("Failed to encode error response", log.Error(err))
-		http.Error(w, ErrorEncodingError.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	// Encoding succeeded, now safe to send headers and write response
-	w.Header().Set(constants.HeaderContentType, constants.ContentTypeJSON)
-	w.WriteHeader(statusCode)
-	_, _ = w.Write(buf.Bytes())
 }
 
 // SendError writes a ServiceError as an HTTP response with appropriate status code and trace ID.
@@ -79,11 +61,17 @@ func SendError(w http.ResponseWriter, r *http.Request, err *serviceerror.Service
 		)
 	}
 
-	// Create error response with new format
+	// For server errors, never expose internal details (DB errors, stack traces, etc.) to the client.
+	// The full description is already logged above with the traceId for server-side debugging.
+	clientDescription := err.Description
+	if err.Type == serviceerror.ServerErrorType {
+		clientDescription = "An internal server error occurred. Please reference the traceId for support."
+	}
+
 	errorResponse := apierror.NewErrorResponse(
 		err.Code,
 		err.Message,
-		err.Description,
+		clientDescription,
 		traceID,
 	)
 
@@ -106,7 +94,7 @@ func mapErrorToStatusCode(err *serviceerror.ServiceError) int {
 	// Pattern 4: CS-4042 (ConsentStatusConflict - has 404 in it but should be conflict)
 	if strings.Contains(err.Code, "-409") || strings.HasSuffix(err.Code, "4090") ||
 		strings.HasSuffix(err.Code, "1011") || strings.HasSuffix(err.Code, "1012") ||
-		strings.HasSuffix(err.Code, "4041") || strings.HasSuffix(err.Code, "4042") { // CP-4041, CS-4042
+		strings.HasSuffix(err.Code, "4041") || strings.HasSuffix(err.Code, "4042") {
 		return http.StatusConflict
 	}
 
@@ -114,7 +102,7 @@ func mapErrorToStatusCode(err *serviceerror.ServiceError) int {
 	// Pattern 1: CSE-404x, CS-4040, CP-4040, CE-4040, AR-4040
 	// Pattern 2: CE-1016 (ElementNotFound), CS-4040 (ConsentNotFound), etc.
 	if strings.Contains(err.Code, "-404") || strings.HasSuffix(err.Code, "4040") ||
-		strings.HasSuffix(err.Code, "1016") { // CE-1016 ElementNotFound
+		strings.HasSuffix(err.Code, "1016") {
 		return http.StatusNotFound
 	}
 
@@ -136,14 +124,3 @@ func extractTraceID(r *http.Request) string {
 	}
 	return ""
 }
-
-// Server errors
-var (
-	// InternalServerError is the error returned for unexpected server errors.
-	ErrorEncodingError = serviceerror.ServiceError{
-		Type:        serviceerror.ServerErrorType,
-		Code:        "SSE-5000",
-		Message:     "Encoding error",
-		Description: "An error occurred while encoding the response",
-	}
-)

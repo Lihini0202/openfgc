@@ -23,8 +23,6 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
-	"path/filepath"
-	"runtime"
 	"syscall"
 	"time"
 
@@ -32,9 +30,8 @@ import (
 )
 
 const (
-	ServerBinary        = "../../target/server/consent-server"
-	ServerBinaryWindows = "../../target/server/consent-server.exe"
-	ConfigPath          = "repository/conf/deployment.yaml" // Relative to tests/integration
+	ServerBinary = "../../target/server/consent-server"
+	ConfigPath   = "repository/conf/deployment.yaml" // Relative to tests/integration
 )
 
 var serverCmd *exec.Cmd
@@ -44,14 +41,6 @@ type ServerConfig struct {
 		Hostname string `yaml:"hostname"`
 		Port     int    `yaml:"port"`
 	} `yaml:"server"`
-}
-
-// getServerBinary returns the platform-specific binary path and executable name.
-func getServerBinary() (binaryPath string, binaryName string) {
-	if runtime.GOOS == "windows" {
-		return ServerBinaryWindows, "consent-server.exe"
-	}
-	return ServerBinary, "./consent-server"
 }
 
 // GetServerPort reads the port from deployment.yaml
@@ -76,17 +65,17 @@ func GetServerPort() string {
 	return fmt.Sprintf("%d", config.Server.Port)
 }
 
-// BuildServer checks if the consent-server binary exists.
-// The binary should be built using ./build.sh build from the project root.
+// BuildServer checks if the consent-server binary exists
+// The binary should be built using ./build.sh build from the project root
 func BuildServer() error {
 	fmt.Println("Checking for consent server binary...")
 
-	binaryPath, _ := getServerBinary()
-	if _, err := os.Stat(binaryPath); os.IsNotExist(err) {
-		return fmt.Errorf("server binary not found at %s. Please run './build.sh build' from project root", binaryPath)
+	// Check if binary exists
+	if _, err := os.Stat(ServerBinary); os.IsNotExist(err) {
+		return fmt.Errorf("server binary not found at %s. Please run './build.sh build' from project root", ServerBinary)
 	}
 
-	fmt.Println("✓ Found server binary at", binaryPath)
+	fmt.Println("✓ Found server binary at", ServerBinary)
 	return nil
 }
 
@@ -150,27 +139,19 @@ func SetupDatabase() error {
 // StartServer starts the consent-server in background
 func StartServer() error {
 	fmt.Println("Starting consent server...")
-
-	binaryPath, _ := getServerBinary() // Use binaryPath, not binaryName
-
-	// Convert to absolute path to avoid working directory confusion
-	absBinaryPath, err := filepath.Abs(binaryPath)
-	if err != nil {
-		return fmt.Errorf("failed to resolve binary path: %w", err)
-	}
-
-	cmd := exec.Command(absBinaryPath) // ✅ Use full path
-	cmd.Dir = "../../target/server"
+	cmd := exec.Command("./consent-server")
+	cmd.Dir = "../../target/server" // Run from target/server directory where config files are located
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
+	// Set environment variables for test mode
 	port := GetServerPort()
 	cmd.Env = append(os.Environ(),
 		"SERVER_PORT="+port,
 		"LOG_LEVEL=debug",
 	)
 
-	err = cmd.Start()
+	err := cmd.Start()
 	if err != nil {
 		return fmt.Errorf("failed to start server: %w", err)
 	}

@@ -20,11 +20,8 @@ database:
 logging:
   level: debug
 
+# Consent status configuration
 consent:
-  periodical_expiration:
-    enabled: true
-    frequency: "10s"
-    eligible_statuses: ["ACTIVE"]
   status_mappings:
     active_status: ACTIVE
     expired_status: EXPIRED
