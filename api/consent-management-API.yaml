@@ -18,7 +18,7 @@ info:
     name: Apache 2.0
     url: http://www.apache.org/licenses/LICENSE-2.0.html
 servers:
-  - url: http://localhost:8080/api/v1
+  - url: http://localhost:3000/api/v1
 tags:
   - name: Consent Elements
     description: Manage Consent Elements
@@ -41,10 +41,11 @@ paths:
         - **Allowed** if `purpose.groupId == orgId` — the purpose is an org-level purpose, available to all consents in the organization.
         - **Rejected** otherwise — a group-specific purpose from a different group cannot be used.
 
-        **Response Behavior:**
-        - The consent creation response payload includes all elements within each purpose.
-        - If the request contains only a subset of elements for a purpose, any unmentioned elements from
-          that purpose are automatically resolved and returned with `approved: false`.
+        **Element Resolution:**
+        - `elements` within each purpose is optional. If omitted, all elements defined in the purpose
+          are automatically included with `approved: false`.
+        - If a subset of elements is provided, any unmentioned elements are resolved the same way —
+          added to the response with `approved: false`.
       operationId: consents-POST
       tags:
         - Consents
@@ -348,10 +349,11 @@ paths:
         Same groupId validation as consent creation applies — a purpose can only be used if its `groupId`
         matches the consent's `groupId`, or if it is an org-level purpose (`purpose.groupId == orgId`).
 
-        **Response Behavior:**
-        - The consent update response payload includes all elements within each purpose.
-        - If the request contains only a subset of elements for a purpose, any unmentioned elements from
-          that purpose are automatically resolved and returned with `approved: false`.
+        **Element Resolution:**
+        - `elements` within each purpose is optional. If omitted, all elements defined in the purpose
+          are automatically included with `approved: false`.
+        - If a subset of elements is provided, any unmentioned elements are resolved the same way —
+          added to the response with `approved: false`.
 
       operationId: consents-PUT
       tags:
@@ -1608,8 +1610,11 @@ paths:
             example: "ORG-001"
         - in: header
           name: group-id
-          required: true
-          description: An identifier used to group related purposes and consents.
+          required: false
+          description: |
+            The group this purpose belongs to. When omitted, the purpose is created as an
+            org-level purpose (groupId is set to the org-id) and is available to all consents
+            within the organization.
           schema:
             type: string
             example: "group-001"
@@ -2409,7 +2414,6 @@ components:
         logical groupings (e.g., "marketing_communication_preferences_purpose").
       required:
         - name
-        - elements
       properties:
         name:
           type: string
@@ -2429,10 +2433,12 @@ components:
           example: "v1"
         elements:
           type: array
-          minItems: 1
           description: |
-            Array of consent elements within this purpose with their approval states.
-            Each element must be defined in the referenced purpose.
+            Optional array of consent element approvals within this purpose.
+            Each entry sets the approval state and optional value for a specific element.
+            Any elements defined in the purpose but not listed here are automatically
+            resolved with `approved: false`. If omitted entirely, all elements are
+            resolved from the purpose definition with `approved: false`.
           items:
             $ref: "#/components/schemas/ConsentElementApprovalItem"
     ConsentElementApprovalItem:

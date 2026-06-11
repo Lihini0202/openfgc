@@ -93,8 +93,12 @@ func (s *consentPurposeService) CreatePurpose(ctx context.Context, input model.C
 		return nil, &ErrorCheckNameExistence
 	}
 	if existing != nil {
+		if input.GroupID == orgID {
+			return nil, serviceerror.CustomServiceError(ErrorPurposeNameExists,
+				fmt.Sprintf("a purpose named '%s' already exists in this org", input.Name))
+		}
 		return nil, serviceerror.CustomServiceError(ErrorPurposeNameExists,
-			fmt.Sprintf("a purpose named '%s' already exists for this group", input.Name))
+			fmt.Sprintf("a purpose named '%s' already exists in this group", input.Name))
 	}
 
 	if input.GroupID != orgID {
@@ -150,8 +154,12 @@ func (s *consentPurposeService) CreatePurpose(ctx context.Context, input model.C
 
 	if err := s.stores.ExecuteTransaction(s.buildCreateVersionTx(pv, resolvedElements)); err != nil {
 		if isMySQLDuplicateKeyError(err) {
+			if input.GroupID == orgID {
+				return nil, serviceerror.CustomServiceError(ErrorPurposeNameExists,
+					fmt.Sprintf("a purpose named '%s' already exists in this org", input.Name))
+			}
 			return nil, serviceerror.CustomServiceError(ErrorPurposeNameExists,
-				fmt.Sprintf("a purpose named '%s' already exists for this group", input.Name))
+				fmt.Sprintf("a purpose named '%s' already exists in this group", input.Name))
 		}
 		logger.Error("Failed to create consent purpose", log.Error(err))
 		return nil, &ErrorCreatePurpose
@@ -205,7 +213,7 @@ func (s *consentPurposeService) CreatePurposeVersion(ctx context.Context, purpos
 	if err := s.stores.ExecuteTransaction(s.buildCreateVersionTx(pv, resolvedElements)); err != nil {
 		if isMySQLDuplicateKeyError(err) {
 			return nil, serviceerror.CustomServiceError(ErrorPurposeNameExists,
-				fmt.Sprintf("a purpose named '%s' already exists for this group", latest.Name))
+				fmt.Sprintf("purpose '%s' was updated concurrently — please fetch the latest version and retry", latest.Name))
 		}
 		logger.Error("Failed to create purpose version", log.Error(err))
 		return nil, &ErrorCreatePurpose
