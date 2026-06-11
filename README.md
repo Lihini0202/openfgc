@@ -187,7 +187,7 @@ Update configuration file at `target/server/repository/conf/deployment.yaml`:
 ```yaml
     server:
       hostname: 0.0.0.0
-      port: 8080
+      port: 3000
       readTimeout: 30s
       writeTimeout: 30s
       idleTimeout: 120s
@@ -252,9 +252,9 @@ cd target/server
 ./start.sh --debug --debug-port 3000
 ```
 
-Server starts at `http://localhost:8080`
+Server starts at `http://localhost:3000`
 
-Health check: `curl http://localhost:8080/health`
+Health check: `curl http://localhost:3000/health`
 
 ## API Endpoints
 
