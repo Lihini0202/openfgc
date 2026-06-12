@@ -7,15 +7,12 @@ server:
 
 database:
   consent:
-    type: mysql
-    hostname: 127.0.0.1
-    port: 3306
-    database: consent_mgt_integration_test
-    max_open_conns: 25
-    max_idle_conns: 5
-    conn_max_lifetime: 5m
-    user: root
-    password: password
+    type: sqlite
+    path: repository/consentdb_test.db
+    options: "_pragma=journal_mode(WAL)&_pragma=cache_size(-16000)"
+    max_open_conns: 1
+    max_idle_conns: 1
+    conn_max_lifetime: 0s
 
 logging:
   level: debug

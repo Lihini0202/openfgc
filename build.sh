@@ -69,7 +69,8 @@ DIST_DIR="$TARGET_DIR/dist"
 SOURCE_DIR="consent-server/cmd/server"
 CONFIG_SOURCE="consent-server/cmd/server/repository/conf/deployment.yaml"
 CONFIG_TARGET="$OUTPUT_DIR/repository/conf/deployment.yaml"
-TEST_CONFIG_SOURCE="tests/integration/repository/conf/deployment.yaml"
+TEST_CONFIG_SOURCE_MYSQL="tests/integration/repository/conf/deployment.yaml"
+TEST_CONFIG_SOURCE_SQLITE="tests/integration/repository/conf/deployment-sqlite.yaml"
 
 # Package naming
 PACKAGE_OS=$GO_OS
@@ -272,6 +273,10 @@ function test_integration() {
     echo "================================================================"
     echo "Running integration tests..."
 
+    # Select database type: default mysql, override with DB_TYPE env var
+    local db_type="${DB_TYPE:-mysql}"
+    echo "Database type: $db_type"
+
     # Clean test cache to ensure tests run with latest changes
     echo "Cleaning test cache..."
     go clean -testcache
@@ -282,6 +287,14 @@ function test_integration() {
         build_binary
     fi
 
+    # Select test config based on DB_TYPE
+    local test_config_source
+    if [ "$db_type" = "sqlite" ]; then
+        test_config_source="$TEST_CONFIG_SOURCE_SQLITE"
+    else
+        test_config_source="$TEST_CONFIG_SOURCE_MYSQL"
+    fi
+
     # Backup main config before overwriting with test config
     echo "Backing up main configuration..."
     cp "$CONFIG_TARGET" "${CONFIG_TARGET}.bak"
@@ -289,9 +302,9 @@ function test_integration() {
 
     # Replace app config with test config for integration tests
     echo "Copying test configuration..."
-    if [ -f "$TEST_CONFIG_SOURCE" ]; then
-        cp "$TEST_CONFIG_SOURCE" "$CONFIG_TARGET"
-        echo "✓ Test configuration copied"
+    if [ -f "$test_config_source" ]; then
+        cp "$test_config_source" "$CONFIG_TARGET"
+        echo "✓ Test configuration copied ($test_config_source)"
     else
         echo "⚠ Warning: Test configuration not found, using default config"
     fi
@@ -300,7 +313,7 @@ function test_integration() {
     echo "Starting integration test suite..."
     cd tests/integration || exit 1
     set +e
-    go run main.go
+    DB_TYPE="$db_type" go run main.go
     TEST_EXIT_CODE=$?
     set -e
     cd "$SCRIPT_DIR" || exit 1
