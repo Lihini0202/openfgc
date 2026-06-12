@@ -137,6 +137,14 @@ func SetupDatabase() error {
 
 	dbConfig := config.Database.Consent
 
+	supported := map[string]bool{"mysql": true, "sqlite": true}
+	if !supported[dbType] {
+		return fmt.Errorf("unsupported DB_TYPE %q: must be one of mysql, sqlite", dbType)
+	}
+	if dbConfig.Type != dbType {
+		return fmt.Errorf("DB_TYPE env var is %q but config file has database.consent.type=%q", dbType, dbConfig.Type)
+	}
+
 	if dbType == "sqlite" {
 		// Resolve the db file path: the server runs from target/server/,
 		// so prepend that to the relative path from the config.

@@ -875,6 +875,7 @@ func (ts *ConsentAPITestSuite) TestCreateConsent() {
 				// GET must preserve it too (second call site: consentOutputToResponse).
 				_, got := ts.doGetConsent(orgID, resp.ID)
 				ts.Require().NotNil(got)
+				ts.Require().NotEmpty(got.Purposes, "GET response must have at least one purpose")
 				ts.Require().Len(got.Purposes[0].Elements, 1)
 				ts.NotNil(got.Purposes[0].Elements[0].Value, "empty string must survive GET round-trip")
 				ts.Equal("", got.Purposes[0].Elements[0].Value, "GET response must return empty string, not nil")
@@ -907,6 +908,7 @@ func (ts *ConsentAPITestSuite) TestCreateConsent() {
 				ts.Require().NoError(json.Unmarshal(body, &valResp))
 				ts.True(valResp.IsValid)
 				ts.Require().NotNil(valResp.ConsentInfo)
+				ts.Require().NotEmpty(valResp.ConsentInfo.Purposes, "validate response must have at least one purpose")
 				ts.Require().Len(valResp.ConsentInfo.Purposes[0].Elements, 1)
 				elem := valResp.ConsentInfo.Purposes[0].Elements[0]
 				ts.NotNil(elem.Value, "empty string must not be treated as absent in validate response")
