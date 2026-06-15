@@ -19,6 +19,7 @@
 package testutils
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -284,15 +285,23 @@ func StopServer() error {
 
 	fmt.Println("Stopping server...")
 
-	// Send interrupt signal
-	err := serverCmd.Process.Signal(syscall.SIGTERM)
-	if err != nil {
+	var err error
+	if runtime.GOOS == "windows" {
+		err = serverCmd.Process.Kill()
+	} else {
+		err = serverCmd.Process.Signal(syscall.SIGTERM)
+	}
+	if err != nil && !errors.Is(err, os.ErrProcessDone) {
 		return fmt.Errorf("failed to stop server: %w", err)
 	}
 
 	// Wait for process to exit
 	_, err = serverCmd.Process.Wait()
-	return err
+	if err != nil && !errors.Is(err, os.ErrProcessDone) {
+		return err
+	}
+	serverCmd = nil
+	return nil
 }
 
 // WaitForServer waits for the server to be ready
