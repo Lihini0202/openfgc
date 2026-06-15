@@ -41,8 +41,7 @@ var dbType = func() string {
 }()
 
 const (
-	ServerBinary        = "../../target/server/consent-server"
-	ServerBinaryWindows = "../../target/server/consent-server.exe"
+	TestServerPortEnv = "TEST_SERVER_PORT"
 )
 
 // ConfigPath returns the integration test deployment config path for the active dbType.
@@ -73,6 +72,10 @@ func getServerBinary() (binaryPath string, binaryName string) {
 
 // GetServerPort reads the port from deployment.yaml
 func GetServerPort() string {
+	if port := os.Getenv(TestServerPortEnv); port != "" {
+		return port
+	}
+
 	data, err := os.ReadFile(ConfigPath)
 	if err != nil {
 		// Fallback to default port if config file not found
