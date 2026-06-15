@@ -65,6 +65,7 @@ fi
 BINARY_NAME="consent-server"
 TARGET_DIR="target"
 OUTPUT_DIR="$TARGET_DIR/server"
+INTEGRATION_OUTPUT_DIR="${INTEGRATION_OUTPUT_DIR:-$TARGET_DIR/server-integration}"
 DIST_DIR="$TARGET_DIR/dist"
 SOURCE_DIR="consent-server/cmd/server"
 CONFIG_SOURCE="consent-server/cmd/server/repository/conf/deployment.yaml"
@@ -273,6 +274,11 @@ function test_integration() {
     echo "================================================================"
     echo "Running integration tests..."
 
+    OUTPUT_DIR="$INTEGRATION_OUTPUT_DIR"
+    CONFIG_TARGET="$OUTPUT_DIR/repository/conf/deployment.yaml"
+    local test_server_dir="../../$OUTPUT_DIR"
+    echo "Integration server output: $OUTPUT_DIR"
+
     # Select database type: default mysql, override with DB_TYPE env var
     local db_type="${DB_TYPE:-mysql}"
     echo "Database type: $db_type"
@@ -281,11 +287,8 @@ function test_integration() {
     echo "Cleaning test cache..."
     go clean -testcache
 
-    # Build the server first if binary doesn't exist
-    if [ ! -f "$OUTPUT_DIR/$BINARY_NAME" ]; then
-        echo "Binary not found. Building first..."
-        build_binary
-    fi
+    # Build a dedicated integration-test server so normal build outputs are untouched.
+    build_binary
 
     # Select test config based on DB_TYPE
     local test_config_source
@@ -294,11 +297,6 @@ function test_integration() {
     else
         test_config_source="$TEST_CONFIG_SOURCE_MYSQL"
     fi
-
-    # Backup main config before overwriting with test config
-    echo "Backing up main configuration..."
-    cp "$CONFIG_TARGET" "${CONFIG_TARGET}.bak"
-    echo "✓ Main configuration backed up"
 
     # Replace app config with test config for integration tests
     echo "Copying test configuration..."
@@ -313,16 +311,10 @@ function test_integration() {
     echo "Starting integration test suite..."
     cd tests/integration || exit 1
     set +e
-    DB_TYPE="$db_type" go run main.go
+    TEST_SERVER_DIR="$test_server_dir" DB_TYPE="$db_type" go run main.go
     TEST_EXIT_CODE=$?
     set -e
     cd "$SCRIPT_DIR" || exit 1
-
-    # Always restore main config after tests (even if tests failed)
-    echo "Restoring main configuration..."
-    cp "${CONFIG_TARGET}.bak" "$CONFIG_TARGET"
-    rm "${CONFIG_TARGET}.bak"
-    echo "✓ Main configuration restored"
 
     if [ $TEST_EXIT_CODE -ne 0 ]; then
         echo "✗ Integration tests failed"
