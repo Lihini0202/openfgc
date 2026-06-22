@@ -19,6 +19,7 @@
 package testutils
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -41,8 +42,9 @@ var dbType = func() string {
 }()
 
 const (
-	ServerBinary        = "../../target/server/consent-server"
-	ServerBinaryWindows = "../../target/server/consent-server.exe"
+	DefaultServerDir  = "../../target/server"
+	TestServerDirEnv  = "TEST_SERVER_DIR"
+	TestServerPortEnv = "TEST_SERVER_PORT"
 )
 
 // ConfigPath returns the integration test deployment config path for the active dbType.
@@ -63,16 +65,30 @@ type ServerConfig struct {
 	} `yaml:"server"`
 }
 
+// getServerDir returns the directory containing the server binary and repository directory.
+func getServerDir() string {
+	if dir := os.Getenv(TestServerDirEnv); dir != "" {
+		return dir
+	}
+	return DefaultServerDir
+}
+
 // getServerBinary returns the platform-specific binary path and executable name.
 func getServerBinary() (binaryPath string, binaryName string) {
 	if runtime.GOOS == "windows" {
-		return ServerBinaryWindows, "consent-server.exe"
+		binaryName = "consent-server.exe"
+	} else {
+		binaryName = "consent-server"
 	}
-	return ServerBinary, "./consent-server"
+	return filepath.Join(getServerDir(), binaryName), binaryName
 }
 
 // GetServerPort reads the port from deployment.yaml
 func GetServerPort() string {
+	if port := os.Getenv(TestServerPortEnv); port != "" {
+		return port
+	}
+
 	data, err := os.ReadFile(ConfigPath)
 	if err != nil {
 		// Fallback to default port if config file not found
@@ -148,8 +164,7 @@ func SetupDatabase() error {
 	if dbType == "sqlite" {
 		// Resolve the db file path: the server runs from target/server/,
 		// so prepend that to the relative path from the config.
-		serverDir := "../../target/server"
-		dbPath := filepath.Join(serverDir, dbConfig.Path)
+		dbPath := filepath.Join(getServerDir(), dbConfig.Path)
 		schemaFile := "../../consent-server/dbscripts/db_schema_sqlite.sql"
 		return initSQLiteDB(dbPath, schemaFile)
 	}
@@ -253,7 +268,7 @@ func StartServer() error {
 	}
 
 	cmd := exec.Command(absBinaryPath) // Use full path
-	cmd.Dir = "../../target/server"
+	cmd.Dir = getServerDir()
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
@@ -281,15 +296,23 @@ func StopServer() error {
 
 	fmt.Println("Stopping server...")
 
-	// Send interrupt signal
-	err := serverCmd.Process.Signal(syscall.SIGTERM)
-	if err != nil {
+	var err error
+	if runtime.GOOS == "windows" {
+		err = serverCmd.Process.Kill()
+	} else {
+		err = serverCmd.Process.Signal(syscall.SIGTERM)
+	}
+	if err != nil && !errors.Is(err, os.ErrProcessDone) {
 		return fmt.Errorf("failed to stop server: %w", err)
 	}
 
 	// Wait for process to exit
 	_, err = serverCmd.Process.Wait()
-	return err
+	if err != nil && !errors.Is(err, os.ErrProcessDone) {
+		return err
+	}
+	serverCmd = nil
+	return nil
 }
 
 // WaitForServer waits for the server to be ready
