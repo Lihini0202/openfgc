@@ -184,6 +184,22 @@ type ConsentSearchFilter struct {
 	Limit            int
 	Offset           int
 	OrgID            string
+
+	// --- Consent delegation search filters ---
+
+	// Delegation filters consents by delegation role when combined with UserIDs.
+	// nil = not specified (return all consents for the user regardless of auth type).
+	// true = user is a delegate (auth type = "delegate").
+	// false = user's own self-consents (auth type = "primary" or "default").
+	Delegation *bool
+
+	// DelegateSubject filters consents where this user ID is the delegate subject.
+	// When set, returns consents where this person's data is being consented for.
+	DelegateSubject string
+
+	// AuthTypes filters by specific auth type values (e.g., "agent", "carer").
+	// Supports both first-class and custom auth types.
+	AuthTypes []string
 }
 
 // =============================================================================
@@ -338,28 +354,28 @@ type AuthorizationRequest struct {
 // ConsentCreateRequest is the body for POST /consents.
 // GroupID is not in the body — it is read from the group-id request header.
 type ConsentCreateRequest struct {
-	Type                       string                      `json:"type"`
-	ExpirationTime             *int64                      `json:"expirationTime,omitempty"` // Unix milliseconds
-	Frequency                  *int                        `json:"frequency,omitempty"`
-	RecurringIndicator         *bool                       `json:"recurringIndicator,omitempty"`
-	DataAccessValidityDuration *int64                      `json:"dataAccessValidityDuration,omitempty"`
-	Attributes                 map[string]string           `json:"attributes,omitempty"`
-	Purposes                   []ConsentPurposeRefRequest  `json:"purposes,omitempty"`
-	Authorizations             []AuthorizationRequest      `json:"authorizations,omitempty"`
+	Type                       string                     `json:"type"`
+	ExpirationTime             *int64                     `json:"expirationTime,omitempty"` // Unix milliseconds
+	Frequency                  *int                       `json:"frequency,omitempty"`
+	RecurringIndicator         *bool                      `json:"recurringIndicator,omitempty"`
+	DataAccessValidityDuration *int64                     `json:"dataAccessValidityDuration,omitempty"`
+	Attributes                 map[string]string          `json:"attributes,omitempty"`
+	Purposes                   []ConsentPurposeRefRequest `json:"purposes,omitempty"`
+	Authorizations             []AuthorizationRequest     `json:"authorizations,omitempty"`
 }
 
 // ConsentUpdateRequest is the body for PUT /consents/{consentId}.
 // Purposes, Authorizations, and Attributes intentionally omit `omitempty` so that sending an
 // explicit empty array/map removes all existing entries.
 type ConsentUpdateRequest struct {
-	Type                       string                      `json:"type,omitempty"`
-	ExpirationTime             *int64                      `json:"expirationTime,omitempty"` // Unix milliseconds
-	Frequency                  *int                        `json:"frequency,omitempty"`
-	RecurringIndicator         *bool                       `json:"recurringIndicator,omitempty"`
-	DataAccessValidityDuration *int64                      `json:"dataAccessValidityDuration,omitempty"`
-	Attributes                 map[string]string           `json:"attributes"`
-	Purposes                   []ConsentPurposeRefRequest  `json:"purposes"`
-	Authorizations             []AuthorizationRequest      `json:"authorizations"`
+	Type                       string                     `json:"type,omitempty"`
+	ExpirationTime             *int64                     `json:"expirationTime,omitempty"` // Unix milliseconds
+	Frequency                  *int                       `json:"frequency,omitempty"`
+	RecurringIndicator         *bool                      `json:"recurringIndicator,omitempty"`
+	DataAccessValidityDuration *int64                     `json:"dataAccessValidityDuration,omitempty"`
+	Attributes                 map[string]string          `json:"attributes"`
+	Purposes                   []ConsentPurposeRefRequest `json:"purposes"`
+	Authorizations             []AuthorizationRequest     `json:"authorizations"`
 }
 
 // ConsentRevokeRequest is the body for POST /consents/{consentId}/revoke.
