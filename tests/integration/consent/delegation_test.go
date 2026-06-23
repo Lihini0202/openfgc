@@ -40,9 +40,6 @@ func (ts *ConsentAPITestSuite) TestCreateConsentDelegation() {
 
 	cases := []testCase{
 
-		// -----------------------------------------------------------------
-		// Happy paths
-		// -----------------------------------------------------------------
 		{
 			name:    "delegation: delegate + delegate_subject with RECORDED → ACTIVE",
 			groupID: "grp-deleg-1",
