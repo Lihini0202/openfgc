@@ -259,6 +259,7 @@ type ConsentOutput struct {
 	Attributes                 map[string]string
 	Purposes                   []ConsentPurposeOutput
 	Authorizations             []authmodel.AuthResourceOutput
+	StatusHistory              []StatusAuditOutput
 }
 
 // ConsentListOutput is the return type from SearchConsents.
@@ -438,19 +439,20 @@ type AuthorizationResponse struct {
 
 // ConsentResponse is the response body for POST, GET, and PUT /consents.
 type ConsentResponse struct {
-	ConsentID                  string                   `json:"id"`
-	GroupID                    string                   `json:"groupId"`
-	Type                       string                   `json:"type"`
-	Status                     string                   `json:"status"`
-	CreatedTime                int64                    `json:"createdTime"`
-	UpdatedTime                int64                    `json:"updatedTime"`
-	ExpirationTime             *int64                   `json:"expirationTime,omitempty"`
-	Frequency                  *int                     `json:"frequency,omitempty"`
-	RecurringIndicator         *bool                    `json:"recurringIndicator,omitempty"`
-	DataAccessValidityDuration *int64                   `json:"dataAccessValidityDuration,omitempty"`
-	Attributes                 map[string]string        `json:"attributes"`
-	Purposes                   []ConsentPurposeResponse `json:"purposes"`
-	Authorizations             []AuthorizationResponse  `json:"authorizations"`
+	ConsentID                  string                       `json:"id"`
+	GroupID                    string                       `json:"groupId"`
+	Type                       string                       `json:"type"`
+	Status                     string                       `json:"status"`
+	CreatedTime                int64                        `json:"createdTime"`
+	UpdatedTime                int64                        `json:"updatedTime"`
+	ExpirationTime             *int64                       `json:"expirationTime,omitempty"`
+	Frequency                  *int                         `json:"frequency,omitempty"`
+	RecurringIndicator         *bool                        `json:"recurringIndicator,omitempty"`
+	DataAccessValidityDuration *int64                       `json:"dataAccessValidityDuration,omitempty"`
+	Attributes                 map[string]string            `json:"attributes"`
+	Purposes                   []ConsentPurposeResponse     `json:"purposes"`
+	Authorizations             []AuthorizationResponse      `json:"authorizations"`
+	StatusHistory              []ConsentStatusAuditResponse `json:"statusHistory,omitempty"`
 }
 
 // ConsentListMetadata holds pagination metadata for the list response.
