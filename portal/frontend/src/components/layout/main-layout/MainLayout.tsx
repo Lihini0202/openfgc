@@ -16,14 +16,18 @@
  * under the License.
  */
 
-import { AppShell, Box, ColorSchemeToggle, Header, IconButton } from '@wso2/oxygen-ui'
-import { CircleUserRound } from '@wso2/oxygen-ui-icons-react'
+import { AppShell, Box, ColorSchemeToggle, Header } from '@wso2/oxygen-ui'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Outlet } from 'react-router-dom'
-import AppSidebar from '../sidebar/AppSidebar'
+import ActingAsBanner from '../../../features/nominee/actingAs/ActingAsBanner'
+import ProfileMenu from './ProfileMenu'
 
-function MainLayout(): React.JSX.Element {
+interface MainLayoutProps {
+  sidebar: (props: { collapsed: boolean }) => React.JSX.Element
+}
+
+function MainLayout({ sidebar: Sidebar }: MainLayoutProps): React.JSX.Element {
   const { t } = useTranslation('common')
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(false)
 
@@ -56,15 +60,13 @@ function MainLayout(): React.JSX.Element {
           <Header.Spacer />
           <Header.Actions>
             <ColorSchemeToggle />
-            <IconButton size="medium" aria-label={t('layout.userAvatarAriaLabel')}>
-              <CircleUserRound size={26} />
-            </IconButton>
+            <ProfileMenu />
           </Header.Actions>
         </Header>
       </AppShell.Navbar>
 
       <AppShell.Sidebar>
-        <AppSidebar collapsed={isSidebarCollapsed} />
+        <Sidebar collapsed={isSidebarCollapsed} />
       </AppShell.Sidebar>
 
       <AppShell.Main>
@@ -75,6 +77,7 @@ function MainLayout(): React.JSX.Element {
             flex: 1,
           }}
         >
+          <ActingAsBanner />
           <Outlet />
         </Box>
       </AppShell.Main>

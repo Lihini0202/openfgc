@@ -48,6 +48,12 @@ import {
   toEpochMilliseconds,
   toStartOfDayEpochMilliseconds,
 } from '../../../utils/dateTime'
+import {
+  fetchActingConsentByID,
+  fetchActingConsents,
+  revokeActingConsent,
+} from '../../nominee/api/nomineeApi'
+import { useActingAs } from '../../nominee/actingAs/actingAsContext'
 
 interface ConsentListResult {
   rows: ConsentRecord[]
@@ -82,7 +88,12 @@ function toListParams(
   }
 }
 
-function toConsentRow(consent: ConsentDetailAPI): ConsentRecord {
+/**
+ * @param delegated whether the reader is acting for someone else, which
+ *   withholds approval: granting a consent is a decision only the owner can
+ *   make, and no permission an owner can delegate covers it.
+ */
+function toConsentRow(consent: ConsentDetailAPI, delegated = false): ConsentRecord {
   const normalizedStatus = normalizeConsentStatus(consent.status)
 
   if (!isConsentAPIStatus(normalizedStatus)) {
@@ -98,23 +109,33 @@ function toConsentRow(consent: ConsentDetailAPI): ConsentRecord {
     updatedAt: new Date(toEpochMilliseconds(consent.updatedTime) ?? 0).toISOString(),
     expirationTime: consent.validityTime ?? 0,
     canRevoke: isConsentRevokableStatus(normalizedStatus),
-    canApprove: isConsentApprovableStatus(normalizedStatus),
+    canApprove: !delegated && isConsentApprovableStatus(normalizedStatus),
   }
 }
 
+/**
+ * The consents of whoever the reader is currently acting as.
+ *
+ * While a nominee is acting for an owner this resolves the OWNER's consents,
+ * which is what the surrounding page states it is showing. The owner id is never
+ * sent: the server reads it from the impersonation token and re-checks the
+ * nomination on every request.
+ */
 export function useConsentListQuery(
   filters: ConsentRegistryFilters,
   page: number,
   rowsPerPage: number,
 ): UseQueryResult<ConsentListResult> {
   const params = toListParams(filters, page, rowsPerPage)
+  const { session } = useActingAs()
+  const acting = Boolean(session)
 
   return useQuery<ConsentListResult>({
-    queryKey: ['consents', params],
+    queryKey: ['consents', acting ? session?.ownerId : 'self', params],
     queryFn: async (): Promise<ConsentListResult> => {
-      const response = await fetchMyConsents(params)
+      const response = acting ? await fetchActingConsents(params) : await fetchMyConsents(params)
       return {
-        rows: response.data.map(toConsentRow),
+        rows: response.data.map((consent) => toConsentRow(consent, acting)),
         total: response.metadata.total,
       }
     },
@@ -125,9 +146,13 @@ export function useConsentListQuery(
 export function useConsentDetailQuery(
   consentID: string | undefined,
 ): UseQueryResult<ConsentDetailAPI> {
+  const { session } = useActingAs()
+  const acting = Boolean(session)
+
   return useQuery<ConsentDetailAPI>({
-    queryKey: ['consent', consentID],
-    queryFn: async (): Promise<ConsentDetailAPI> => fetchMyConsentByID(String(consentID)),
+    queryKey: ['consent', acting ? session?.ownerId : 'self', consentID],
+    queryFn: async (): Promise<ConsentDetailAPI> =>
+      acting ? fetchActingConsentByID(String(consentID)) : fetchMyConsentByID(String(consentID)),
     enabled: Boolean(consentID),
   })
 }
@@ -152,11 +177,20 @@ export function useApproveConsentMutation(): UseMutationResult<
   })
 }
 
+/**
+ * Revokes a consent belonging to whoever the reader is acting as.
+ *
+ * While acting this routes to the delegated endpoint, which records the nominee
+ * as the actor and refuses the call unless the owner still grants revocation.
+ */
 export function useRevokeConsentMutation(): UseMutationResult<unknown, Error, string> {
   const queryClient = useQueryClient()
+  const { session } = useActingAs()
+  const acting = Boolean(session)
 
   return useMutation({
-    mutationFn: async (consentID: string): Promise<unknown> => revokeMyConsent(consentID),
+    mutationFn: async (consentID: string): Promise<unknown> =>
+      acting ? revokeActingConsent(consentID) : revokeMyConsent(consentID),
     onSuccess: async (_data, consentID): Promise<void> => {
       await queryClient.invalidateQueries({ queryKey: ['consents'] })
       await queryClient.invalidateQueries({ queryKey: ['consent', consentID] })

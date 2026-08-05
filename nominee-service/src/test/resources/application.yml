@@ -1,0 +1,27 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:nominee-test;DB_CLOSE_DELAY=-1
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ""
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    open-in-view: false
+  h2:
+    console:
+      enabled: false
+bff:
+  base-url: http://localhost:0
+  internal-api-key: test-key
+identityserver:
+  issuer-uri: http://localhost:0
+  jwk-set-uri: http://localhost:0/jwks
+  audience: test-audience
+  tls-skip-verify: true
+impersonation-gate:
+  internal-api-key: test-gate-key
+access-token:
+  part2-cookie: portal-at-p2
+cors:
+  allowed-origins: http://localhost:5173

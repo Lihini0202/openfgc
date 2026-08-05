@@ -1,0 +1,41 @@
+server:
+  port: 8082
+
+spring:
+  application:
+    name: nominee-service
+  datasource:
+    url: jdbc:h2:file:./data/nominee-service;AUTO_SERVER=TRUE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ""
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+
+# Real WSO2 IS - Nominee Service validates the same split access token the BFF
+# issues, directly. Must match the Go BFF's BFF_AUTH__* values exactly.
+identityserver:
+  issuer-uri: https://localhost:9443/oauth2/token
+  jwk-set-uri: https://localhost:9443/oauth2/jwks
+  audience: RDCuQpBugmer_wQyKw9zTfcRJoMa
+  tls-skip-verify: true
+
+# Shared key the WSO2 IS impersonation validator extension must present when it
+# asks whether an owner-to-nominee nomination is currently active.
+impersonation-gate:
+  internal-api-key: ${IMPERSONATION_GATE_KEY:dev-impersonation-gate-key}
+
+# The access token is split across a header (part1, JS-readable) and an
+# HttpOnly cookie (part2) - see the BFF's auth.Manager for why. Cookies aren't
+# port-scoped, so the browser sends the same portal-at-p2 cookie here too.
+access-token:
+  part2-cookie: portal-at-p2
+
+cors:
+  allowed-origins: http://localhost:5173,http://localhost:3000

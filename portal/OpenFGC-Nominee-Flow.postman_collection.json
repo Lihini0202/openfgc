@@ -1,0 +1,1160 @@
+{
+  "info": {
+    "name": "OpenFGC — Nominee Acting Flow",
+    "description": "End-to-end nominee impersonation flow, in the order it must be run.\n\nIMPORTANT SETUP (both are required or the flow silently breaks):\n1. Settings > General > SSL certificate verification = OFF  (IS uses a self-signed cert)\n2. Settings > General > Automatically follow redirects = OFF  (the subject_token comes back in a redirect Location header; if Postman follows it, you never see it)\n\nEach request stores what the next one needs, so run them top to bottom. The subject token lands in the collection variable {{subject_token}} and is printed in the Postman Console (View > Show Postman Console).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "is_base",
+      "value": "https://localhost:9443"
+    },
+    {
+      "key": "bff_base",
+      "value": "http://localhost:8080"
+    },
+    {
+      "key": "nominee_service",
+      "value": "http://localhost:8082"
+    },
+    {
+      "key": "client_id",
+      "value": "RDCuQpBugmer_wQyKw9zTfcRJoMa"
+    },
+    {
+      "key": "client_secret",
+      "value": "PUT_YOUR_CLIENT_SECRET_HERE"
+    },
+    {
+      "key": "redirect_uri",
+      "value": "http://localhost:5173/"
+    },
+    {
+      "key": "owner_id",
+      "value": "cb0d2ba6-8ecf-4630-899a-b920f878a5bc"
+    },
+    {
+      "key": "nominee_username",
+      "value": "test2"
+    },
+    {
+      "key": "nominee_password",
+      "value": "PUT_NOMINEE_PASSWORD_HERE"
+    },
+    {
+      "key": "gate_key",
+      "value": "dev-impersonation-gate-key"
+    },
+    {
+      "key": "portal_scopes",
+      "value": "openid profile email portal:profile:read:self portal:profile:write:self portal:consents:read:self portal:consents:write:self portal:consents:read:nominee portal:consents:write:nominee"
+    },
+    {
+      "key": "code_verifier",
+      "value": ""
+    },
+    {
+      "key": "code_challenge",
+      "value": ""
+    },
+    {
+      "key": "session_data_key",
+      "value": ""
+    },
+    {
+      "key": "login_next_url",
+      "value": ""
+    },
+    {
+      "key": "auth_code",
+      "value": ""
+    },
+    {
+      "key": "access_token",
+      "value": ""
+    },
+    {
+      "key": "acting_state",
+      "value": ""
+    },
+    {
+      "key": "subject_token",
+      "value": ""
+    },
+    {
+      "key": "consent_id",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "1 — Login as nominee (get sessionDataKey)",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "// PKCE is mandatory on this IS application. Generate a fresh pair and keep",
+              "// the verifier — step 3b needs it to redeem the authorization code.",
+              "function b64url(wordArray) {",
+              "  return CryptoJS.enc.Base64.stringify(wordArray)",
+              "    .replace(/\\+/g, '-').replace(/\\//g, '_').replace(/=+$/, '');",
+              "}",
+              "const verifier = b64url(CryptoJS.lib.WordArray.random(32));",
+              "const challenge = b64url(CryptoJS.SHA256(verifier));",
+              "pm.collectionVariables.set('code_verifier', verifier);",
+              "pm.collectionVariables.set('code_challenge', challenge);"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('302 redirect to the login page', () => pm.response.to.have.status(302));",
+              "const loc = pm.response.headers.get('Location') || '';",
+              "const m = loc.match(/sessionDataKey=([0-9a-fA-F-]{36})/);",
+              "if (!m) { console.error('No sessionDataKey. Location was:', loc); }",
+              "else {",
+              "  pm.collectionVariables.set('session_data_key', m[1]);",
+              "  console.log('sessionDataKey =', m[1]);",
+              "}",
+              "pm.test('sessionDataKey captured', () => pm.expect(m).to.not.be.null);"
+            ]
+          }
+        }
+      ],
+      "protocolProfileBehavior": {
+        "followRedirects": false
+      },
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{is_base}}/oauth2/authorize?client_id={{client_id}}&redirect_uri={{redirect_uri}}&response_type=code&scope={{portal_scopes}}&state=login&code_challenge={{code_challenge}}&code_challenge_method=S256",
+          "host": [
+            "{{is_base}}"
+          ],
+          "path": [
+            "oauth2",
+            "authorize"
+          ],
+          "query": [
+            {
+              "key": "client_id",
+              "value": "{{client_id}}"
+            },
+            {
+              "key": "redirect_uri",
+              "value": "{{redirect_uri}}"
+            },
+            {
+              "key": "response_type",
+              "value": "code"
+            },
+            {
+              "key": "scope",
+              "value": "{{portal_scopes}}"
+            },
+            {
+              "key": "state",
+              "value": "login"
+            },
+            {
+              "key": "code_challenge",
+              "value": "{{code_challenge}}"
+            },
+            {
+              "key": "code_challenge_method",
+              "value": "S256"
+            }
+          ]
+        },
+        "description": "Starts a normal authorization-code login for the NOMINEE (test2). This is not the impersonation call — it exists to establish the IS session cookie (commonAuthId) that the impersonation step rides on."
+      }
+    },
+    {
+      "name": "2 — Submit nominee credentials",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "// Shows what Postman ACTUALLY resolved, without printing the secret.",
+              "// The most common cause of a rejected login here is editing a variable's",
+              "// 'Initial value' but not its 'Current value' - requests send Current.",
+              "const u = pm.variables.get('nominee_username');",
+              "const p = pm.variables.get('nominee_password');",
+              "const k = pm.variables.get('session_data_key');",
+              "",
+              "console.log('--- resolved values being sent ---');",
+              "console.log('username       :', u);",
+              "console.log('password length:', p ? String(p).length : 0,",
+              "            '| starts:', p ? String(p).charAt(0) : '(empty)',",
+              "            '| ends:', p ? String(p).charAt(String(p).length - 1) : '');",
+              "console.log('sessionDataKey :', k || '(EMPTY - re-run step 1)');",
+              "",
+              "if (!p || p === 'PUT_NOMINEE_PASSWORD_HERE') {",
+              "  console.error('PASSWORD NOT SET. Collection > Variables > nominee_password:');",
+              "  console.error('  fill the CURRENT VALUE column, not just Initial value.');",
+              "  console.error('  Also check the selected Environment does not define it as empty.');",
+              "}",
+              "if (!k) {",
+              "  console.error('sessionDataKey is empty - run step 1 first, then this immediately.');",
+              "}"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const loc = pm.response.headers.get('Location') || '';",
+              "console.log('commonauth status:', pm.response.code);",
+              "console.log('FULL Location:', loc || '(none)');",
+              "",
+              "// Signatures confirmed against this IS:",
+              "//   success            -> /t/<tenant>/oauth2/authorize?sessionDataKey=...",
+              "//   bad credentials    -> /authenticationendpoint/login.do?...&authFailure=true",
+              "//   stale sessionDataKey -> /authenticationendpoint/retry.do",
+              "const rejected = /authenticationendpoint\\/login\\.do/i.test(loc) || /authFailure=true/i.test(loc);",
+              "const stale = /retry\\.do/i.test(loc);",
+              "const ok = /oauth2\\/authorize/i.test(loc);",
+              "",
+              "if (rejected) {",
+              "  console.error('=========================================================');",
+              "  console.error('LOGIN REJECTED - the username or password is wrong.');",
+              "  console.error('Set the collection variable nominee_password to the real password.');",
+              "  console.error('WATCH OUT: if the selected Environment also defines nominee_password,');",
+              "  console.error('the environment value WINS over the collection value. Check both.');",
+              "  console.error('=========================================================');",
+              "} else if (stale) {",
+              "  console.error('STALE sessionDataKey - re-run step 1, then this request immediately.');",
+              "} else if (ok) {",
+              "  console.log('Login OK.');",
+              "}",
+              "",
+              "const next = loc.startsWith('http') ? loc : pm.collectionVariables.get('is_base') + loc;",
+              "pm.collectionVariables.set('login_next_url', next);",
+              "",
+              "pm.cookies.jar().getAll(pm.collectionVariables.get('is_base'), (err, cookies) => {",
+              "  if (err) { return; }",
+              "  const names = (cookies || []).map(c => c.name);",
+              "  console.log('IS cookies now:', names.join(', ') || '(none)');",
+              "  if (names.indexOf('commonAuthId') === -1) {",
+              "    console.error('commonAuthId NOT set - steps 4-5 will fail until login succeeds.');",
+              "  } else {",
+              "    console.log('commonAuthId present - you can now run steps 4 and 5 (step 3 is optional).');",
+              "  }",
+              "});",
+              "",
+              "pm.test('302 returned', () => pm.response.to.have.status(302));",
+              "pm.test('credentials accepted (not bounced to login.do)', () => pm.expect(rejected, 'IS rejected the credentials').to.be.false);",
+              "pm.test('sessionDataKey was valid (not retry.do)', () => pm.expect(stale, 'sessionDataKey stale - re-run step 1').to.be.false);",
+              "pm.test('redirected onward to the authorize endpoint', () => pm.expect(ok).to.be.true);"
+            ]
+          }
+        }
+      ],
+      "protocolProfileBehavior": {
+        "followRedirects": false
+      },
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/x-www-form-urlencoded"
+          }
+        ],
+        "body": {
+          "mode": "urlencoded",
+          "urlencoded": [
+            {
+              "key": "username",
+              "value": "{{nominee_username}}"
+            },
+            {
+              "key": "password",
+              "value": "{{nominee_password}}"
+            },
+            {
+              "key": "sessionDataKey",
+              "value": "{{session_data_key}}"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{is_base}}/commonauth",
+          "host": [
+            "{{is_base}}"
+          ],
+          "path": [
+            "commonauth"
+          ]
+        },
+        "description": "Authenticates the nominee. On success IS sets the commonAuthId session cookie — Postman's cookie jar keeps it, which is what makes step 5 work."
+      }
+    },
+    {
+      "name": "3 - Complete login (get auth code)  [re-run to advance hops]",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const loc = pm.response.headers.get('Location') || '';",
+              "console.log('status:', pm.response.code);",
+              "console.log('Location:', loc || '(none)');",
+              "",
+              "const codeMatch = loc.match(/[?&]code=([^&]+)/);",
+              "",
+              "if (codeMatch) {",
+              "  pm.collectionVariables.set('auth_code', codeMatch[1]);",
+              "  console.log('AUTH CODE:', codeMatch[1]);",
+              "} else if (/error=|oauth2_error/i.test(loc)) {",
+              "  console.error('IS returned an error redirect:', loc);",
+              "} else if (loc) {",
+              "  // Another hop. Store it and tell the user to press Send again - this walks",
+              "  // the chain one step at a time using Postman's own cookie jar, which",
+              "  // pm.sendRequest would not share.",
+              "  const next = loc.startsWith('http') ? loc : pm.collectionVariables.get('is_base') + loc;",
+              "  pm.collectionVariables.set('login_next_url', next);",
+              "  console.log('ANOTHER HOP - press Send on this request again. Next:', next);",
+              "} else {",
+              "  console.error('No Location and no code.');",
+              "  const body = pm.response.text();",
+              "  if (/sessionDataKeyConsent|consent/i.test(body)) {",
+              "    console.error('This looks like a CONSENT page. Approve the app once in a browser, or disable consent for it in the IS console.');",
+              "  }",
+              "  console.log('Body preview:', body.substring(0, 400));",
+              "}",
+              "",
+              "// Not fatal: step 3 only supplies the access token for nominee-service calls.",
+              "// The impersonation flow (steps 4-9) needs only the session cookie from step 2.",
+              "if (!codeMatch) {",
+              "  console.log('NOTE: you can still run steps 4-9 without an auth code.');",
+              "}",
+              "pm.test('authorization code received', () => pm.expect(codeMatch).to.not.be.null);"
+            ]
+          }
+        }
+      ],
+      "protocolProfileBehavior": {
+        "followRedirects": false
+      },
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{login_next_url}}",
+          "host": [
+            "{{login_next_url}}"
+          ]
+        },
+        "description": "Follows the post-authentication redirect to collect the authorization code.\n\nIf the console says 'ANOTHER HOP', just press Send again - each run advances one redirect using Postman's cookie jar.\n\nTHIS STEP IS OPTIONAL for impersonation. Its only purpose is the access token in step 3b, used for the nominee-service /me/* requests. Steps 4-9 depend only on the IS session cookie established in step 2, so if this misbehaves you can skip straight to step 4 and still get the subject token."
+      }
+    },
+    {
+      "name": "3b — Exchange code for access token (for nominee-service calls)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('200 from token endpoint', () => pm.response.to.have.status(200));",
+              "const body = pm.response.json();",
+              "if (body.access_token) {",
+              "  pm.collectionVariables.set('access_token', body.access_token);",
+              "  console.log('access_token stored (use for /me/* on nominee-service)');",
+              "} else { console.error('No access_token:', JSON.stringify(body)); }"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/x-www-form-urlencoded"
+          }
+        ],
+        "auth": {
+          "type": "basic",
+          "basic": [
+            {
+              "key": "username",
+              "value": "{{client_id}}"
+            },
+            {
+              "key": "password",
+              "value": "{{client_secret}}"
+            }
+          ]
+        },
+        "body": {
+          "mode": "urlencoded",
+          "urlencoded": [
+            {
+              "key": "grant_type",
+              "value": "authorization_code"
+            },
+            {
+              "key": "code",
+              "value": "{{auth_code}}"
+            },
+            {
+              "key": "redirect_uri",
+              "value": "{{redirect_uri}}"
+            },
+            {
+              "key": "code_verifier",
+              "value": "{{code_verifier}}"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{is_base}}/oauth2/token",
+          "host": [
+            "{{is_base}}"
+          ],
+          "path": [
+            "oauth2",
+            "token"
+          ]
+        },
+        "description": "Optional but useful: gives you a normal bearer token for the nominee, so you can call nominee-service /me/* endpoints (section 'Nomination management')."
+      }
+    },
+    {
+      "name": "4 — BFF: start acting (get state)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('302 to IS authorize', () => pm.response.to.have.status(302));",
+              "const loc = pm.response.headers.get('Location') || '';",
+              "const m = loc.match(/[?&]state=([^&]+)/);",
+              "if (m) {",
+              "  pm.collectionVariables.set('acting_state', decodeURIComponent(m[1]));",
+              "  console.log('acting state =', decodeURIComponent(m[1]));",
+              "} else { console.error('No state in Location:', loc); }",
+              "pm.test('state captured', () => pm.expect(m).to.not.be.null);",
+              "console.log('BFF redirect target:', loc);"
+            ]
+          }
+        }
+      ],
+      "protocolProfileBehavior": {
+        "followRedirects": false
+      },
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{bff_base}}/acting/start?ownerId={{owner_id}}",
+          "host": [
+            "{{bff_base}}"
+          ],
+          "path": [
+            "acting",
+            "start"
+          ],
+          "query": [
+            {
+              "key": "ownerId",
+              "value": "{{owner_id}}"
+            }
+          ]
+        },
+        "description": "The BFF issues a CSRF state, sets it as an HttpOnly cookie (portal-acting-state), and redirects to IS. We capture the state so step 6 can present it."
+      }
+    },
+    {
+      "name": "5 — IS: mint subject_token  ← COPY IT HERE",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('302 with fragment', () => pm.response.to.have.status(302));",
+              "const loc = pm.response.headers.get('Location') || '';",
+              "console.log('Full Location:', loc);",
+              "",
+              "if (loc.indexOf('#') === -1) {",
+              "  console.error('No fragment — impersonation was DENIED. Check the nomination is ACTIVE and see wso2carbon.log.');",
+              "} else {",
+              "  const frag = new URLSearchParams(loc.split('#')[1]);",
+              "  const st = frag.get('subject_token');",
+              "  if (st) {",
+              "    pm.collectionVariables.set('subject_token', st);",
+              "    console.log('==================== SUBJECT TOKEN ====================');",
+              "    console.log(st);",
+              "    console.log('======================================================');",
+              "    const payload = JSON.parse(atob(st.split('.')[1].replace(/-/g,'+').replace(/_/g,'/')));",
+              "    console.log('sub (owner)   :', payload.sub);",
+              "    console.log('may_act       :', JSON.stringify(payload.may_act));",
+              "    console.log('scope         :', payload.scope);",
+              "    console.log('exp           :', new Date(payload.exp * 1000).toISOString());",
+              "  } else { console.error('No subject_token in fragment:', loc); }",
+              "  pm.test('subject_token captured', () => pm.expect(st).to.be.a('string'));",
+              "}"
+            ]
+          }
+        }
+      ],
+      "protocolProfileBehavior": {
+        "followRedirects": false
+      },
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{is_base}}/oauth2/authorize?client_id={{client_id}}&redirect_uri={{redirect_uri}}&response_type=id_token%20subject_token&requested_subject={{owner_id}}&scope=openid%20internal_user_impersonate%20portal:consents:read:nominee%20portal:consents:write:nominee&state={{acting_state}}&nonce=n{{$randomUUID}}&code_challenge={{code_challenge}}&code_challenge_method=S256",
+          "host": [
+            "{{is_base}}"
+          ],
+          "path": [
+            "oauth2",
+            "authorize"
+          ],
+          "query": [
+            {
+              "key": "client_id",
+              "value": "{{client_id}}"
+            },
+            {
+              "key": "redirect_uri",
+              "value": "{{redirect_uri}}"
+            },
+            {
+              "key": "response_type",
+              "value": "id_token subject_token"
+            },
+            {
+              "key": "requested_subject",
+              "value": "{{owner_id}}"
+            },
+            {
+              "key": "scope",
+              "value": "openid internal_user_impersonate portal:consents:read:nominee portal:consents:write:nominee"
+            },
+            {
+              "key": "state",
+              "value": "{{acting_state}}"
+            },
+            {
+              "key": "nonce",
+              "value": "n{{$randomUUID}}"
+            },
+            {
+              "key": "code_challenge",
+              "value": "{{code_challenge}}"
+            },
+            {
+              "key": "code_challenge_method",
+              "value": "S256"
+            }
+          ]
+        },
+        "description": "THE IMPERSONATION CALL. Rides on the IS session cookie from step 2 — there is no Authorization header, by design.\n\nThe nomination validator runs inside IS here: it asks nominee-service whether the pairing is ACTIVE and trims the scopes to what the owner granted this nominee.\n\nThe subject_token comes back in the URL FRAGMENT of the Location header. This is why 'automatically follow redirects' must be OFF — a browser would never send a fragment to a server, and Postman following the redirect would drop it.\n\nThe token is saved to {{subject_token}} and printed in the Postman Console, decoded."
+      }
+    },
+    {
+      "name": "5b - (reference) REAL IS token exchange - RFC 8693",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "console.log('IS token endpoint returned:', pm.response.code);",
+              "console.log(pm.response.text().substring(0, 400));",
+              "",
+              "if (pm.response.code === 200) {",
+              "  const at = pm.response.json().access_token;",
+              "  const c = JSON.parse(atob(at.split('.')[1].replace(/-/g,'+').replace(/_/g,'/')));",
+              "  console.log('sub  :', c.sub);",
+              "  console.log('act  :', JSON.stringify(c.act));",
+              "  console.log('scope:', c.scope);",
+              "  if (!c.act)   { console.warn('NO act claim - token does not say who acted.'); }",
+              "  if (!c.scope) { console.warn('NO scope claim - the narrowed scopes did not survive.'); }",
+              "} else if (/not ACTIVE/i.test(pm.response.text())) {",
+              "  console.log('EXPECTED ON THIS BUILD.');",
+              "  console.log('IS mints the subject token but never persists it, while the');",
+              "  console.log('token-exchange grant requires a persisted ACTIVE record for');",
+              "  console.log('locally-issued subject tokens. This is why the BFF runs in');",
+              "  console.log('subject-token mode instead.');",
+              "}",
+              "",
+              "console.log('NOTE: the subject token is SINGLE USE. Re-run steps 4 and 5 to mint');",
+              "console.log('a fresh one before running step 6.');"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/x-www-form-urlencoded"
+          }
+        ],
+        "auth": {
+          "type": "basic",
+          "basic": [
+            {
+              "key": "username",
+              "value": "{{client_id}}"
+            },
+            {
+              "key": "password",
+              "value": "{{client_secret}}"
+            }
+          ]
+        },
+        "body": {
+          "mode": "urlencoded",
+          "urlencoded": [
+            {
+              "key": "grant_type",
+              "value": "urn:ietf:params:oauth:grant-type:token-exchange"
+            },
+            {
+              "key": "subject_token",
+              "value": "{{subject_token}}"
+            },
+            {
+              "key": "subject_token_type",
+              "value": "urn:ietf:params:oauth:token-type:jwt"
+            },
+            {
+              "key": "requested_token_type",
+              "value": "urn:ietf:params:oauth:token-type:access_token"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{is_base}}/oauth2/token",
+          "host": [
+            "{{is_base}}"
+          ],
+          "path": [
+            "oauth2",
+            "token"
+          ]
+        },
+        "description": "THE REAL RFC 8693 CALL - the one IS documents. Included so you can see it directly.\n\nThis is what the BFF's /acting/exchange performs internally when\nBFF_IDENTITYSERVER__EXCHANGE_MODE=token-exchange.\n\nWHY THE BFF NORMALLY DOES THIS, NOT THE BROWSER:\n  - it needs the client secret (Basic auth). A browser holding that secret\n    would let anyone mint tokens.\n  - the result goes into an HttpOnly cookie, out of reach of JavaScript.\n  This is also why leaking the subject_token from the URL fragment is\n  survivable: without the secret it cannot be exchanged.\n\nON THIS IS BUILD IT FAILS with:\n  \"Invalid Subject Token. Subject token is not ACTIVE.\"\nSubjectTokenIssuer issues the subject token without persisting it, while\ngrant.token.exchange 1.4.3 requires a persisted ACTIVE record for tokens\nissued locally. Confirmed by IS's own introspection endpoint reporting\n{\"active\": false} for a token it minted a second earlier.\n\nWARNING: the subject token is SINGLE USE. Running this consumes it - re-run\nsteps 4 and 5 for a fresh one before step 6."
+      }
+    },
+    {
+      "name": "6 — BFF: exchange subject_token",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('200 acting session established', () => pm.response.to.have.status(200));",
+              "if (pm.response.code === 200) {",
+              "  const b = pm.response.json();",
+              "  console.log('owner   :', b.ownerId);",
+              "  console.log('nominee :', b.nomineeId);",
+              "  console.log('scopes  :', (b.scopes || []).join(' '));",
+              "  console.log('expires :', b.expiresAt);",
+              "  pm.test('nominee differs from owner', () => pm.expect(b.nomineeId).to.not.equal(b.ownerId));",
+              "} else { console.error(pm.response.text()); }"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"subjectToken\": \"{{subject_token}}\",\n  \"state\": \"{{acting_state}}\"\n}"
+        },
+        "url": {
+          "raw": "{{bff_base}}/acting/exchange",
+          "host": [
+            "{{bff_base}}"
+          ],
+          "path": [
+            "acting",
+            "exchange"
+          ]
+        },
+        "description": "The BFF verifies the token against IS's JWKS (signature, issuer, audience, expiry, delegation claim), checks the state matches the cookie from step 4, and stores the result in an HttpOnly cookie.\n\nA wrong state here returns 400 INVALID_STATE — that is the CSRF guard working."
+      }
+    },
+    {
+      "name": "7 — Acting: list the owner's consents",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "console.log('status', pm.response.code, pm.response.text().substring(0, 300));",
+              "pm.test('200 (requires CONSENT_VIEW + read scope)', () => pm.response.to.have.status(200));",
+              "try {",
+              "  const rows = pm.response.json().data || [];",
+              "  if (rows.length && rows[0].consentId) {",
+              "    pm.collectionVariables.set('consent_id', rows[0].consentId);",
+              "    console.log('consent_id set for step 8:', rows[0].consentId);",
+              "  } else { console.log('No consents for this owner — step 8 needs a real consent id.'); }",
+              "} catch (e) { /* non-JSON error body */ }"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{bff_base}}/acting/consents",
+          "host": [
+            "{{bff_base}}"
+          ],
+          "path": [
+            "acting",
+            "consents"
+          ]
+        },
+        "description": "Two independent checks must both pass: the token must carry portal:consents:read:nominee (fixed at mint time), and nominee-service must confirm CONSENT_VIEW is still granted right now."
+      }
+    },
+    {
+      "name": "8 — Acting: revoke a consent",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "console.log('status', pm.response.code, pm.response.text().substring(0, 300));",
+              "if (pm.response.code === 403) {",
+              "  console.log('403 is CORRECT if this nominee was granted view-only — check the code field.');",
+              "}"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": {
+          "raw": "{{bff_base}}/acting/consents/{{consent_id}}/revoke",
+          "host": [
+            "{{bff_base}}"
+          ],
+          "path": [
+            "acting",
+            "consents",
+            "{{consent_id}}",
+            "revoke"
+          ]
+        },
+        "description": "Requires portal:consents:write:nominee AND a live CONSENT_REVOKE grant.\n\nIf the owner granted view-only, this returns 403 INSUFFICIENT_SCOPE — refused by the token's own scope ceiling, before nominee-service is even asked. That is the behaviour to demo.\n\nThe consent-server audit records the NOMINEE as actionBy, never the owner."
+      }
+    },
+    {
+      "name": "9 — Stop acting",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('204 no content', () => pm.response.to.have.status(204));",
+              "console.log('Acting cookies cleared. Re-run step 7 — it should now 401.');"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": {
+          "raw": "{{bff_base}}/acting/stop",
+          "host": [
+            "{{bff_base}}"
+          ],
+          "path": [
+            "acting",
+            "stop"
+          ]
+        },
+        "description": "Clears the acting cookies for this client. IS cannot revoke an already-issued token, which is why its lifetime is short and why every acting request re-checks the nomination gate."
+      }
+    },
+    {
+      "name": "Nomination management (owner + nominee)",
+      "item": [
+        {
+          "name": "Owner: list my nominees",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{nominee_service}}/me/nominees",
+              "host": [
+                "{{nominee_service}}"
+              ],
+              "path": [
+                "me",
+                "nominees"
+              ]
+            },
+            "description": "Returns a LIST. An owner may nominate any number of people, each with its own permissions and status."
+          }
+        },
+        {
+          "name": "Owner: add a nominee",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nomineeId\": \"1bdcc1bf-e00e-4fd1-92eb-98b33f6a93e3\",\n  \"nomineeEmail\": \"carol@example.com\",\n  \"nomineeNic\": \"NIC-123456\",\n  \"permissions\": [\"CONSENT_VIEW\"]\n}"
+            },
+            "url": {
+              "raw": "{{nominee_service}}/me/nominees",
+              "host": [
+                "{{nominee_service}}"
+              ],
+              "path": [
+                "me",
+                "nominees"
+              ]
+            },
+            "description": "Additive — existing nominees are untouched. Nominating the same person twice returns 409 DUPLICATE_NOMINATION."
+          }
+        },
+        {
+          "name": "Owner: change one nominee's permissions",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"permissions\": [\"CONSENT_VIEW\", \"CONSENT_REVOKE\"]\n}"
+            },
+            "url": {
+              "raw": "{{nominee_service}}/me/nominees/:id",
+              "host": [
+                "{{nominee_service}}"
+              ],
+              "path": [
+                "me",
+                "nominees",
+                ":id"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "NOMINATION_ID_HERE"
+                }
+              ]
+            },
+            "description": "Only affects this nominee. Scoped to the owner — you cannot edit someone else's nomination even with a valid id (returns 404)."
+          }
+        },
+        {
+          "name": "Owner: remove one nominee",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{nominee_service}}/me/nominees/:id",
+              "host": [
+                "{{nominee_service}}"
+              ],
+              "path": [
+                "me",
+                "nominees",
+                ":id"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "NOMINATION_ID_HERE"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Nominee: nominations assigned to me",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{nominee_service}}/nominated-for",
+              "host": [
+                "{{nominee_service}}"
+              ],
+              "path": [
+                "nominated-for"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Nominee: accept a nomination",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{nominee_service}}/nominations/:id/accept",
+              "host": [
+                "{{nominee_service}}"
+              ],
+              "path": [
+                "nominations",
+                ":id",
+                "accept"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "NOMINATION_ID_HERE"
+                }
+              ]
+            },
+            "description": "Only the named nominee may accept. Any other caller gets 403, even with a valid token and the right scope."
+          }
+        },
+        {
+          "name": "Admin: pending activation queue",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{nominee_service}}/admin/nominations/pending",
+              "host": [
+                "{{nominee_service}}"
+              ],
+              "path": [
+                "admin",
+                "nominations",
+                "pending"
+              ]
+            },
+            "description": "Requires the portal:admin scope. Lists nominations in ACCEPTED state awaiting document verification."
+          }
+        },
+        {
+          "name": "Admin: activate a nomination",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ticketReference\": \"LEGAL-2026-001\"\n}"
+            },
+            "url": {
+              "raw": "{{nominee_service}}/admin/nominations/:id/activate",
+              "host": [
+                "{{nominee_service}}"
+              ],
+              "path": [
+                "admin",
+                "nominations",
+                ":id",
+                "activate"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "NOMINATION_ID_HERE"
+                }
+              ]
+            },
+            "description": "The human gate. Requires a ticket reference linking to the legal case file. Only ACTIVE nominations can act."
+          }
+        },
+        {
+          "name": "Admin: deactivate a nomination",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Owner recovered capacity\"\n}"
+            },
+            "url": {
+              "raw": "{{nominee_service}}/admin/nominations/:id/deactivate",
+              "host": [
+                "{{nominee_service}}"
+              ],
+              "path": [
+                "admin",
+                "nominations",
+                ":id",
+                "deactivate"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "NOMINATION_ID_HERE"
+                }
+              ]
+            },
+            "description": "Kill switch. After this, re-run step 7 with the SAME token — it returns 403 NOT_ACTIVE_NOMINEE immediately, without waiting for the token to expire."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Gate (internal, no login needed)",
+      "item": [
+        {
+          "name": "Is this pairing active?",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Internal-Key",
+                "value": "{{gate_key}}"
+              }
+            ],
+            "url": {
+              "raw": "{{nominee_service}}/internal/nominations/active?owner={{owner_id}}&nominee=496152f4-7f45-4ecb-a912-699b08d14d24",
+              "host": [
+                "{{nominee_service}}"
+              ],
+              "path": [
+                "internal",
+                "nominations",
+                "active"
+              ],
+              "query": [
+                {
+                  "key": "owner",
+                  "value": "{{owner_id}}"
+                },
+                {
+                  "key": "nominee",
+                  "value": "496152f4-7f45-4ecb-a912-699b08d14d24"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "What did the owner grant this nominee?",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Internal-Key",
+                "value": "{{gate_key}}"
+              }
+            ],
+            "url": {
+              "raw": "{{nominee_service}}/internal/nominations/permissions?owner={{owner_id}}&nominee=496152f4-7f45-4ecb-a912-699b08d14d24",
+              "host": [
+                "{{nominee_service}}"
+              ],
+              "path": [
+                "internal",
+                "nominations",
+                "permissions"
+              ],
+              "query": [
+                {
+                  "key": "owner",
+                  "value": "{{owner_id}}"
+                },
+                {
+                  "key": "nominee",
+                  "value": "496152f4-7f45-4ecb-a912-699b08d14d24"
+                }
+              ]
+            },
+            "description": "This is the endpoint the IS validator calls at mint time, and the BFF calls on every acting request. Change a nominee's permissions and watch this response change immediately."
+          }
+        }
+      ]
+    }
+  ]
+}

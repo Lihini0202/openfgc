@@ -17,9 +17,11 @@
  */
 
 import { Sidebar } from '@wso2/oxygen-ui'
-import { Clock3, House, ShieldCheck } from '@wso2/oxygen-ui-icons-react'
+import { Clock3, House, ShieldCheck, Users } from '@wso2/oxygen-ui-icons-react'
 import { useTranslation } from 'react-i18next'
 import { useLocation, useNavigate } from 'react-router-dom'
+import { useActingAs } from '../../../features/nominee/actingAs/actingAsContext'
+import { canAccessRoute } from '../../../features/nominee/actingAs/policy'
 
 interface AppSidebarProps {
   collapsed: boolean
@@ -56,7 +58,16 @@ const CONSENT_ITEMS: SidebarItem[] = [
   },
 ]
 
-const SIDEBAR_ITEMS: SidebarItem[] = [...DASHBOARD_ITEMS, ...CONSENT_ITEMS]
+const NOMINEE_ITEMS: SidebarItem[] = [
+  {
+    id: 'nominations',
+    labelKey: 'sidebar.nominations',
+    path: '/nominations',
+    icon: <Users size={18} />,
+  },
+]
+
+const SIDEBAR_ITEMS: SidebarItem[] = [...DASHBOARD_ITEMS, ...CONSENT_ITEMS, ...NOMINEE_ITEMS]
 
 function mapPathToMenuId(pathname: string, search: string): string {
   if (pathname.startsWith('/dashboard')) {
@@ -73,6 +84,10 @@ function mapPathToMenuId(pathname: string, search: string): string {
     return 'all-consents'
   }
 
+  if (pathname.startsWith('/nominations') || pathname.startsWith('/nominee')) {
+    return 'nominations'
+  }
+
   return 'dashboard'
 }
 
@@ -80,8 +95,19 @@ function AppSidebar({ collapsed }: AppSidebarProps): React.JSX.Element {
   const { t } = useTranslation('common')
   const navigate = useNavigate()
   const location = useLocation()
+  const { session } = useActingAs()
 
   const activeItem = mapPathToMenuId(location.pathname, location.search)
+
+  // While acting for an owner, only show what that nominee is allowed to open.
+  const visible = (items: SidebarItem[]): SidebarItem[] =>
+    session
+      ? items.filter((item) => canAccessRoute(item.path.split('?')[0] ?? item.path, session.scope))
+      : items
+
+  const dashboardItems = visible(DASHBOARD_ITEMS)
+  const consentItems = visible(CONSENT_ITEMS)
+  const nomineeItems = visible(NOMINEE_ITEMS)
 
   return (
     <Sidebar
@@ -97,24 +123,39 @@ function AppSidebar({ collapsed }: AppSidebarProps): React.JSX.Element {
       aria-label={t('sidebar.ariaLabel')}
     >
       <Sidebar.Nav>
-        <Sidebar.Category>
-          {DASHBOARD_ITEMS.map((item) => (
-            <Sidebar.Item key={item.id} id={item.id}>
-              <Sidebar.ItemIcon>{item.icon}</Sidebar.ItemIcon>
-              <Sidebar.ItemLabel>{t(item.labelKey)}</Sidebar.ItemLabel>
-            </Sidebar.Item>
-          ))}
-        </Sidebar.Category>
+        {dashboardItems.length > 0 ? (
+          <Sidebar.Category>
+            {dashboardItems.map((item) => (
+              <Sidebar.Item key={item.id} id={item.id}>
+                <Sidebar.ItemIcon>{item.icon}</Sidebar.ItemIcon>
+                <Sidebar.ItemLabel>{t(item.labelKey)}</Sidebar.ItemLabel>
+              </Sidebar.Item>
+            ))}
+          </Sidebar.Category>
+        ) : null}
 
-        <Sidebar.Category>
-          <Sidebar.CategoryLabel>{t('sidebar.consent')}</Sidebar.CategoryLabel>
-          {CONSENT_ITEMS.map((item) => (
-            <Sidebar.Item key={item.id} id={item.id}>
-              <Sidebar.ItemIcon>{item.icon}</Sidebar.ItemIcon>
-              <Sidebar.ItemLabel>{t(item.labelKey)}</Sidebar.ItemLabel>
-            </Sidebar.Item>
-          ))}
-        </Sidebar.Category>
+        {consentItems.length > 0 ? (
+          <Sidebar.Category>
+            <Sidebar.CategoryLabel>{t('sidebar.consent')}</Sidebar.CategoryLabel>
+            {consentItems.map((item) => (
+              <Sidebar.Item key={item.id} id={item.id}>
+                <Sidebar.ItemIcon>{item.icon}</Sidebar.ItemIcon>
+                <Sidebar.ItemLabel>{t(item.labelKey)}</Sidebar.ItemLabel>
+              </Sidebar.Item>
+            ))}
+          </Sidebar.Category>
+        ) : null}
+
+        {nomineeItems.length > 0 ? (
+          <Sidebar.Category>
+            {nomineeItems.map((item) => (
+              <Sidebar.Item key={item.id} id={item.id}>
+                <Sidebar.ItemIcon>{item.icon}</Sidebar.ItemIcon>
+                <Sidebar.ItemLabel>{t(item.labelKey)}</Sidebar.ItemLabel>
+              </Sidebar.Item>
+            ))}
+          </Sidebar.Category>
+        ) : null}
       </Sidebar.Nav>
     </Sidebar>
   )

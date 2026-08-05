@@ -60,6 +60,15 @@ logs/
 # Configuration overrides (keep examples)
 configs/config.local.yaml
 consent-api-server
-main
+/main
 consent-mgt-v1.code-workspace
 
+
+# Java build output (nominee-service, IS extensions)
+target/
+
+# Nominee Service local H2 database
+nominee-service/data/
+
+# WSO2 IS source kept locally for reference only - not part of this project
+is-extensions/is-reference-src/

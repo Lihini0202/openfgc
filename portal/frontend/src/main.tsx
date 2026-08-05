@@ -23,6 +23,7 @@ import { BrowserRouter } from 'react-router-dom'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { OxygenUIThemeProvider, AcrylicOrangeTheme, CssBaseline } from '@wso2/oxygen-ui'
 import App from './App'
+import ActingAsProvider from './features/nominee/actingAs/ActingAsProvider'
 import i18n from './i18n/i18n'
 import queryClient from './utils/queryClient'
 
@@ -39,7 +40,9 @@ createRoot(rootElement).render(
       <I18nextProvider i18n={i18n}>
         <QueryClientProvider client={queryClient}>
           <BrowserRouter>
-            <App />
+            <ActingAsProvider>
+              <App />
+            </ActingAsProvider>
           </BrowserRouter>
         </QueryClientProvider>
       </I18nextProvider>

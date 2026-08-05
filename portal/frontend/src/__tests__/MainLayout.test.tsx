@@ -16,6 +16,7 @@
  * under the License.
  */
 
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { AcrylicOrangeTheme, CssBaseline, OxygenUIThemeProvider } from '@wso2/oxygen-ui'
 import { I18nextProvider } from 'react-i18next'
@@ -23,7 +24,17 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import HeaderBreadcrumbs from '../components/layout/main-layout/HeaderBreadcrumbs'
 import MainLayout from '../components/layout/main-layout/MainLayout'
+import AppSidebar from '../components/layout/sidebar/AppSidebar'
 import i18n from '../i18n/i18n'
+
+function createQueryClient(): QueryClient {
+  return new QueryClient({
+    defaultOptions: {
+      queries: { retry: false },
+      mutations: { retry: false },
+    },
+  })
+}
 
 interface MockSidebarProps {
   collapsed: boolean
@@ -41,18 +52,20 @@ afterEach(() => {
 
 function renderMainLayout(initialRoute = '/'): void {
   render(
-    <OxygenUIThemeProvider theme={AcrylicOrangeTheme}>
-      <CssBaseline />
-      <I18nextProvider i18n={i18n}>
-        <MemoryRouter initialEntries={[initialRoute]}>
-          <Routes>
-            <Route path="/" element={<MainLayout />}>
-              <Route index element={<h1>Nested route content</h1>} />
-            </Route>
-          </Routes>
-        </MemoryRouter>
-      </I18nextProvider>
-    </OxygenUIThemeProvider>,
+    <QueryClientProvider client={createQueryClient()}>
+      <OxygenUIThemeProvider theme={AcrylicOrangeTheme}>
+        <CssBaseline />
+        <I18nextProvider i18n={i18n}>
+          <MemoryRouter initialEntries={[initialRoute]}>
+            <Routes>
+              <Route path="/" element={<MainLayout sidebar={AppSidebar} />}>
+                <Route index element={<h1>Nested route content</h1>} />
+              </Route>
+            </Routes>
+          </MemoryRouter>
+        </I18nextProvider>
+      </OxygenUIThemeProvider>
+    </QueryClientProvider>,
   )
 }
 

@@ -36,6 +36,21 @@ export class APIError extends Error {
 
 interface RequestOptions extends RequestInit {
   query?: Record<string, string | number | boolean | undefined>
+  /** Overrides VITE_API_BASE_URL - used for calls that target Nominee Service instead of the BFF. */
+  baseURL?: string
+}
+
+// Matches BFF_AUTH__ACCESS_TOKEN_PART1_COOKIE. This half of the split access
+// token is deliberately NOT HttpOnly - the backend expects us to read it and
+// attach it as a Bearer header ourselves; only the other half rides along
+// automatically as an HttpOnly cookie via credentials: 'include'.
+const ACCESS_TOKEN_PART1_COOKIE = 'portal-at-p1'
+
+function readCookie(name: string): string | undefined {
+  const match = document.cookie
+    .split('; ')
+    .find((entry) => entry.startsWith(`${name}=`))
+  return match ? decodeURIComponent(match.slice(name.length + 1)) : undefined
 }
 
 function buildHeaders(headers?: HeadersInit): Headers {
@@ -45,14 +60,21 @@ function buildHeaders(headers?: HeadersInit): Headers {
     normalizedHeaders.set('Accept', 'application/json')
   }
 
+  if (!normalizedHeaders.has('Authorization')) {
+    const accessTokenPart1 = readCookie(ACCESS_TOKEN_PART1_COOKIE)
+    if (accessTokenPart1) {
+      normalizedHeaders.set('Authorization', `Bearer ${accessTokenPart1}`)
+    }
+  }
+
   return normalizedHeaders
 }
 
 /**
  * Builds an absolute request URL from the configured API base URL and query params.
  */
-function buildURL(path: string, query?: RequestOptions['query']): string {
-  const baseURL = import.meta.env.VITE_API_BASE_URL
+function buildURL(path: string, query?: RequestOptions['query'], baseURLOverride?: string): string {
+  const baseURL = baseURLOverride ?? import.meta.env.VITE_API_BASE_URL
 
   if (!baseURL) {
     throw new Error('VITE_API_BASE_URL is required to send API requests.')
@@ -84,8 +106,8 @@ function buildURL(path: string, query?: RequestOptions['query']): string {
  * Use this helper for endpoints that always return a JSON payload.
  */
 export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const { query, headers, ...requestInit } = options
-  const response = await fetch(buildURL(path, query), {
+  const { query, headers, baseURL, ...requestInit } = options
+  const response = await fetch(buildURL(path, query, baseURL), {
     credentials: 'include',
     ...requestInit,
     headers: buildHeaders(headers),
@@ -127,8 +149,8 @@ export async function apiRequestNoContent(
   path: string,
   options: RequestOptions = {},
 ): Promise<void> {
-  const { query, headers, ...requestInit } = options
-  const response = await fetch(buildURL(path, query), {
+  const { query, headers, baseURL, ...requestInit } = options
+  const response = await fetch(buildURL(path, query, baseURL), {
     credentials: 'include',
     ...requestInit,
     headers: buildHeaders(headers),
