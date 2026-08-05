@@ -191,9 +191,6 @@ jobs:
             sleep 2
           done
 
-      - name: 🔨 Build Server Binary for Integration Tests
-        run: ./build.sh build linux amd64
-
       - name: 🧪 Run Integration Tests
         run: ./build.sh test_integration
 

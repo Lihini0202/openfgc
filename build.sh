@@ -65,9 +65,13 @@ fi
 BINARY_NAME="consent-server"
 TARGET_DIR="target"
 OUTPUT_DIR="$TARGET_DIR/server"
+INTEGRATION_OUTPUT_DIR="${INTEGRATION_OUTPUT_DIR:-$TARGET_DIR/server-integration}"
 DIST_DIR="$TARGET_DIR/dist"
 SOURCE_DIR="consent-server/cmd/server"
 CONFIG_SOURCE="consent-server/cmd/server/repository/conf/deployment.yaml"
+CONFIG_TARGET="$OUTPUT_DIR/repository/conf/deployment.yaml"
+TEST_CONFIG_SOURCE_MYSQL="tests/integration/repository/conf/deployment.yaml"
+TEST_CONFIG_SOURCE_SQLITE="tests/integration/repository/conf/deployment-sqlite.yaml"
 
 # Package naming
 PACKAGE_OS=$GO_OS
@@ -135,7 +139,7 @@ function build_binary() {
 
     # Copy configuration
     echo "Copying configuration..."
-    cp "$CONFIG_SOURCE" "$OUTPUT_DIR/repository/conf/deployment.yaml"
+    cp "$CONFIG_SOURCE" "$CONFIG_TARGET"
 
     # Copy start script
     echo "Copying start script..."
@@ -179,7 +183,7 @@ function build_binary() {
     echo "Build output:"
     echo "  Binary: $OUTPUT_DIR/$output_binary"
     echo "  Start Script: $OUTPUT_DIR/start.sh"
-    echo "  Config: $OUTPUT_DIR/repository/conf/deployment.yaml"
+    echo "  Config: $CONFIG_TARGET"
     if [ -d "$OUTPUT_DIR/dbscripts" ]; then
         echo "  DB Scripts: $OUTPUT_DIR/dbscripts/"
     fi
@@ -270,21 +274,35 @@ function test_integration() {
     echo "================================================================"
     echo "Running integration tests..."
 
+    OUTPUT_DIR="$INTEGRATION_OUTPUT_DIR"
+    CONFIG_TARGET="$OUTPUT_DIR/repository/conf/deployment.yaml"
+    local test_server_dir="../../$OUTPUT_DIR"
+    echo "Integration server output: $OUTPUT_DIR"
+
+    # Select database type: default mysql, override with DB_TYPE env var
+    local db_type="${DB_TYPE:-mysql}"
+    echo "Database type: $db_type"
+
     # Clean test cache to ensure tests run with latest changes
     echo "Cleaning test cache..."
     go clean -testcache
 
-    # Build the server first if binary doesn't exist
-    if [ ! -f "$OUTPUT_DIR/$BINARY_NAME" ]; then
-        echo "Binary not found. Building first..."
-        build_binary
+    # Build a dedicated integration-test server so normal build outputs are untouched.
+    build_binary
+
+    # Select test config based on DB_TYPE
+    local test_config_source
+    if [ "$db_type" = "sqlite" ]; then
+        test_config_source="$TEST_CONFIG_SOURCE_SQLITE"
+    else
+        test_config_source="$TEST_CONFIG_SOURCE_MYSQL"
     fi
 
     # Replace app config with test config for integration tests
     echo "Copying test configuration..."
-    if [ -f "tests/integration/repository/conf/deployment.yaml" ]; then
-        cp tests/integration/repository/conf/deployment.yaml "$OUTPUT_DIR/repository/conf/deployment.yaml"
-        echo "✓ Test configuration copied"
+    if [ -f "$test_config_source" ]; then
+        cp "$test_config_source" "$CONFIG_TARGET"
+        echo "✓ Test configuration copied ($test_config_source)"
     else
         echo "⚠ Warning: Test configuration not found, using default config"
     fi
@@ -292,8 +310,10 @@ function test_integration() {
     # Run integration test suite
     echo "Starting integration test suite..."
     cd tests/integration || exit 1
-    go run main.go
+    set +e
+    TEST_SERVER_DIR="$test_server_dir" DB_TYPE="$db_type" go run main.go
     TEST_EXIT_CODE=$?
+    set -e
     cd "$SCRIPT_DIR" || exit 1
 
     if [ $TEST_EXIT_CODE -ne 0 ]; then

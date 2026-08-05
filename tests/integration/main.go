@@ -78,13 +78,16 @@ func runTests() error {
 		"./consentelement",
 		"./consentpurpose",
 		"./consent",
+		"./authresource",
 	}
+	serverPort := testutils.GetServerPort()
 
 	for _, pkg := range packages {
 		fmt.Printf("\nRunning tests in %s...\n", pkg)
 		cmd := exec.Command("go", "test", "-v", pkg)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
+		cmd.Env = append(os.Environ(), testutils.TestServerPortEnv+"="+serverPort)
 
 		if err := cmd.Run(); err != nil {
 			return fmt.Errorf("tests failed in package %s: %w", pkg, err)

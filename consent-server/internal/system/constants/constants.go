@@ -25,6 +25,7 @@ const (
 	RequestIdHeaderName     = "X-Request-ID"
 	TraceIDHeaderName       = "X-Trace-ID"
 	HeaderOrgID             = "org-id"
+	HeaderGroupID           = "group-id"
 	HeaderTPPClientID       = "TPP-client-id"
 
 	// Content Types

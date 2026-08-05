@@ -20,21 +20,25 @@
 package main
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/wso2/openfgc/internal/authresource"
 	"github.com/wso2/openfgc/internal/consent"
 	"github.com/wso2/openfgc/internal/consentelement"
 	"github.com/wso2/openfgc/internal/consentpurpose"
+	"github.com/wso2/openfgc/internal/system/config"
 	"github.com/wso2/openfgc/internal/system/healthcheck/handler"
 	"github.com/wso2/openfgc/internal/system/log"
 	"github.com/wso2/openfgc/internal/system/stores"
 )
 
+// cancelScheduler holds the cancel function for the consent expiration scheduler goroutine.
+// It is set by startConsentExpirationScheduler and called by unregisterServices on shutdown.
+var cancelScheduler context.CancelFunc
+
 // registerServices registers all consent management services with the provided HTTP multiplexer.
-func registerServices(
-	mux *http.ServeMux,
-) {
+func registerServices(mux *http.ServeMux) {
 	logger := log.GetLogger()
 
 	// Create Store Registry with all stores
@@ -56,12 +60,36 @@ func registerServices(
 	consentpurpose.Initialize(mux, storeRegistry)
 	logger.Debug("ConsentPurpose module initialized")
 
-	consent.Initialize(mux, storeRegistry)
+	svc := consent.Initialize(mux, storeRegistry)
 	logger.Debug("Consent module initialized")
 
-	// Register health check endpoints
+	startConsentExpirationScheduler(svc)
+
 	registerHealthCheckEndpoints(mux)
 	logger.Debug("Health check endpoints registered")
+}
+
+// startConsentExpirationScheduler starts the background scheduler for expiring eligible consents.
+// If periodical expiration is disabled in config, the scheduler is not started.
+func startConsentExpirationScheduler(svc consent.ConsentService) {
+	logger := log.GetLogger()
+
+	cfg := config.Get()
+
+	if !cfg.Consent.PeriodicalExpiration.Enabled {
+		logger.Info("Consent periodical expiration is disabled — skipping scheduler startup")
+		return
+	}
+
+	interval := cfg.Consent.GetExpirationFrequency()
+	statuses := consent.ExpirationStatuses{
+		ExpirableConsentStatuses: cfg.Consent.GetEligibleConsentStatuses(),
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancelScheduler = cancel
+	go consent.StartScheduler(ctx, svc, interval, statuses)
+	logger.Info("Consent expiration scheduler started", log.String("interval", interval.String()))
 }
 
 // registerHealthCheckEndpoints registers the health check endpoints.
@@ -79,8 +107,8 @@ func registerHealthCheckEndpoints(mux *http.ServeMux) {
 }
 
 // unregisterServices performs cleanup of all services during shutdown.
-// Currently a placeholder for future service cleanup needs.
 func unregisterServices() {
-	// Future: Add any service-specific cleanup logic here
-	// e.g., closing connections, flushing caches, etc.
+	if cancelScheduler != nil {
+		cancelScheduler()
+	}
 }

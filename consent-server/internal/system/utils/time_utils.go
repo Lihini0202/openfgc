@@ -25,13 +25,3 @@ import "time"
 func GetCurrentTimeMillis() int64 {
 	return time.Now().UnixNano() / int64(time.Millisecond)
 }
-
-// MillisToTime converts milliseconds since epoch to time.Time.
-func MillisToTime(millis int64) time.Time {
-	return time.Unix(0, millis*int64(time.Millisecond))
-}
-
-// TimeToMillis converts time.Time to milliseconds since epoch.
-func TimeToMillis(t time.Time) int64 {
-	return t.UnixNano() / int64(time.Millisecond)
-}

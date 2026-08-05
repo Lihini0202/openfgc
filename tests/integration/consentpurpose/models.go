@@ -18,51 +18,104 @@
 
 package consentpurpose
 
-// PurposeCreateRequest represents the request payload for creating a purpose
-type PurposeCreateRequest struct {
-	Name        string           `json:"name"`
-	Description string           `json:"description,omitempty"`
-	Elements    []PurposeElement `json:"elements"`
+// =============================================================================
+// Request types — what we send to the server.
+// These mirror the server's model/consent_purpose.go API request types exactly.
+// =============================================================================
+
+// CreatePurposeRequest is the body for POST /consent-purposes.
+// The group-id is read from the request header, not this body.
+type CreatePurposeRequest struct {
+	Name        string              `json:"name"`
+	DisplayName *string             `json:"displayName,omitempty"`
+	Description *string             `json:"description,omitempty"`
+	Properties  map[string]string   `json:"properties,omitempty"`
+	Elements    []ElementRefRequest `json:"elements,omitempty"`
 }
 
-// PurposeUpdateRequest represents the request payload for updating a purpose
-type PurposeUpdateRequest struct {
-	Name        string           `json:"name"`
-	Description string           `json:"description,omitempty"`
-	Elements    []PurposeElement `json:"elements"`
+// CreatePurposeVersionRequest is the body for POST /consent-purposes/{purposeId}/versions.
+type CreatePurposeVersionRequest struct {
+	DisplayName *string             `json:"displayName,omitempty"`
+	Description *string             `json:"description,omitempty"`
+	Properties  map[string]string   `json:"properties,omitempty"`
+	Elements    []ElementRefRequest `json:"elements,omitempty"`
 }
 
-// PurposeElement represents an element within a purpose
-type PurposeElement struct {
-	Name        string `json:"name"`
-	IsMandatory bool   `json:"isMandatory"`
+// ElementRefRequest identifies an element within a purpose create or version request body.
+type ElementRefRequest struct {
+	Name      string  `json:"name"`
+	Namespace string  `json:"namespace,omitempty"` // defaults to "default" when absent
+	Version   *string `json:"version,omitempty"`   // nil = use latest; "v1", "v2", …
+	Mandatory bool    `json:"mandatory"`
 }
 
-// PurposeResponse represents the response for a purpose
+// =============================================================================
+// Response types — what we receive from the server.
+// Field names mirror the server's model/consent_purpose.go response types exactly.
+// If the server renames a field, unmarshalling will silently zero it — the
+// assertions in the test files will catch the drift.
+// =============================================================================
+
+// PurposeElementResponse is one element entry within a PurposeResponse or PurposeVersionItem.
+type PurposeElementResponse struct {
+	ElementID string `json:"elementId"`
+	Name      string `json:"name"`
+	Namespace string `json:"namespace"`
+	Version   string `json:"version"` // "v1", "v2", …
+	Mandatory bool   `json:"mandatory"`
+}
+
+// PurposeResponse is returned by:
+//   - POST   /consent-purposes              (HTTP 201)
+//   - GET    /consent-purposes/{purposeId}  (HTTP 200, latest version)
+//   - POST   /consent-purposes/{purposeId}/versions        (HTTP 201)
+//   - GET    /consent-purposes/{purposeId}/versions/{ver}  (HTTP 200)
 type PurposeResponse struct {
-	ID          string           `json:"id"`
-	Name        string           `json:"name"`
-	Description *string          `json:"description,omitempty"`
-	ClientID    string           `json:"clientId"`
-	Elements    []PurposeElement `json:"elements"`
-	CreatedTime int64            `json:"createdTime"`
-	UpdatedTime int64            `json:"updatedTime"`
+	PurposeID   string                   `json:"purposeId"`
+	Name        string                   `json:"name"`
+	GroupID     string                   `json:"groupId"`
+	Version     string                   `json:"version"` // "v1", "v2", …
+	DisplayName *string                  `json:"displayName,omitempty"`
+	Description *string                  `json:"description,omitempty"`
+	Properties  map[string]string        `json:"properties,omitempty"`
+	Elements    []PurposeElementResponse `json:"elements,omitempty"`
+	CreatedTime int64                    `json:"createdTime"`
 }
 
-// PurposeListResponse represents the response for listing purposes
-type PurposeListResponse struct {
-	Data     []PurposeResponse   `json:"data"`
-	Metadata PurposeListMetadata `json:"metadata"`
-}
-
-// PurposeListMetadata represents metadata for list operations
-type PurposeListMetadata struct {
+// PageMetadata carries pagination state in all list responses.
+type PageMetadata struct {
 	Total  int `json:"total"`
 	Offset int `json:"offset"`
+	Count  int `json:"count"`
 	Limit  int `json:"limit"`
 }
 
-// ErrorResponse represents error response from the API
+// PurposeListResponse is the body returned by GET /consent-purposes.
+type PurposeListResponse struct {
+	Data     []PurposeResponse `json:"data"`
+	Metadata PageMetadata      `json:"metadata"`
+}
+
+// PurposeVersionItem is one entry inside PurposeVersionListResponse.Versions.
+// Purpose-level fields (Name, GroupID) are hoisted to the parent object.
+type PurposeVersionItem struct {
+	Version     string                   `json:"version"`
+	DisplayName *string                  `json:"displayName,omitempty"`
+	Description *string                  `json:"description,omitempty"`
+	Properties  map[string]string        `json:"properties,omitempty"`
+	Elements    []PurposeElementResponse `json:"elements,omitempty"`
+	CreatedTime int64                    `json:"createdTime"`
+}
+
+// PurposeVersionListResponse is the body returned by GET /consent-purposes/{purposeId}/versions.
+type PurposeVersionListResponse struct {
+	PurposeID string               `json:"purposeId"`
+	Name      string               `json:"name"`
+	GroupID   string               `json:"groupId"`
+	Versions  []PurposeVersionItem `json:"versions"`
+}
+
+// ErrorResponse is the structured error body the server returns on HTTP 4xx/5xx.
 type ErrorResponse struct {
 	Code        string `json:"code"`
 	Message     string `json:"message"`

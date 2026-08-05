@@ -161,7 +161,7 @@ func (d *dbProvider) initializeClient() {
 	defer d.consentMutex.Unlock()
 
 	if err := d.initializeClientLocked(); err != nil {
-		logger.Error("Failed to initialize consent database client", log.Error(err))
+		logger.Fatal("Failed to initialize consent database client", log.Error(err))
 	}
 }
 
