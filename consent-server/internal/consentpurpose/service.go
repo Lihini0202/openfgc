@@ -25,8 +25,8 @@ import (
 	"time"
 
 	"github.com/go-sql-driver/mysql"
-	"github.com/wso2/openfgc/internal/consentpurpose/model"
 	elementmodel "github.com/wso2/openfgc/internal/consentelement/model"
+	"github.com/wso2/openfgc/internal/consentpurpose/model"
 	dbmodel "github.com/wso2/openfgc/internal/system/database/model"
 	"github.com/wso2/openfgc/internal/system/error/serviceerror"
 	"github.com/wso2/openfgc/internal/system/log"
@@ -552,6 +552,8 @@ func pvToOutput(pv *model.PurposeVersion) *model.PurposeOutput {
 			Name:             e.Name,
 			Namespace:        e.Namespace,
 			VersionNum:       e.VersionNum,
+			DisplayName:      e.DisplayName,
+			Description:      e.Description,
 			Mandatory:        e.Mandatory,
 		})
 	}

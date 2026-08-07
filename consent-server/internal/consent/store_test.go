@@ -22,6 +22,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/wso2/openfgc/internal/consent/model"
 )
 
 // =============================================================================
@@ -480,4 +482,70 @@ func TestMapToConsentApprovalRow_NullableFieldsAreNil(t *testing.T) {
 	require.False(t, ar.Mandatory)
 	require.False(t, ar.Approved)
 	require.Nil(t, ar.Value)
+}
+
+func TestBuildConsentSearchOrderBy_Default(t *testing.T) {
+	orderBy := buildConsentSearchOrderBy(nil)
+	require.Equal(t, "CONSENT.CREATED_TIME DESC, CONSENT.CONSENT_ID ASC", orderBy)
+}
+
+func TestBuildConsentSearchOrderBy_CustomMultiField(t *testing.T) {
+	orderBy := buildConsentSearchOrderBy([]model.ConsentSort{
+		{
+			Field:     model.ConsentSortFieldStatus,
+			Direction: model.ConsentSortDirectionAsc,
+		},
+		{
+			Field:     model.ConsentSortFieldValidityTime,
+			Direction: model.ConsentSortDirectionAsc,
+		},
+		{
+			Field:     model.ConsentSortFieldCreatedTime,
+			Direction: model.ConsentSortDirectionDesc,
+		},
+	})
+
+	require.Equal(t,
+		"CONSENT.CURRENT_STATUS ASC, CASE WHEN CONSENT.EXPIRATION_TIME IS NULL THEN 1 ELSE 0 END ASC, CONSENT.EXPIRATION_TIME ASC, CONSENT.CREATED_TIME DESC, CONSENT.CONSENT_ID ASC",
+		orderBy)
+}
+
+func TestBuildConsentSearchOrderBy_ValidityTimeDescTreatsNoExpiryAsLatest(t *testing.T) {
+	orderBy := buildConsentSearchOrderBy([]model.ConsentSort{
+		{
+			Field:     model.ConsentSortFieldValidityTime,
+			Direction: model.ConsentSortDirectionDesc,
+		},
+	})
+
+	require.Equal(t,
+		"CASE WHEN CONSENT.EXPIRATION_TIME IS NULL THEN 0 ELSE 1 END ASC, CONSENT.EXPIRATION_TIME DESC, CONSENT.CONSENT_ID ASC",
+		orderBy)
+}
+
+func TestBuildConsentSearchOrderBy_InvalidValuesFallbackSafely(t *testing.T) {
+	orderBy := buildConsentSearchOrderBy([]model.ConsentSort{
+		{
+			Field:     model.ConsentSortField("unsupported"),
+			Direction: model.ConsentSortDirectionAsc,
+		},
+		{
+			Field:     model.ConsentSortFieldCreatedTime,
+			Direction: model.ConsentSortDirection("SIDEWAYS"),
+		},
+	})
+
+	require.Equal(t, "CONSENT.CREATED_TIME DESC, CONSENT.CONSENT_ID ASC", orderBy)
+}
+
+func TestBuildExpiredConsentsQuery_PostgresUsesDollarPlaceholders(t *testing.T) {
+	q := buildExpiredConsentsQuery(2)
+	require.Equal(t,
+		"SELECT "+consentColumns+" FROM CONSENT WHERE EXPIRATION_TIME < $1 AND CURRENT_STATUS IN ($2,$3)",
+		q.PostgresQuery,
+	)
+	require.Equal(t,
+		"SELECT "+consentColumns+" FROM CONSENT WHERE EXPIRATION_TIME < ? AND CURRENT_STATUS IN (?,?)",
+		q.Query,
+	)
 }

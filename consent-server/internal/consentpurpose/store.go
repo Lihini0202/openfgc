@@ -116,11 +116,11 @@ var (
 
 	QueryGetPurposeVersionElements = dbmodel.DBQuery{
 		ID: "GET_PURPOSE_VERSION_ELEMENTS",
-		Query: `SELECT m.ELEMENT_VERSION_ID, e.ID AS ELEMENT_ID, e.NAME, e.NAMESPACE, e.VERSION, m.MANDATORY, e.TYPE, e.ELEMENT_SCHEMA
+		Query: `SELECT m.ELEMENT_VERSION_ID, e.ID AS ELEMENT_ID, e.NAME, e.NAMESPACE, e.VERSION, e.DISPLAY_NAME, e.DESCRIPTION, m.MANDATORY, e.TYPE, e.ELEMENT_SCHEMA
 				FROM PURPOSE_ELEMENT_MAPPING m
 				JOIN ELEMENT e ON m.ELEMENT_VERSION_ID = e.VERSION_ID
 				WHERE m.PURPOSE_VERSION_ID = ? AND m.ORG_ID = ?`,
-		PostgresQuery: `SELECT m.ELEMENT_VERSION_ID, e.ID AS ELEMENT_ID, e.NAME, e.NAMESPACE, e.VERSION, m.MANDATORY, e.TYPE, e.ELEMENT_SCHEMA
+		PostgresQuery: `SELECT m.ELEMENT_VERSION_ID, e.ID AS ELEMENT_ID, e.NAME, e.NAMESPACE, e.VERSION, e.DISPLAY_NAME, e.DESCRIPTION, m.MANDATORY, e.TYPE, e.ELEMENT_SCHEMA
 				FROM PURPOSE_ELEMENT_MAPPING m
 				JOIN ELEMENT e ON m.ELEMENT_VERSION_ID = e.VERSION_ID
 				WHERE m.PURPOSE_VERSION_ID = $1 AND m.ORG_ID = $2`,
@@ -618,7 +618,7 @@ func (s *store) batchPopulateElements(dbClient provider.DBClientInterface, versi
 	args = append(args, orgID)
 
 	rawSQL := fmt.Sprintf(
-		`SELECT m.PURPOSE_VERSION_ID, m.ELEMENT_VERSION_ID, e.ID AS ELEMENT_ID, e.NAME, e.NAMESPACE, e.VERSION, m.MANDATORY, e.TYPE, e.ELEMENT_SCHEMA
+		`SELECT m.PURPOSE_VERSION_ID, m.ELEMENT_VERSION_ID, e.ID AS ELEMENT_ID, e.NAME, e.NAMESPACE, e.VERSION, e.DISPLAY_NAME, e.DESCRIPTION, m.MANDATORY, e.TYPE, e.ELEMENT_SCHEMA
 		 FROM PURPOSE_ELEMENT_MAPPING m
 		 JOIN ELEMENT e ON m.ELEMENT_VERSION_ID = e.VERSION_ID
 		 WHERE m.PURPOSE_VERSION_ID IN (%s) AND m.ORG_ID = ?`,
@@ -685,6 +685,8 @@ func mapToPurposeMappedElement(row map[string]interface{}) model.PurposeMappedEl
 		Name:             getString(row, "name"),
 		Namespace:        getString(row, "namespace"),
 		VersionNum:       getInt(row, "version"),
+		DisplayName:      getStringPtr(row, "display_name"),
+		Description:      getStringPtr(row, "description"),
 		Mandatory:        getBool(row, "mandatory"),
 		ElementType:      getString(row, "type"),
 		Schema:           getStringPtr(row, "element_schema"),

@@ -193,6 +193,8 @@ func TestMapToPurposeMappedElement(t *testing.T) {
 		"name":               "email",
 		"namespace":          "default",
 		"version":            int64(3),
+		"display_name":       "Email address",
+		"description":        "The user's email address",
 		"mandatory":          true,
 	}
 	elem := mapToPurposeMappedElement(row)
@@ -201,6 +203,8 @@ func TestMapToPurposeMappedElement(t *testing.T) {
 	require.Equal(t, "email", elem.Name)
 	require.Equal(t, "default", elem.Namespace)
 	require.Equal(t, 3, elem.VersionNum)
+	require.Equal(t, "Email address", *elem.DisplayName)
+	require.Equal(t, "The user's email address", *elem.Description)
 	require.True(t, elem.Mandatory)
 }
 

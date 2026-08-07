@@ -100,14 +100,49 @@ func (h *consentHandler) getConsent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	out, serviceErr := h.service.GetConsent(ctx, consentID, orgID)
+	includeStatusHistory := r.URL.Query().Get("includeStatusHistory") == "true"
+	details := r.URL.Query().Get("details") == "true"
+	var out *model.ConsentOutput
+	var serviceErr *serviceerror.ServiceError
+	if includeStatusHistory {
+		out, serviceErr = h.service.GetConsentWithStatusHistory(ctx, consentID, orgID)
+	} else {
+		out, serviceErr = h.service.GetConsent(ctx, consentID, orgID)
+	}
 	if serviceErr != nil {
 		utils.SendError(w, r, serviceErr)
 		return
 	}
 
 	w.Header().Set(constants.HeaderContentType, constants.ContentTypeJSON)
-	json.NewEncoder(w).Encode(consentOutputToResponse(out))
+	json.NewEncoder(w).Encode(consentOutputToResponseWithDetails(out, details))
+}
+
+// getConsentHistory handles GET /consents/{consentId}/history
+func (h *consentHandler) getConsentHistory(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	consentID := r.PathValue("consentId")
+	orgID := r.Header.Get(constants.HeaderOrgID)
+
+	if err := utils.ValidateOrgID(orgID); err != nil {
+		utils.SendError(w, r, serviceerror.CustomServiceError(ErrorValidationFailed, err.Error()))
+		return
+	}
+
+	if err := utils.ValidateConsentID(consentID); err != nil {
+		utils.SendError(w, r, serviceerror.CustomServiceError(ErrorValidationFailed, err.Error()))
+		return
+	}
+
+	includeSnapshots := r.URL.Query().Get("includeSnapshots") == "true"
+	out, serviceErr := h.service.GetConsentHistory(ctx, consentID, orgID, includeSnapshots)
+	if serviceErr != nil {
+		utils.SendError(w, r, serviceErr)
+		return
+	}
+
+	w.Header().Set(constants.HeaderContentType, constants.ContentTypeJSON)
+	json.NewEncoder(w).Encode(consentHistoryOutputToResponse(out))
 }
 
 // listConsents handles GET /consents
@@ -245,6 +280,23 @@ func (h *consentHandler) listConsents(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	sortParams := r.URL.Query()["sort"]
+	if len(sortParams) > 1 {
+		utils.SendError(w, r, serviceerror.CustomServiceError(ErrorValidationFailed, "exactly one sort parameter is allowed"))
+		return
+	}
+	sortParam := ""
+	if len(sortParams) == 1 {
+		sortParam = sortParams[0]
+	}
+
+	sorts, err := parseConsentSorts(sortParam)
+	if err != nil {
+		utils.SendError(w, r, serviceerror.CustomServiceError(ErrorValidationFailed, err.Error()))
+		return
+	}
+	filters.Sort = sorts
+
 	// purposeVersion requires purposeName
 	if filters.PurposeVersion != nil && filters.PurposeName == "" {
 		utils.SendError(w, r, serviceerror.CustomServiceError(ErrorValidationFailed,
@@ -271,7 +323,8 @@ func (h *consentHandler) listConsents(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set(constants.HeaderContentType, constants.ContentTypeJSON)
-	json.NewEncoder(w).Encode(consentListOutputToResponse(listOut))
+	details := r.URL.Query().Get("details") == "true"
+	json.NewEncoder(w).Encode(consentListOutputToResponse(listOut, details))
 }
 
 // updateConsent handles PUT /consents/{consentId}
@@ -416,6 +469,40 @@ func (h *consentHandler) searchConsentsByAttribute(w http.ResponseWriter, r *htt
 	})
 }
 
+// getGroupIDsByUserID handles GET /consents/group-ids
+func (h *consentHandler) getGroupIDsByUserID(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	orgID := r.Header.Get(constants.HeaderOrgID)
+
+	if err := utils.ValidateOrgID(orgID); err != nil {
+		utils.SendError(w, r, serviceerror.CustomServiceError(ErrorValidationFailed, err.Error()))
+		return
+	}
+
+	userIDs := r.URL.Query()["userId"]
+	if len(userIDs) == 0 || userIDs[0] == "" {
+		utils.SendError(w, r, serviceerror.CustomServiceError(ErrorValidationFailed, "userId parameter is required"))
+		return
+	}
+	if len(userIDs) > 1 {
+		utils.SendError(w, r, serviceerror.CustomServiceError(ErrorValidationFailed, "exactly one userId parameter is required"))
+		return
+	}
+
+	out, serviceErr := h.service.GetGroupIDsByUserID(ctx, userIDs[0], orgID)
+	if serviceErr != nil {
+		utils.SendError(w, r, serviceErr)
+		return
+	}
+
+	w.Header().Set(constants.HeaderContentType, constants.ContentTypeJSON)
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(&model.ConsentGroupIDsResponse{
+		GroupIDs: out.GroupIDs,
+		Count:    out.Count,
+	})
+}
+
 // =============================================================================
 // Request → service input converters
 // =============================================================================
@@ -479,6 +566,83 @@ func requestToUpdateInput(req model.ConsentUpdateRequest) (model.UpdateConsentIn
 	}, nil
 }
 
+func parseConsentSorts(raw string) ([]model.ConsentSort, error) {
+	const maxConsentSortFields = 3
+
+	if strings.TrimSpace(raw) == "" {
+		return []model.ConsentSort{{
+			Field:     model.ConsentSortFieldCreatedTime,
+			Direction: model.ConsentSortDirectionDesc,
+		}}, nil
+	}
+
+	supportedFields := map[string]model.ConsentSortField{
+		string(model.ConsentSortFieldCreatedTime):  model.ConsentSortFieldCreatedTime,
+		string(model.ConsentSortFieldUpdatedTime):  model.ConsentSortFieldUpdatedTime,
+		string(model.ConsentSortFieldValidityTime): model.ConsentSortFieldValidityTime,
+		string(model.ConsentSortFieldStatus):       model.ConsentSortFieldStatus,
+		string(model.ConsentSortFieldGroupID):      model.ConsentSortFieldGroupID,
+		string(model.ConsentSortFieldConsentType):  model.ConsentSortFieldConsentType,
+	}
+
+	items := strings.Split(raw, ",")
+	if len(items) > maxConsentSortFields {
+		return nil, fmt.Errorf("a maximum of %d sort fields is allowed", maxConsentSortFields)
+	}
+
+	sorts := make([]model.ConsentSort, 0, len(items))
+	seenFields := make(map[model.ConsentSortField]struct{}, len(items))
+
+	for _, item := range items {
+		item = strings.TrimSpace(item)
+		if item == "" {
+			return nil, fmt.Errorf("sort contains an empty item")
+		}
+
+		parts := strings.Split(item, ":")
+		if len(parts) > 2 {
+			return nil, fmt.Errorf("invalid sort item %q", item)
+		}
+
+		fieldName := strings.TrimSpace(parts[0])
+		if fieldName == "" {
+			return nil, fmt.Errorf("sort field is required")
+		}
+
+		field, ok := supportedFields[fieldName]
+		if !ok {
+			return nil, fmt.Errorf("unsupported sort field %q", fieldName)
+		}
+		if _, exists := seenFields[field]; exists {
+			return nil, fmt.Errorf("duplicate sort field %q", fieldName)
+		}
+
+		direction := model.ConsentSortDirectionDesc
+		if len(parts) == 2 {
+			rawDirection := strings.TrimSpace(parts[1])
+			if rawDirection == "" {
+				return nil, fmt.Errorf("sort direction is required when ':' is used")
+			}
+			switch rawDirection {
+			case "asc":
+				direction = model.ConsentSortDirectionAsc
+			case "desc":
+				direction = model.ConsentSortDirectionDesc
+			default:
+				return nil, fmt.Errorf("unsupported sort direction %q", rawDirection)
+			}
+		}
+
+		sorts = append(sorts, model.ConsentSort{
+			Field:     field,
+			Direction: direction,
+		})
+		seenFields[field] = struct{}{}
+	}
+
+	return sorts, nil
+}
+
 // parsePurposeRefRequests converts API purpose references to service-layer input structs.
 // Version strings ("v1", "v2", …) are parsed into integer version numbers.
 func parsePurposeRefRequests(reqs []model.ConsentPurposeRefRequest) ([]model.ConsentPurposeInput, error) {
@@ -538,6 +702,18 @@ func authorizationRequestToInput(ar model.AuthorizationRequest) authmodel.Create
 
 // consentOutputToResponse converts a ConsentOutput to the JSON-ready ConsentResponse.
 func consentOutputToResponse(out *model.ConsentOutput) *model.ConsentResponse {
+	// Preserve the existing create/update and internal snapshot response shape:
+	// display names are included, while descriptions remain GET/search details.
+	return consentOutputToResponseWithOptions(out, true, false)
+}
+
+// consentOutputToResponseWithDetails converts a ConsentOutput to a response and
+// includes purpose/element definition details only when requested.
+func consentOutputToResponseWithDetails(out *model.ConsentOutput, details bool) *model.ConsentResponse {
+	return consentOutputToResponseWithOptions(out, details, details)
+}
+
+func consentOutputToResponseWithOptions(out *model.ConsentOutput, includeDisplayNames, includeDescriptions bool) *model.ConsentResponse {
 	if out == nil {
 		return nil
 	}
@@ -546,21 +722,39 @@ func consentOutputToResponse(out *model.ConsentOutput) *model.ConsentResponse {
 	for _, p := range out.Purposes {
 		elements := make([]model.ConsentPurposeElementApprovalResponse, 0, len(p.Elements))
 		for _, e := range p.Elements {
+			var elementDisplayName, elementDescription *string
+			if includeDisplayNames {
+				elementDisplayName = e.DisplayName
+			}
+			if includeDescriptions {
+				elementDescription = e.Description
+			}
 			elements = append(elements, model.ConsentPurposeElementApprovalResponse{
-				ElementID: e.ElementID,
-				Name:      e.Name,
-				Namespace: e.Namespace,
-				Version:   formatVersion(e.VersionNum),
-				Mandatory: e.Mandatory,
-				Approved:  e.Approved,
-				Value:     valueStringToInterface(e.Value, e.ElementType),
+				ElementID:   e.ElementID,
+				Name:        e.Name,
+				Namespace:   e.Namespace,
+				Version:     formatVersion(e.VersionNum),
+				DisplayName: elementDisplayName,
+				Description: elementDescription,
+				Mandatory:   e.Mandatory,
+				Approved:    e.Approved,
+				Value:       valueStringToInterface(e.Value, e.ElementType),
 			})
 		}
+		var purposeDisplayName, purposeDescription *string
+		if includeDisplayNames {
+			purposeDisplayName = p.DisplayName
+		}
+		if includeDescriptions {
+			purposeDescription = p.Description
+		}
 		purposes = append(purposes, model.ConsentPurposeResponse{
-			PurposeID: p.PurposeID,
-			Name:      p.Name,
-			Version:   formatVersion(p.VersionNum),
-			Elements:  elements,
+			PurposeID:   p.PurposeID,
+			Name:        p.Name,
+			Version:     formatVersion(p.VersionNum),
+			DisplayName: purposeDisplayName,
+			Description: purposeDescription,
+			Elements:    elements,
 		})
 	}
 
@@ -581,6 +775,11 @@ func consentOutputToResponse(out *model.ConsentOutput) *model.ConsentResponse {
 		attrs = make(map[string]string)
 	}
 
+	statusHistory := make([]model.ConsentStatusAuditResponse, 0, len(out.StatusHistory))
+	for _, audit := range out.StatusHistory {
+		statusHistory = append(statusHistory, statusAuditOutputToResponse(audit))
+	}
+
 	return &model.ConsentResponse{
 		ConsentID:                  out.ConsentID,
 		GroupID:                    out.GroupID,
@@ -595,14 +794,15 @@ func consentOutputToResponse(out *model.ConsentOutput) *model.ConsentResponse {
 		Attributes:                 attrs,
 		Purposes:                   purposes,
 		Authorizations:             auths,
+		StatusHistory:              statusHistory,
 	}
 }
 
 // consentListOutputToResponse converts a ConsentListOutput to the JSON-ready ConsentListResponse.
-func consentListOutputToResponse(out *model.ConsentListOutput) *model.ConsentListResponse {
+func consentListOutputToResponse(out *model.ConsentListOutput, details bool) *model.ConsentListResponse {
 	data := make([]model.ConsentResponse, 0, len(out.Data))
 	for i := range out.Data {
-		r := consentOutputToResponse(&out.Data[i])
+		r := consentOutputToResponseWithDetails(&out.Data[i], details)
 		data = append(data, *r)
 	}
 	return &model.ConsentListResponse{
@@ -613,6 +813,41 @@ func consentListOutputToResponse(out *model.ConsentListOutput) *model.ConsentLis
 			Count:  out.Count,
 			Limit:  out.Limit,
 		},
+	}
+}
+
+// consentHistoryOutputToResponse converts a ConsentHistoryListOutput to the JSON-ready ConsentHistoryListResponse.
+func consentHistoryOutputToResponse(out *model.ConsentHistoryListOutput) *model.ConsentHistoryListResponse {
+	if out == nil {
+		return nil
+	}
+
+	history := make([]model.ConsentHistoryResponse, 0, len(out.History))
+	for _, item := range out.History {
+		history = append(history, model.ConsentHistoryResponse{
+			HistoryID:  item.HistoryID,
+			ActionTime: item.ActionTime,
+			ActionBy:   item.ActionBy,
+			Reason:     item.Reason,
+			Snapshot:   item.Snapshot,
+		})
+	}
+
+	return &model.ConsentHistoryListResponse{
+		ID:      out.ID,
+		History: history,
+	}
+}
+
+// statusAuditOutputToResponse converts a StatusAuditOutput to the JSON-ready ConsentStatusAuditResponse.
+func statusAuditOutputToResponse(out model.StatusAuditOutput) model.ConsentStatusAuditResponse {
+	return model.ConsentStatusAuditResponse{
+		StatusAuditID:  out.StatusAuditID,
+		PreviousStatus: out.PreviousStatus,
+		CurrentStatus:  out.CurrentStatus,
+		ActionTime:     out.ActionTime,
+		ActionBy:       out.ActionBy,
+		Reason:         out.Reason,
 	}
 }
 

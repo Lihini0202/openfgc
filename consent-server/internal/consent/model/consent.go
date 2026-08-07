@@ -174,6 +174,7 @@ type ConsentSearchFilter struct {
 	ConsentTypes     []string
 	ConsentStatuses  []string
 	UserIDs          []string
+	Sort             []ConsentSort
 	PurposeName      string // filter consents that reference this purpose name
 	PurposeVersion   *int   // combined with PurposeName to pin a specific version
 	ElementName      string // filter consents whose purpose contains this element
@@ -200,6 +201,29 @@ type ConsentSearchFilter struct {
 	// AuthTypes filters by specific auth type values (e.g., "agent", "carer").
 	// Supports both first-class and custom auth types.
 	AuthTypes []string
+}
+
+type ConsentSortField string
+
+const (
+	ConsentSortFieldCreatedTime  ConsentSortField = "createdTime"
+	ConsentSortFieldUpdatedTime  ConsentSortField = "updatedTime"
+	ConsentSortFieldValidityTime ConsentSortField = "validityTime"
+	ConsentSortFieldStatus       ConsentSortField = "status"
+	ConsentSortFieldGroupID      ConsentSortField = "groupId"
+	ConsentSortFieldConsentType  ConsentSortField = "consentType"
+)
+
+type ConsentSortDirection string
+
+const (
+	ConsentSortDirectionAsc  ConsentSortDirection = "ASC"
+	ConsentSortDirectionDesc ConsentSortDirection = "DESC"
+)
+
+type ConsentSort struct {
+	Field     ConsentSortField
+	Direction ConsentSortDirection
 }
 
 // =============================================================================
@@ -259,6 +283,7 @@ type ConsentOutput struct {
 	Attributes                 map[string]string
 	Purposes                   []ConsentPurposeOutput
 	Authorizations             []authmodel.AuthResourceOutput
+	StatusHistory              []StatusAuditOutput
 }
 
 // ConsentListOutput is the return type from SearchConsents.
@@ -274,6 +299,12 @@ type ConsentListOutput struct {
 type ConsentAttributeSearchOutput struct {
 	ConsentIDs []string
 	Count      int
+}
+
+// ConsentGroupIDsOutput is the return type from GetGroupIDsByUserID.
+type ConsentGroupIDsOutput struct {
+	GroupIDs []string
+	Count    int
 }
 
 // ConsentRevokeInput is the input to the RevokeConsent service method.
@@ -409,21 +440,25 @@ type ConsentValidateRequest struct {
 // ConsentPurposeElementApprovalResponse is one element in a consent purpose response.
 // Combines the element's definition with the user's approval state for this consent.
 type ConsentPurposeElementApprovalResponse struct {
-	ElementID string      `json:"elementId"`
-	Name      string      `json:"name"`
-	Namespace string      `json:"namespace"`
-	Version   string      `json:"version"` // "v1", "v2", ...
-	Mandatory bool        `json:"mandatory"`
-	Approved  bool        `json:"approved"`
-	Value     interface{} `json:"value,omitempty"`
+	ElementID   string      `json:"elementId"`
+	Name        string      `json:"name"`
+	Namespace   string      `json:"namespace"`
+	Version     string      `json:"version"` // "v1", "v2", ...
+	DisplayName *string     `json:"displayName,omitempty"`
+	Description *string     `json:"description,omitempty"`
+	Mandatory   bool        `json:"mandatory"`
+	Approved    bool        `json:"approved"`
+	Value       interface{} `json:"value,omitempty"`
 }
 
 // ConsentPurposeResponse is one purpose in a consent response (create/get/update).
 type ConsentPurposeResponse struct {
-	PurposeID string                                  `json:"purposeId"`
-	Name      string                                  `json:"name"`
-	Version   string                                  `json:"version"` // "v1", "v2", ...
-	Elements  []ConsentPurposeElementApprovalResponse `json:"elements"`
+	PurposeID   string                                  `json:"purposeId"`
+	Name        string                                  `json:"name"`
+	Version     string                                  `json:"version"` // "v1", "v2", ...
+	DisplayName *string                                 `json:"displayName,omitempty"`
+	Description *string                                 `json:"description,omitempty"`
+	Elements    []ConsentPurposeElementApprovalResponse `json:"elements"`
 }
 
 // AuthorizationResponse is one authorization in a consent response.
@@ -438,19 +473,20 @@ type AuthorizationResponse struct {
 
 // ConsentResponse is the response body for POST, GET, and PUT /consents.
 type ConsentResponse struct {
-	ConsentID                  string                   `json:"id"`
-	GroupID                    string                   `json:"groupId"`
-	Type                       string                   `json:"type"`
-	Status                     string                   `json:"status"`
-	CreatedTime                int64                    `json:"createdTime"`
-	UpdatedTime                int64                    `json:"updatedTime"`
-	ExpirationTime             *int64                   `json:"expirationTime,omitempty"`
-	Frequency                  *int                     `json:"frequency,omitempty"`
-	RecurringIndicator         *bool                    `json:"recurringIndicator,omitempty"`
-	DataAccessValidityDuration *int64                   `json:"dataAccessValidityDuration,omitempty"`
-	Attributes                 map[string]string        `json:"attributes"`
-	Purposes                   []ConsentPurposeResponse `json:"purposes"`
-	Authorizations             []AuthorizationResponse  `json:"authorizations"`
+	ConsentID                  string                       `json:"id"`
+	GroupID                    string                       `json:"groupId"`
+	Type                       string                       `json:"type"`
+	Status                     string                       `json:"status"`
+	CreatedTime                int64                        `json:"createdTime"`
+	UpdatedTime                int64                        `json:"updatedTime"`
+	ExpirationTime             *int64                       `json:"expirationTime,omitempty"`
+	Frequency                  *int                         `json:"frequency,omitempty"`
+	RecurringIndicator         *bool                        `json:"recurringIndicator,omitempty"`
+	DataAccessValidityDuration *int64                       `json:"dataAccessValidityDuration,omitempty"`
+	Attributes                 map[string]string            `json:"attributes"`
+	Purposes                   []ConsentPurposeResponse     `json:"purposes"`
+	Authorizations             []AuthorizationResponse      `json:"authorizations"`
+	StatusHistory              []ConsentStatusAuditResponse `json:"statusHistory,omitempty"`
 }
 
 // ConsentListMetadata holds pagination metadata for the list response.
@@ -478,6 +514,12 @@ type ConsentRevokeResponse struct {
 type ConsentAttributeSearchResponse struct {
 	ConsentIDs []string `json:"consentIds"`
 	Count      int      `json:"count"`
+}
+
+// ConsentGroupIDsResponse is the response body for GET /consents/group-ids.
+type ConsentGroupIDsResponse struct {
+	GroupIDs []string `json:"groupIds"`
+	Count    int      `json:"count"`
 }
 
 // =============================================================================

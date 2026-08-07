@@ -379,11 +379,13 @@ func purposeToResponse(p *model.PurposeOutput) model.PurposeResponse {
 		elems := make([]model.PurposeElementResponse, 0, len(p.Elements))
 		for _, e := range p.Elements {
 			elems = append(elems, model.PurposeElementResponse{
-				ElementID: e.ElementID,
-				Name:      e.Name,
-				Namespace: e.Namespace,
-				Version:   fmt.Sprintf("v%d", e.VersionNum),
-				Mandatory: e.Mandatory,
+				ElementID:   e.ElementID,
+				Name:        e.Name,
+				Namespace:   e.Namespace,
+				Version:     fmt.Sprintf("v%d", e.VersionNum),
+				DisplayName: e.DisplayName,
+				Description: e.Description,
+				Mandatory:   e.Mandatory,
 			})
 		}
 		resp.Elements = elems
@@ -404,11 +406,13 @@ func purposeToItem(p *model.PurposeOutput) model.PurposeVersionItem {
 		elems := make([]model.PurposeElementResponse, 0, len(p.Elements))
 		for _, e := range p.Elements {
 			elems = append(elems, model.PurposeElementResponse{
-				ElementID: e.ElementID,
-				Name:      e.Name,
-				Namespace: e.Namespace,
-				Version:   fmt.Sprintf("v%d", e.VersionNum),
-				Mandatory: e.Mandatory,
+				ElementID:   e.ElementID,
+				Name:        e.Name,
+				Namespace:   e.Namespace,
+				Version:     fmt.Sprintf("v%d", e.VersionNum),
+				DisplayName: e.DisplayName,
+				Description: e.Description,
+				Mandatory:   e.Mandatory,
 			})
 		}
 		item.Elements = elems

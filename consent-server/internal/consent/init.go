@@ -45,6 +45,9 @@ func registerRoutes(mux *http.ServeMux, handler *consentHandler) {
 	// GET /api/v1/consents/{consentId} - Get consent by ID
 	mux.HandleFunc("GET "+constants.APIBasePath+"/consents/{consentId}", handler.getConsent)
 
+	// GET /api/v1/consents/{consentId}/history - Get consent history
+	mux.HandleFunc("GET "+constants.APIBasePath+"/consents/{consentId}/history", handler.getConsentHistory)
+
 	// GET /api/v1/consents - List/search consents
 	mux.HandleFunc("GET "+constants.APIBasePath+"/consents", handler.listConsents)
 
@@ -59,4 +62,7 @@ func registerRoutes(mux *http.ServeMux, handler *consentHandler) {
 
 	// GET /api/v1/consents/attributes - Search consents by attribute
 	mux.HandleFunc("GET "+constants.APIBasePath+"/consents/attributes", handler.searchConsentsByAttribute)
+
+	// GET /api/v1/consents/group-ids - Get distinct group IDs for a user
+	mux.HandleFunc("GET "+constants.APIBasePath+"/consents/group-ids", handler.getGroupIDsByUserID)
 }

@@ -152,6 +152,29 @@ func (ts *ConsentAPITestSuite) doGetConsent(orgID, consentID string) (int, *Cons
 	return status, &resp
 }
 
+func (ts *ConsentAPITestSuite) doGetConsentWithStatusHistory(orgID, consentID string) (int, *ConsentResponse) {
+	status, body := ts.doRequest(http.MethodGet, "/api/v1/consents/"+consentID+"?includeStatusHistory=true", orgID, "", nil)
+	if status != http.StatusOK {
+		return status, nil
+	}
+	var resp ConsentResponse
+	ts.Require().NoError(json.Unmarshal(body, &resp), "unmarshal ConsentResponse (get with status history)")
+	return status, &resp
+}
+
+func (ts *ConsentAPITestSuite) doGetConsentHistory(orgID, consentID string, includeSnapshots bool) (int, *ConsentHistoryListResponse) {
+	path := "/api/v1/consents/" + consentID + "/history"
+	if includeSnapshots {
+		path += "?includeSnapshots=true"
+	}
+	status, body := ts.doRequest(http.MethodGet, path, orgID, "", nil)
+	if status != http.StatusOK {
+		return status, nil
+	}
+	var resp ConsentHistoryListResponse
+	ts.Require().NoError(json.Unmarshal(body, &resp), "unmarshal ConsentHistoryListResponse")
+	return status, &resp
+}
 func (ts *ConsentAPITestSuite) doListConsents(orgID string, params url.Values) (int, *ConsentListResponse) {
 	path := "/api/v1/consents"
 	if len(params) > 0 {
@@ -185,6 +208,21 @@ func (ts *ConsentAPITestSuite) doSearchByAttribute(orgID, key, value string) (in
 	return ts.doRequest(http.MethodGet, "/api/v1/consents/attributes?"+params.Encode(), orgID, "", nil)
 }
 
+// doGetGroupIDsByUserID calls GET /consents/group-ids and returns (status, raw body).
+func (ts *ConsentAPITestSuite) doGetGroupIDsByUserID(orgID string, userIDs []string) (int, []byte) {
+	params := url.Values{}
+	for _, userID := range userIDs {
+		params.Add("userId", userID)
+	}
+
+	path := "/api/v1/consents/group-ids"
+	if len(params) > 0 {
+		path += "?" + params.Encode()
+	}
+
+	return ts.doRequest(http.MethodGet, path, orgID, "", nil)
+}
+
 // doValidateConsent calls POST /consents/validate and returns (status, raw body).
 // body can be a ConsentValidateRequest struct or a raw string for error cases.
 func (ts *ConsentAPITestSuite) doValidateConsent(orgID string, body any) (int, []byte) {
@@ -215,8 +253,8 @@ func (ts *ConsentAPITestSuite) mustCreateElementFull(orgID string, item map[stri
 	return batchResp.Results[0].Element.ElementID
 }
 
-func (ts *ConsentAPITestSuite) doUpdateConsent(orgID, consentID string, req ConsentUpdateRequest) (int, *ConsentResponse) {
-	status, body := ts.doRequest(http.MethodPut, "/api/v1/consents/"+consentID, orgID, "", req)
+func (ts *ConsentAPITestSuite) doUpdateConsent(orgID, groupID, consentID string, req ConsentUpdateRequest) (int, *ConsentResponse) {
+	status, body := ts.doRequest(http.MethodPut, "/api/v1/consents/"+consentID, orgID, groupID, req)
 	if status != http.StatusOK {
 		return status, nil
 	}

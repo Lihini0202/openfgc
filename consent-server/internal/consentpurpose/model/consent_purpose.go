@@ -27,16 +27,16 @@ package model
 // Properties is populated separately from the PURPOSE_PROPERTY table.
 // Elements is populated separately from the PURPOSE_ELEMENT_MAPPING table.
 type PurposeVersion struct {
-	VersionID   string                `db:"VERSION_ID"`
-	ID          string                `db:"ID"`
-	Name        string                `db:"NAME"`
-	GroupID     string                `db:"GROUP_ID"`
-	VersionNum  int                   `db:"VERSION"`
-	DisplayName *string               `db:"DISPLAY_NAME"`
-	Description *string               `db:"DESCRIPTION"`
-	CreatedTime int64                 `db:"CREATED_TIME"`
-	OrgID       string                `db:"ORG_ID"`
-	Properties  map[string]string     `db:"-"`
+	VersionID   string                 `db:"VERSION_ID"`
+	ID          string                 `db:"ID"`
+	Name        string                 `db:"NAME"`
+	GroupID     string                 `db:"GROUP_ID"`
+	VersionNum  int                    `db:"VERSION"`
+	DisplayName *string                `db:"DISPLAY_NAME"`
+	Description *string                `db:"DESCRIPTION"`
+	CreatedTime int64                  `db:"CREATED_TIME"`
+	OrgID       string                 `db:"ORG_ID"`
+	Properties  map[string]string      `db:"-"`
 	Elements    []PurposeMappedElement `db:"-"`
 }
 
@@ -56,6 +56,8 @@ type PurposeMappedElement struct {
 	Name             string  `db:"NAME"`
 	Namespace        string  `db:"NAMESPACE"`
 	VersionNum       int     `db:"VERSION"`
+	DisplayName      *string `db:"DISPLAY_NAME"`
+	Description      *string `db:"DESCRIPTION"`
 	Mandatory        bool    `db:"MANDATORY"`
 	ElementType      string  `db:"TYPE"`
 	Schema           *string `db:"ELEMENT_SCHEMA"`
@@ -118,6 +120,8 @@ type PurposeElementOutput struct {
 	Name             string
 	Namespace        string
 	VersionNum       int
+	DisplayName      *string
+	Description      *string
 	Mandatory        bool
 }
 
@@ -169,18 +173,18 @@ type ElementRefRequest struct {
 // CreatePurposeRequest is the body for POST /consent-purposes.
 // The group-id is read from the request header, not this body.
 type CreatePurposeRequest struct {
-	Name        string             `json:"name"`
-	DisplayName *string            `json:"displayName,omitempty"`
-	Description *string            `json:"description,omitempty"`
-	Properties  map[string]string  `json:"properties,omitempty"`
+	Name        string              `json:"name"`
+	DisplayName *string             `json:"displayName,omitempty"`
+	Description *string             `json:"description,omitempty"`
+	Properties  map[string]string   `json:"properties,omitempty"`
 	Elements    []ElementRefRequest `json:"elements"`
 }
 
 // CreatePurposeVersionRequest is the body for POST /consent-purposes/{purposeId}/versions.
 type CreatePurposeVersionRequest struct {
-	DisplayName *string            `json:"displayName,omitempty"`
-	Description *string            `json:"description,omitempty"`
-	Properties  map[string]string  `json:"properties,omitempty"`
+	DisplayName *string             `json:"displayName,omitempty"`
+	Description *string             `json:"description,omitempty"`
+	Properties  map[string]string   `json:"properties,omitempty"`
 	Elements    []ElementRefRequest `json:"elements"`
 }
 
@@ -190,11 +194,13 @@ type CreatePurposeVersionRequest struct {
 
 // PurposeElementResponse is one element entry within a PurposeResponse or PurposeVersionItem.
 type PurposeElementResponse struct {
-	ElementID string `json:"elementId"`
-	Name      string `json:"name"`
-	Namespace string `json:"namespace"`
-	Version   string `json:"version"` // "v1", "v2", …
-	Mandatory bool   `json:"mandatory"`
+	ElementID   string  `json:"elementId"`
+	Name        string  `json:"name"`
+	Namespace   string  `json:"namespace"`
+	Version     string  `json:"version"` // "v1", "v2", …
+	DisplayName *string `json:"displayName,omitempty"`
+	Description *string `json:"description,omitempty"`
+	Mandatory   bool    `json:"mandatory"`
 }
 
 // PurposeResponse is the response body for:

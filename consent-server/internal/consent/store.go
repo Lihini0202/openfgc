@@ -49,6 +49,13 @@ var (
 		PostgresQuery: "SELECT " + consentColumns + " FROM CONSENT WHERE CONSENT_ID = $1 AND ORG_ID = $2",
 	}
 
+	QueryGetConsentByIDForUpdate = dbmodel.DBQuery{
+		ID:            "GET_CONSENT_BY_ID_FOR_UPDATE",
+		Query:         "SELECT " + consentColumns + " FROM CONSENT WHERE CONSENT_ID = ? AND ORG_ID = ? FOR UPDATE",
+		PostgresQuery: "SELECT " + consentColumns + " FROM CONSENT WHERE CONSENT_ID = $1 AND ORG_ID = $2 FOR UPDATE",
+		SQLiteQuery:   "SELECT " + consentColumns + " FROM CONSENT WHERE CONSENT_ID = ? AND ORG_ID = ?",
+	}
+
 	QueryUpdateConsent = dbmodel.DBQuery{
 		ID:            "UPDATE_CONSENT",
 		Query:         "UPDATE CONSENT SET UPDATED_TIME = ?, CONSENT_TYPE = ?, CONSENT_FREQUENCY = ?, EXPIRATION_TIME = ?, RECURRING_INDICATOR = ?, DATA_ACCESS_VALIDITY_DURATION = ? WHERE CONSENT_ID = ? AND ORG_ID = ?",
@@ -92,11 +99,53 @@ var (
 		PostgresQuery: "SELECT DISTINCT CONSENT_ID FROM CONSENT_ATTRIBUTE WHERE ATT_KEY = $1 AND ATT_VALUE = $2 AND ORG_ID = $3 ORDER BY CONSENT_ID",
 	}
 
+	QueryFindGroupIDsByUserID = dbmodel.DBQuery{
+		ID: "FIND_GROUP_IDS_BY_USER_ID",
+		Query: `SELECT DISTINCT c.GROUP_ID
+			FROM CONSENT_AUTH_RESOURCE car
+			JOIN CONSENT c
+				ON c.CONSENT_ID = car.CONSENT_ID
+				AND c.ORG_ID = car.ORG_ID
+			WHERE car.USER_ID = ? AND car.ORG_ID = ?
+			ORDER BY c.GROUP_ID`,
+		PostgresQuery: `SELECT DISTINCT c.GROUP_ID
+			FROM CONSENT_AUTH_RESOURCE car
+			JOIN CONSENT c
+				ON c.CONSENT_ID = car.CONSENT_ID
+				AND c.ORG_ID = car.ORG_ID
+			WHERE car.USER_ID = $1 AND car.ORG_ID = $2
+			ORDER BY c.GROUP_ID`,
+	}
+
 	// Status audit queries
 	QueryCreateStatusAudit = dbmodel.DBQuery{
 		ID:            "CREATE_STATUS_AUDIT",
 		Query:         "INSERT INTO CONSENT_STATUS_AUDIT (STATUS_AUDIT_ID, CONSENT_ID, CURRENT_STATUS, ACTION_TIME, REASON, ACTION_BY, PREVIOUS_STATUS, ORG_ID) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
 		PostgresQuery: "INSERT INTO CONSENT_STATUS_AUDIT (STATUS_AUDIT_ID, CONSENT_ID, CURRENT_STATUS, ACTION_TIME, REASON, ACTION_BY, PREVIOUS_STATUS, ORG_ID) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+	}
+
+	QueryCreateHistory = dbmodel.DBQuery{
+		ID:            "CREATE_CONSENT_HISTORY",
+		Query:         "INSERT INTO CONSENT_HISTORY (HISTORY_ID, CONSENT_ID, ORG_ID, ACTION_TIME, ACTION_BY, REASON, SNAPSHOT) VALUES (?, ?, ?, ?, ?, ?, ?)",
+		PostgresQuery: "INSERT INTO CONSENT_HISTORY (HISTORY_ID, CONSENT_ID, ORG_ID, ACTION_TIME, ACTION_BY, REASON, SNAPSHOT) VALUES ($1, $2, $3, $4, $5, $6, $7)",
+	}
+
+	QueryGetHistoryByConsentID = dbmodel.DBQuery{
+		ID:            "GET_HISTORY_BY_CONSENT_ID",
+		Query:         "SELECT HISTORY_ID, CONSENT_ID, ORG_ID, ACTION_TIME, ACTION_BY, REASON, SNAPSHOT FROM CONSENT_HISTORY WHERE CONSENT_ID = ? AND ORG_ID = ? ORDER BY ACTION_TIME DESC, HISTORY_ID DESC",
+		PostgresQuery: "SELECT HISTORY_ID, CONSENT_ID, ORG_ID, ACTION_TIME, ACTION_BY, REASON, SNAPSHOT FROM CONSENT_HISTORY WHERE CONSENT_ID = $1 AND ORG_ID = $2 ORDER BY ACTION_TIME DESC, HISTORY_ID DESC",
+	}
+
+	QueryGetHistoryWithoutSnapshotsByConsentID = dbmodel.DBQuery{
+		ID:            "GET_HISTORY_WITHOUT_SNAPSHOTS_BY_CONSENT_ID",
+		Query:         "SELECT HISTORY_ID, CONSENT_ID, ORG_ID, ACTION_TIME, ACTION_BY, REASON FROM CONSENT_HISTORY WHERE CONSENT_ID = ? AND ORG_ID = ? ORDER BY ACTION_TIME DESC, HISTORY_ID DESC",
+		PostgresQuery: "SELECT HISTORY_ID, CONSENT_ID, ORG_ID, ACTION_TIME, ACTION_BY, REASON FROM CONSENT_HISTORY WHERE CONSENT_ID = $1 AND ORG_ID = $2 ORDER BY ACTION_TIME DESC, HISTORY_ID DESC",
+	}
+
+	QueryGetStatusAuditsByConsentID = dbmodel.DBQuery{
+		ID:            "GET_STATUS_AUDITS_BY_CONSENT_ID",
+		Query:         "SELECT STATUS_AUDIT_ID, CONSENT_ID, CURRENT_STATUS, ACTION_TIME, REASON, ACTION_BY, PREVIOUS_STATUS, ORG_ID FROM CONSENT_STATUS_AUDIT WHERE CONSENT_ID = ? AND ORG_ID = ? ORDER BY ACTION_TIME DESC, STATUS_AUDIT_ID DESC",
+		PostgresQuery: "SELECT STATUS_AUDIT_ID, CONSENT_ID, CURRENT_STATUS, ACTION_TIME, REASON, ACTION_BY, PREVIOUS_STATUS, ORG_ID FROM CONSENT_STATUS_AUDIT WHERE CONSENT_ID = $1 AND ORG_ID = $2 ORDER BY ACTION_TIME DESC, STATUS_AUDIT_ID DESC",
 	}
 
 	// Purpose-consent mapping queries
@@ -224,6 +273,15 @@ var (
 	QuerySearchConsentsData        = dbmodel.DBQuery{ID: "SEARCH_CONSENTS_DATA", Query: ""}
 )
 
+var consentSearchSortColumnMap = map[model.ConsentSortField]string{
+	model.ConsentSortFieldCreatedTime:  "CONSENT.CREATED_TIME",
+	model.ConsentSortFieldUpdatedTime:  "CONSENT.UPDATED_TIME",
+	model.ConsentSortFieldValidityTime: "CONSENT.EXPIRATION_TIME",
+	model.ConsentSortFieldStatus:       "CONSENT.CURRENT_STATUS",
+	model.ConsentSortFieldGroupID:      "CONSENT.GROUP_ID",
+	model.ConsentSortFieldConsentType:  "CONSENT.CONSENT_TYPE",
+}
+
 // store implements the interfaces.ConsentStore interface.
 type store struct{}
 
@@ -299,6 +357,14 @@ func (s *store) CreateStatusAudit(tx dbmodel.TxInterface, audit *model.ConsentSt
 	return err
 }
 
+// CreateHistory creates a consent history entry within a transaction.
+func (s *store) CreateHistory(tx dbmodel.TxInterface, history *model.ConsentHistory) error {
+	_, err := tx.Exec(QueryCreateHistory,
+		history.HistoryID, history.ConsentID, history.OrgID, history.ActionTime,
+		history.ActionBy, history.Reason, string(history.Snapshot))
+	return err
+}
+
 // LinkPurposeVersionToConsent records that a consent was created against a specific purpose version.
 func (s *store) LinkPurposeVersionToConsent(tx dbmodel.TxInterface, consentID, purposeVersionID, orgID string) error {
 	_, err := tx.Exec(QueryCreateConsentPurposeMapping, consentID, purposeVersionID, orgID)
@@ -343,6 +409,146 @@ func (s *store) GetByID(ctx context.Context, consentID, orgID string) (*model.Co
 		return nil, nil
 	}
 	return mapToConsent(rows[0]), nil
+}
+
+// GetByIDForUpdate retrieves and locks a consent row within a transaction.
+func (s *store) GetByIDForUpdate(tx dbmodel.TxInterface, consentID, orgID string) (*model.Consent, error) {
+	rows, err := tx.Query(QueryGetConsentByIDForUpdate, consentID, orgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	columns, err := rows.Columns()
+	if err != nil {
+		return nil, err
+	}
+	if !rows.Next() {
+		return nil, nil
+	}
+
+	values := make([]interface{}, len(columns))
+	pointers := make([]interface{}, len(columns))
+	for i := range values {
+		pointers[i] = &values[i]
+	}
+	if err := rows.Scan(pointers...); err != nil {
+		return nil, err
+	}
+
+	row := make(map[string]interface{}, len(columns))
+	for i, column := range columns {
+		row[strings.ToLower(column)] = values[i]
+	}
+	return mapToConsent(row), rows.Err()
+}
+
+func queryRowsInTx(tx dbmodel.TxInterface, query dbmodel.DBQuery, args ...interface{}) ([]map[string]interface{}, error) {
+	rows, err := tx.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	columns, err := rows.Columns()
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]map[string]interface{}, 0)
+	for rows.Next() {
+		values := make([]interface{}, len(columns))
+		pointers := make([]interface{}, len(columns))
+		for i := range values {
+			pointers[i] = &values[i]
+		}
+		if err := rows.Scan(pointers...); err != nil {
+			return nil, err
+		}
+
+		row := make(map[string]interface{}, len(columns))
+		for i, column := range columns {
+			row[strings.ToLower(column)] = values[i]
+		}
+		result = append(result, row)
+	}
+	return result, rows.Err()
+}
+
+// GetAttributesByConsentIDTx retrieves all attributes for a single consent within a transaction.
+func (s *store) GetAttributesByConsentIDTx(tx dbmodel.TxInterface, consentID, orgID string) ([]model.ConsentAttribute, error) {
+	rows, err := queryRowsInTx(tx, QueryGetAttributesByConsentID, consentID, orgID)
+	if err != nil {
+		return nil, err
+	}
+	attrs := make([]model.ConsentAttribute, 0, len(rows))
+	for _, row := range rows {
+		if attr := mapToConsentAttribute(row); attr != nil {
+			attrs = append(attrs, *attr)
+		}
+	}
+	return attrs, nil
+}
+
+// GetPurposesByConsentIDTx returns purpose rows joined with PURPOSE metadata within a transaction.
+func (s *store) GetPurposesByConsentIDTx(tx dbmodel.TxInterface, consentID, orgID string) ([]model.ConsentPurposeRow, error) {
+	rows, err := queryRowsInTx(tx, QueryGetConsentPurposesByConsentID, consentID, orgID)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]model.ConsentPurposeRow, 0, len(rows))
+	for _, row := range rows {
+		result = append(result, mapToConsentPurposeRow(row))
+	}
+	return result, nil
+}
+
+// GetElementApprovalsByConsentIDTx returns approval rows joined with ELEMENT metadata within a transaction.
+func (s *store) GetElementApprovalsByConsentIDTx(tx dbmodel.TxInterface, consentID, orgID string) ([]model.ConsentApprovalRow, error) {
+	rows, err := queryRowsInTx(tx, QueryGetElementApprovalsByConsentID, consentID, orgID)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]model.ConsentApprovalRow, 0, len(rows))
+	for _, row := range rows {
+		result = append(result, mapToConsentApprovalRow(row))
+	}
+	return result, nil
+}
+
+// GetElementPropertiesByConsentIDTx returns element properties within a transaction.
+func (s *store) GetElementPropertiesByConsentIDTx(tx dbmodel.TxInterface, consentID, orgID string) (map[string]map[string]string, error) {
+	rows, err := queryRowsInTx(tx, QueryGetElementPropertiesByConsentID, consentID, orgID)
+	if err != nil {
+		return nil, err
+	}
+	return mapPropertiesByVersionID(rows, "element_version_id"), nil
+}
+
+// GetPurposePropertiesByConsentIDTx returns purpose properties within a transaction.
+func (s *store) GetPurposePropertiesByConsentIDTx(tx dbmodel.TxInterface, consentID, orgID string) (map[string]map[string]string, error) {
+	rows, err := queryRowsInTx(tx, QueryGetPurposePropertiesByConsentID, consentID, orgID)
+	if err != nil {
+		return nil, err
+	}
+	return mapPropertiesByVersionID(rows, "purpose_version_id"), nil
+}
+
+func mapPropertiesByVersionID(rows []map[string]interface{}, versionColumn string) map[string]map[string]string {
+	result := make(map[string]map[string]string)
+	for _, row := range rows {
+		versionID := getString(row, versionColumn)
+		key := getString(row, "att_key")
+		value := getString(row, "att_value")
+		if versionID == "" || key == "" {
+			continue
+		}
+		if result[versionID] == nil {
+			result[versionID] = make(map[string]string)
+		}
+		result[versionID][key] = value
+	}
+	return result
 }
 
 // GetAttributesByConsentID retrieves all attributes for a single consent.
@@ -442,6 +648,25 @@ func (s *store) GetConsentIDsByAttribute(ctx context.Context, key, value, orgID 
 		}
 	}
 	return ids, nil
+}
+
+// GetGroupIDsByUserID returns distinct group IDs for consents authorized for the given user.
+func (s *store) GetGroupIDsByUserID(ctx context.Context, userID, orgID string) ([]string, error) {
+	dbClient, err := s.getDBClient()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get database client: %w", err)
+	}
+	rows, err := dbClient.Query(QueryFindGroupIDsByUserID, userID, orgID)
+	if err != nil {
+		return nil, err
+	}
+	groupIDs := make([]string, 0, len(rows))
+	for _, row := range rows {
+		if groupID := getString(row, "group_id"); groupID != "" {
+			groupIDs = append(groupIDs, groupID)
+		}
+	}
+	return groupIDs, nil
 }
 
 // GetPurposesByConsentID returns all purpose rows joined with PURPOSE metadata for a consent.
@@ -546,6 +771,55 @@ func (s *store) IsPurposeUsedInConsents(ctx context.Context, purposeID, orgID st
 		return false, nil
 	}
 	return extractCount(rows[0]) > 0, nil
+}
+
+// GetHistoryByConsentID retrieves consent history.
+func (s *store) GetHistoryByConsentID(ctx context.Context, consentID, orgID string, includeSnapshots bool) ([]model.ConsentHistory, error) {
+	dbClient, err := s.getDBClient()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get database client: %w", err)
+	}
+
+	query := QueryGetHistoryWithoutSnapshotsByConsentID
+	if includeSnapshots {
+		query = QueryGetHistoryByConsentID
+	}
+
+	rows, err := dbClient.Query(query, consentID, orgID)
+	if err != nil {
+		return nil, err
+	}
+
+	history := make([]model.ConsentHistory, 0, len(rows))
+	for _, row := range rows {
+		item := mapToConsentHistory(row)
+		if item != nil {
+			history = append(history, *item)
+		}
+	}
+	return history, nil
+}
+
+// GetStatusAuditsByConsentID retrieves consent status audit history.
+func (s *store) GetStatusAuditsByConsentID(ctx context.Context, consentID, orgID string) ([]model.ConsentStatusAudit, error) {
+	dbClient, err := s.getDBClient()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get database client: %w", err)
+	}
+
+	rows, err := dbClient.Query(QueryGetStatusAuditsByConsentID, consentID, orgID)
+	if err != nil {
+		return nil, err
+	}
+
+	audits := make([]model.ConsentStatusAudit, 0, len(rows))
+	for _, row := range rows {
+		audit := mapToConsentStatusAudit(row)
+		if audit != nil {
+			audits = append(audits, *audit)
+		}
+	}
+	return audits, nil
 }
 
 // Search retrieves consents matching the filters with pagination.
@@ -738,13 +1012,18 @@ func (s *store) Search(ctx context.Context, filters model.ConsentSearchFilter) (
 	}
 
 	// Data query
+	orderByClause := buildConsentSearchOrderBy(filters.Sort)
 	dataSQL := fmt.Sprintf(
-		"SELECT DISTINCT CONSENT.CONSENT_ID, CONSENT.CREATED_TIME, CONSENT.UPDATED_TIME,"+
+		"SELECT CONSENT.CONSENT_ID, CONSENT.CREATED_TIME, CONSENT.UPDATED_TIME,"+
 			" CONSENT.GROUP_ID, CONSENT.CONSENT_TYPE, CONSENT.CURRENT_STATUS,"+
 			" CONSENT.CONSENT_FREQUENCY, CONSENT.EXPIRATION_TIME, CONSENT.RECURRING_INDICATOR,"+
 			" CONSENT.DATA_ACCESS_VALIDITY_DURATION, CONSENT.ORG_ID"+
-			" FROM CONSENT%s WHERE %s ORDER BY CONSENT.CREATED_TIME DESC LIMIT ? OFFSET ?",
-		joinClause, whereClause,
+			" FROM (SELECT DISTINCT CONSENT.CONSENT_ID, CONSENT.CREATED_TIME, CONSENT.UPDATED_TIME,"+
+			" CONSENT.GROUP_ID, CONSENT.CONSENT_TYPE, CONSENT.CURRENT_STATUS,"+
+			" CONSENT.CONSENT_FREQUENCY, CONSENT.EXPIRATION_TIME, CONSENT.RECURRING_INDICATOR,"+
+			" CONSENT.DATA_ACCESS_VALIDITY_DURATION, CONSENT.ORG_ID"+
+			" FROM CONSENT%s WHERE %s) CONSENT ORDER BY %s LIMIT ? OFFSET ?",
+		joinClause, whereClause, orderByClause,
 	)
 	dataArgs := append(args, filters.Limit, filters.Offset)
 	dataQ := QuerySearchConsentsData
@@ -764,6 +1043,59 @@ func (s *store) Search(ctx context.Context, filters model.ConsentSearchFilter) (
 	return consents, totalCount, nil
 }
 
+func buildConsentSearchOrderBy(sorts []model.ConsentSort) string {
+	orderParts := make([]string, 0, len(sorts)+1)
+	for _, sort := range sorts {
+		column, ok := consentSearchSortColumnMap[sort.Field]
+		if !ok {
+			continue
+		}
+
+		direction := string(sort.Direction)
+		if direction != string(model.ConsentSortDirectionAsc) && direction != string(model.ConsentSortDirectionDesc) {
+			continue
+		}
+
+		if sort.Field == model.ConsentSortFieldValidityTime {
+			// Treat NULL expiration as infinite validity in a backend-portable way.
+			if direction == string(model.ConsentSortDirectionAsc) {
+				orderParts = append(orderParts,
+					"CASE WHEN CONSENT.EXPIRATION_TIME IS NULL THEN 1 ELSE 0 END ASC",
+					"CONSENT.EXPIRATION_TIME ASC",
+				)
+			} else {
+				orderParts = append(orderParts,
+					"CASE WHEN CONSENT.EXPIRATION_TIME IS NULL THEN 0 ELSE 1 END ASC",
+					"CONSENT.EXPIRATION_TIME DESC",
+				)
+			}
+			continue
+		}
+
+		orderParts = append(orderParts, fmt.Sprintf("%s %s", column, direction))
+	}
+
+	if len(orderParts) == 0 {
+		orderParts = append(orderParts, "CONSENT.CREATED_TIME DESC")
+	}
+
+	orderParts = append(orderParts, "CONSENT.CONSENT_ID ASC")
+	return strings.Join(orderParts, ", ")
+}
+
+func buildExpiredConsentsQuery(statusCount int) dbmodel.DBQuery {
+	placeholders := make([]string, statusCount)
+	for i := range placeholders {
+		placeholders[i] = "?"
+	}
+
+	rawQuery := fmt.Sprintf(QueryGetExpiredConsents.Query, strings.Join(placeholders, ","))
+	q := QueryGetExpiredConsents
+	q.Query = rawQuery
+	q.PostgresQuery = dbutils.ConvertToPostgresParams(rawQuery)
+	return q
+}
+
 // GetExpiredConsents retrieves consents that have expired based on the current time and specified expirable statuses.
 func (s *store) GetExpiredConsents(ctx context.Context, currentTimeMs int64, expirableStatuses []string) ([]model.Consent, error) {
 
@@ -776,21 +1108,12 @@ func (s *store) GetExpiredConsents(ctx context.Context, currentTimeMs int64, exp
 		return nil, fmt.Errorf("failed to get database client: %w", err)
 	}
 
-	placeholders := make([]string, len(expirableStatuses))
 	args := []interface{}{currentTimeMs}
-	for i, status := range expirableStatuses {
-		placeholders[i] = "?"
+	for _, status := range expirableStatuses {
 		args = append(args, status)
 	}
 
-	query := fmt.Sprintf(QueryGetExpiredConsents.Query, strings.Join(placeholders, ","))
-	postgresQuery := fmt.Sprintf(QueryGetExpiredConsents.PostgresQuery, strings.Join(placeholders, ","))
-
-	rows, err := dbClient.Query(dbmodel.DBQuery{
-		ID:            QueryGetExpiredConsents.ID,
-		Query:         query,
-		PostgresQuery: postgresQuery,
-	}, args...)
+	rows, err := dbClient.Query(buildExpiredConsentsQuery(len(expirableStatuses)), args...)
 	if err != nil {
 		return nil, err
 	}
@@ -852,6 +1175,46 @@ func mapToConsentPurposeRow(row map[string]interface{}) model.ConsentPurposeRow 
 		DisplayName:      getStringPtr(row, "display_name"),
 		Description:      getStringPtr(row, "description"),
 		OrgID:            getString(row, "org_id"),
+	}
+}
+
+func mapToConsentHistory(row map[string]interface{}) *model.ConsentHistory {
+	if row == nil {
+		return nil
+	}
+
+	var snapshot []byte
+	if val, ok := row["snapshot"].([]byte); ok {
+		snapshot = val
+	} else if val, ok := row["snapshot"].(string); ok {
+		snapshot = []byte(val)
+	}
+
+	return &model.ConsentHistory{
+		HistoryID:  getString(row, "history_id"),
+		ConsentID:  getString(row, "consent_id"),
+		OrgID:      getString(row, "org_id"),
+		ActionTime: getInt64(row, "action_time"),
+		ActionBy:   getStringPtr(row, "action_by"),
+		Reason:     getStringPtr(row, "reason"),
+		Snapshot:   snapshot,
+	}
+}
+
+func mapToConsentStatusAudit(row map[string]interface{}) *model.ConsentStatusAudit {
+	if row == nil {
+		return nil
+	}
+
+	return &model.ConsentStatusAudit{
+		StatusAuditID:  getString(row, "status_audit_id"),
+		ConsentID:      getString(row, "consent_id"),
+		CurrentStatus:  getString(row, "current_status"),
+		ActionTime:     getInt64(row, "action_time"),
+		Reason:         getStringPtr(row, "reason"),
+		ActionBy:       getStringPtr(row, "action_by"),
+		PreviousStatus: getStringPtr(row, "previous_status"),
+		OrgID:          getString(row, "org_id"),
 	}
 }
 

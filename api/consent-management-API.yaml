@@ -18,7 +18,7 @@ info:
     name: Apache 2.0
     url: http://www.apache.org/licenses/LICENSE-2.0.html
 servers:
-  - url: http://localhost:3000/api/v1
+  - url: http://localhost:8060/api/v1
 tags:
   - name: Consent Elements
     description: Manage Consent Elements
@@ -120,6 +120,9 @@ paths:
       summary: Search for consents
       description: |
         Provides a powerful search capability to find consents based on various filter criteria like consent type, status, group ID, user ID, purpose, element, and delegation role. Supports pagination.
+        By default (`details=false`), purpose and element entries contain only their identifiers,
+        versions, and consent approval state. Set `details=true` to include the display name and
+        description for every purpose and element version.
         If purposeVersion is specified, purposeName must also be provided.
         If elementVersion is specified, at least one of elementName or elementNamespace must also be provided.
         The `delegation` and `authTypes` parameters are mutually exclusive. Use `delegation` for the built-in self/delegation role shortcut, or `authTypes` to match explicit authorization type values.
@@ -246,6 +249,13 @@ paths:
             type: integer
             format: int64
           example: 1734422400000
+        - name: sort
+          in: query
+          description: Sort results using a comma-separated list of sort items. Each item can be either `{field}:{direction}` or `{field}`, which defaults to `desc`. Supported fields are `createdTime`, `updatedTime`, `validityTime`, `status`, `groupId`, and `consentType`. Supported directions are `asc` and `desc`. A maximum of 3 sort items is allowed. If `validityTime` is used, consents without an expiry are treated as having the latest validity time. If omitted, results are sorted by `createdTime:desc`.
+          schema:
+            type: string
+            default: createdTime:desc
+          example: "status:asc,createdTime:desc"
         - name: limit
           in: query
           description: The maximum number of results to return in a single page. Used for pagination.
@@ -260,6 +270,12 @@ paths:
             type: integer
             format: int32
           example: 0
+        - name: details
+          in: query
+          description: Include purpose and element display names and descriptions when set to `true`.
+          schema:
+            type: boolean
+            default: false
       responses:
         "200":
           description: OK. Returns a list of consents matching the search criteria, along with pagination metadata.
@@ -267,6 +283,63 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ConsentSearchResponse"
+              examples:
+                minimal:
+                  summary: Search response with details=false (default)
+                  value:
+                    data:
+                      - id: "30000001-0003-0003-0003-000000000002"
+                        groupId: "app-group-001"
+                        type: "Account management"
+                        status: "ACTIVE"
+                        createdTime: 1702900000000
+                        updatedTime: 1702900000000
+                        purposes:
+                          - purposeId: "550e8400-e29b-41d4-a716-446655440000"
+                            name: "account_management"
+                            version: "v1"
+                            elements:
+                              - elementId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+                                name: "user_email"
+                                namespace: "default"
+                                version: "v1"
+                                mandatory: true
+                                approved: true
+                    metadata:
+                      total: 1
+                      offset: 0
+                      count: 1
+                      limit: 10
+                detailed:
+                  summary: Search response with details=true
+                  value:
+                    data:
+                      - id: "30000001-0003-0003-0003-000000000002"
+                        groupId: "app-group-001"
+                        type: "Account management"
+                        status: "ACTIVE"
+                        createdTime: 1702900000000
+                        updatedTime: 1702900000000
+                        purposes:
+                          - purposeId: "550e8400-e29b-41d4-a716-446655440000"
+                            name: "account_management"
+                            version: "v1"
+                            displayName: "Account management"
+                            description: "Manage account access"
+                            elements:
+                              - elementId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+                                name: "user_email"
+                                namespace: "default"
+                                version: "v1"
+                                displayName: "User email address"
+                                description: "The user's email address"
+                                mandatory: true
+                                approved: true
+                    metadata:
+                      total: 1
+                      offset: 0
+                      count: 1
+                      limit: 10
         "400":
           description: Bad Request. The search parameters provided are invalid.
           content:
@@ -338,12 +411,61 @@ paths:
                 $ref: "#/components/schemas/ConsentErrorCommon"
       security:
         - basicAuth: []
+  /consents/group-ids:
+    get:
+      summary: Retrieve group IDs for a user
+      description: |
+        Retrieves the distinct group IDs associated with the specified user ID.
+
+        Results are scoped to the requesting organization and include only group IDs.
+        Group metadata is not returned.
+      operationId: consents-group-ids-GET
+      tags:
+        - Consents
+      parameters:
+        - in: header
+          name: org-id
+          required: true
+          description: "The unique identifier for the organization."
+          schema:
+            type: string
+            example: "ORG-001"
+        - name: userId
+          in: query
+          required: true
+          description: The user ID to search for.
+          schema:
+            type: string
+          example: "user1@example.com"
+      responses:
+        "200":
+          description: Successfully retrieved the group IDs matching the search criteria.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConsentGroupIDsResponse"
+        "400":
+          description: Bad Request. The userId parameter is missing, repeated, or invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConsentErrorCommon"
+        "500":
+          description: Internal Server Error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConsentErrorCommon"
+      security:
+        - basicAuth: []
   /consents/{consentId}:
     get:
       summary: Retrieve a consent by its ID
       description: |
-        Fetches the complete details of a specific consent resource using
-        its unique `consentID`. This is used to check the status and details of a consent.
+        Fetches a specific consent resource using its unique `consentID`.
+        By default (`details=false`), purpose and element entries contain only their
+        identifiers, versions, and consent approval state. Set `details=true` to include
+        the display name and description for every purpose and element version.
 
       operationId: consents-GET
       tags:
@@ -362,13 +484,172 @@ paths:
           description: The unique identifier of the consent to retrieve.
           schema:
             type: string
+        - in: query
+          name: includeStatusHistory
+          required: false
+          description: Include consent status audit history in the response when set to `true`.
+          schema:
+            type: boolean
+            default: false
+        - in: query
+          name: details
+          required: false
+          description: Include purpose and element display names and descriptions when set to `true`.
+          schema:
+            type: boolean
+            default: false
       responses:
         "200":
-          description: OK. The full details of the requested consent are returned in the response body.
+          description: OK. Returns the requested consent, with purpose and element definition details controlled by the `details` query parameter.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ConsentRetrievalResponse"
+              examples:
+                withoutStatusHistory:
+                  summary: Consent response without status history (details=false)
+                  value:
+                    id: "30000001-0003-0003-0003-000000000002"
+                    purposes:
+                      - purposeId: "550e8400-e29b-41d4-a716-446655440000"
+                        name: "account_management"
+                        version: "v1"
+                        elements:
+                          - elementId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+                            name: "user_email"
+                            namespace: "default"
+                            version: "v1"
+                            mandatory: false
+                            approved: false
+                          - elementId: "b2c3d4e5-f6a7-8901-bcde-f12345678901"
+                            name: "user_address"
+                            namespace: "default"
+                            version: "v1"
+                            mandatory: false
+                            approved: false
+                    createdTime: 1702900000000
+                    updatedTime: 1702900000000
+                    groupId: "app-group-001"
+                    type: "Account management"
+                    status: "ACTIVE"
+                    frequency: 0
+                    expirationTime: 1798741800000
+                    recurringIndicator: true
+                    dataAccessValidityDuration: 0
+                    attributes:
+                      department: "customer_service"
+                      gdpr_compliant: "true"
+                      region: "EU"
+                    authorizations:
+                      - id: "a1b2c3d4-e5f6-7890-abcd-ef1234567891"
+                        userId: "user2@example.com"
+                        type: "authorisation"
+                        status: "APPROVED"
+                        updatedTime: 1702900000000
+                        resources:
+                          accountIds:
+                            - "acc-789"
+                            - "acc-101"
+                withStatusHistory:
+                  summary: Consent response with status history (details=false)
+                  value:
+                    id: "30000001-0003-0003-0003-000000000002"
+                    purposes:
+                      - purposeId: "550e8400-e29b-41d4-a716-446655440000"
+                        name: "account_management"
+                        version: "v1"
+                        elements:
+                          - elementId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+                            name: "user_email"
+                            namespace: "default"
+                            version: "v1"
+                            mandatory: false
+                            approved: false
+                    createdTime: 1702900000000
+                    updatedTime: 1702900000000
+                    groupId: "app-group-001"
+                    type: "Account management"
+                    status: "ACTIVE"
+                    frequency: 0
+                    expirationTime: 1798741800000
+                    recurringIndicator: true
+                    dataAccessValidityDuration: 0
+                    attributes:
+                      department: "customer_service"
+                      gdpr_compliant: "true"
+                      region: "EU"
+                    authorizations:
+                      - id: "a1b2c3d4-e5f6-7890-abcd-ef1234567891"
+                        userId: "user2@example.com"
+                        type: "authorisation"
+                        status: "APPROVED"
+                        updatedTime: 1702900000000
+                        resources:
+                          accountIds:
+                            - "acc-789"
+                            - "acc-101"
+                    statusHistory:
+                      - statusAuditId: "s3c4d5e6-f7a8-9012-abcd-ef1234567890"
+                        previousStatus: "CREATED"
+                        currentStatus: "ACTIVE"
+                        actionTime: 1745050000000
+                        actionBy: "user-001"
+                        reason: "All authorizations approved"
+                      - statusAuditId: "s1a2b3c4-d5e6-7890-abcd-ef1234567890"
+                        currentStatus: "CREATED"
+                        actionTime: 1745000000000
+                        actionBy: "client-app-123"
+                        reason: "Consent created"
+                withDetails:
+                  summary: Consent response with details=true (status history disabled)
+                  value:
+                    id: "30000001-0003-0003-0003-000000000002"
+                    purposes:
+                      - purposeId: "550e8400-e29b-41d4-a716-446655440000"
+                        name: "account_management"
+                        version: "v1"
+                        displayName: "Account management"
+                        description: "Manage account access"
+                        elements:
+                          - elementId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+                            name: "user_email"
+                            namespace: "default"
+                            version: "v1"
+                            displayName: "User email address"
+                            description: "The user's email address"
+                            mandatory: false
+                            approved: false
+                          - elementId: "b2c3d4e5-f6a7-8901-bcde-f12345678901"
+                            name: "user_address"
+                            namespace: "default"
+                            version: "v1"
+                            displayName: "User postal address"
+                            description: "The user's postal address"
+                            mandatory: false
+                            approved: false
+                    createdTime: 1702900000000
+                    updatedTime: 1702900000000
+                    groupId: "app-group-001"
+                    type: "Account management"
+                    status: "ACTIVE"
+                    frequency: 0
+                    expirationTime: 1798741800000
+                    recurringIndicator: true
+                    dataAccessValidityDuration: 0
+                    attributes:
+                      department: "customer_service"
+                      gdpr_compliant: "true"
+                      region: "EU"
+                    authorizations:
+                      - id: "a1b2c3d4-e5f6-7890-abcd-ef1234567891"
+                        userId: "user2@example.com"
+                        type: "authorisation"
+                        status: "APPROVED"
+                        updatedTime: 1702900000000
+                        resources:
+                          accountIds:
+                            - "acc-789"
+                            - "acc-101"
         "400":
           description: Bad Request. The request was invalid, possibly due to a malformed `consentID` or missing headers.
           content:
@@ -469,6 +750,152 @@ paths:
                 $ref: "#/components/schemas/ConsentErrorCommon"
         "500":
           description: Internal Server Error. An unexpected error occurred on the server while trying to update the consent.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConsentErrorCommon"
+      security:
+        - basicAuth: []
+  /consents/{consentId}/history:
+    get:
+      summary: Retrieve consent history
+      description: |
+        Retrieves the complete history for a specific consent. Each history entry represents a pre-mutation snapshot captured immediately before a modification to the consent. Snapshot payloads are excluded by default
+        and can be included by setting `includeSnapshots=true`.
+      operationId: consents-history-GET
+      tags:
+        - Consents
+      parameters:
+        - in: header
+          name: org-id
+          required: true
+          description: "The unique identifier for the organization (e.g., the bank) that this consent belongs to."
+          schema:
+            type: string
+            example: "ORG-001"
+        - in: path
+          name: consentId
+          required: true
+          description: The unique identifier of the consent to retrieve history for.
+          schema:
+            type: string
+        - in: query
+          name: includeSnapshots
+          required: false
+          description: Include the full pre-mutation consent snapshot on each history entry when set to `true`.
+          schema:
+            type: boolean
+            default: false
+      responses:
+        "200":
+          description: OK. Consent history is returned in descending action time order.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConsentHistoryResponse"
+              examples:
+                withoutSnapshots:
+                  summary: Consent history without snapshots
+                  value:
+                    id: "30000001-0003-0003-0003-000000000002"
+                    history:
+                      - historyId: "m3c4d5e6-f7a8-9012-abcd-ef1234567890"
+                        actionTime: 1745200000000
+                        actionBy: "user-001"
+                        reason: "Consent authorizations updated"
+                      - historyId: "m2b3c4d5-e6f7-8901-abcd-ef1234567890"
+                        actionTime: 1745100000000
+                        actionBy: "user-001"
+                        reason: "Consent updated"
+                withSnapshots:
+                  summary: Consent history with snapshots
+                  value:
+                    id: "30000001-0003-0003-0003-000000000002"
+                    history:
+                      - historyId: "m3c4d5e6-f7a8-9012-abcd-ef1234567890"
+                        actionTime: 1745200000000
+                        actionBy: "user-001"
+                        reason: "Consent authorizations updated"
+                        snapshot:
+                          id: "30000001-0003-0003-0003-000000000002"
+                          purposes:
+                            - name: "Account management"
+                              version: "v1"
+                              elements:
+                                - name: "User email"
+                                  namespace: "default"
+                                  approved: false
+                          createdTime: 1702900000000
+                          updatedTime: 1702900000000
+                          groupId: "app-group-001"
+                          type: "Account management"
+                          status: "CREATED"
+                          expirationTime: 1798741800000
+                          recurringIndicator: true
+                          dataAccessValidityDuration: 0
+                          attributes:
+                            department: "customer_service"
+                            gdpr_compliant: "true"
+                            region: "EU"
+                          authorizations:
+                            - id: "a1b2c3d4-e5f6-7890-abcd-ef1234567891"
+                              userId: "user2@example.com"
+                              type: "authorisation"
+                              status: "APPROVED"
+                              updatedTime: 1702900000000
+                              resources:
+                                accountIds:
+                                  - "acc-789"
+                                  - "acc-101"
+                      - historyId: "m2b3c4d5-e6f7-8901-abcd-ef1234567890"
+                        actionTime: 1745100000000
+                        actionBy: "user-001"
+                        reason: "Consent updated"
+                        snapshot:
+                          id: "30000001-0003-0003-0003-000000000002"
+                          purposes:
+                            - name: "Account management"
+                              version: "v1"
+                              elements:
+                                - name: "User email"
+                                  namespace: "default"
+                                  approved: false
+                          createdTime: 1702900000000
+                          updatedTime: 1702900000000
+                          groupId: "app-group-001"
+                          type: "Account management"
+                          status: "ACTIVE"
+                          expirationTime: 1798741800000
+                          recurringIndicator: true
+                          dataAccessValidityDuration: 0
+                          attributes:
+                            department: "customer_service"
+                            gdpr_compliant: "true"
+                            region: "EU"
+                          authorizations:
+                            - id: "a1b2c3d4-e5f6-7890-abcd-ef1234567891"
+                              userId: "user2@example.com"
+                              type: "authorisation"
+                              status: "APPROVED"
+                              updatedTime: 1702900000000
+                              resources:
+                                accountIds:
+                                  - "acc-789"
+                                  - "acc-101"
+        "400":
+          description: Bad Request. The request was invalid, possibly due to a malformed `consentID` or missing headers.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConsentErrorCommon"
+        "404":
+          description: Not Found. Consent does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConsentErrorCommon"
+        "500":
+          description: Internal Server Error. An unexpected error occurred on the server.
           content:
             application/json:
               schema:
@@ -1737,11 +2164,15 @@ paths:
                         name: "user_email"
                         namespace: "personal"
                         version: "v1"
+                        displayName: "User email address"
+                        description: "The user's email address"
                         mandatory: true
                       - elementId: "b2c3d4e5-f6a7-8901-bcde-f12345678901"
                         name: "user_mobile"
                         namespace: "personal"
                         version: "v2"
+                        displayName: "User mobile number"
+                        description: "The user's mobile phone number"
                         mandatory: false
                     createdTime: 1742860800000
         "400":
@@ -1938,11 +2369,15 @@ paths:
                             name: "user_email"
                             namespace: "personal"
                             version: "v1"
+                            displayName: "User email address"
+                            description: "The user's email address"
                             mandatory: true
                           - elementId: "b2c3d4e5-f6a7-8901-bcde-f12345678901"
                             name: "user_mobile"
                             namespace: "personal"
                             version: "v2"
+                            displayName: "User mobile number"
+                            description: "The user's mobile phone number"
                             mandatory: false
                         createdTime: 1736467200000
                     metadata:
@@ -2024,16 +2459,22 @@ paths:
                     name: "user_email"
                     namespace: "personal"
                     version: "v1"
+                    displayName: "User email address"
+                    description: "The user's email address"
                     mandatory: true
                   - elementId: "b2c3d4e5-f6a7-8901-bcde-f12345678901"
                     name: "user_mobile"
                     namespace: "personal"
                     version: "v2"
+                    displayName: "User mobile number"
+                    description: "The user's mobile phone number"
                     mandatory: false
                   - elementId: "c3d4e5f6-a7b8-9012-cdef-123456789012"
                     name: "user_address"
                     namespace: "personal"
                     version: "v1"
+                    displayName: "User address"
+                    description: "The user's address"
                     mandatory: false
                 createdTime: 1736467200000
         "404":
@@ -2106,16 +2547,22 @@ paths:
                         name: "user_email"
                         namespace: "personal"
                         version: "v1"
+                        displayName: "User email address"
+                        description: "The user's email address"
                         mandatory: true
                       - elementId: "b2c3d4e5-f6a7-8901-bcde-f12345678901"
                         name: "user_mobile"
                         namespace: "personal"
                         version: "v2"
+                        displayName: "User mobile number"
+                        description: "The user's mobile phone number"
                         mandatory: false
                       - elementId: "c3d4e5f6-a7b8-9012-cdef-123456789012"
                         name: "user_address"
                         namespace: "personal"
                         version: "v1"
+                        displayName: "User address"
+                        description: "The user's address"
                         mandatory: false
                     createdTime: 1740787200000
                   - version: "v1"
@@ -2129,11 +2576,15 @@ paths:
                         name: "user_email"
                         namespace: "personal"
                         version: "v1"
+                        displayName: "User email address"
+                        description: "The user's email address"
                         mandatory: true
                       - elementId: "b2c3d4e5-f6a7-8901-bcde-f12345678901"
                         name: "user_mobile"
                         namespace: "personal"
                         version: "v1"
+                        displayName: "User mobile number"
+                        description: "The user's mobile phone number"
                         mandatory: false
                     createdTime: 1736467200000
         "404":
@@ -2233,11 +2684,15 @@ paths:
                     name: "patient_name"
                     namespace: "medical"
                     version: "v1"
+                    displayName: "Patient name"
+                    description: "The patient's name"
                     mandatory: true
                   - elementId: "e5f6a7b8-c9d0-1234-efab-345678901234"
                     name: "medical_history"
                     namespace: "medical"
                     version: "v2"
+                    displayName: "Medical history"
+                    description: "The patient's medical history"
                     mandatory: false
                 createdTime: 1740787200000
         "400":
@@ -2335,11 +2790,15 @@ paths:
                     name: "patient_name"
                     namespace: "medical"
                     version: "v1"
+                    displayName: "Patient name"
+                    description: "The patient's name"
                     mandatory: true
                   - elementId: "e5f6a7b8-c9d0-1234-efab-345678901234"
                     name: "medical_history"
                     namespace: "medical"
                     version: "v1"
+                    displayName: "Medical history"
+                    description: "The patient's medical history"
                     mandatory: false
                 createdTime: 1736467200000
         "404":
@@ -2474,6 +2933,16 @@ components:
             The specific version of the purpose to bind this consent to (e.g., v1, v2).
             If not specified, the latest version is used.
           example: "v1"
+        displayName:
+          type: string
+          nullable: true
+          description: Human-readable display name of the purpose version. Included in responses when `details=true`; omitted from minimal responses and requests.
+          example: "Marketing Communication Preferences"
+        description:
+          type: string
+          nullable: true
+          description: Description of the purpose version. Included in responses when `details=true`; omitted from minimal responses and requests.
+          example: "Manage account access"
         elements:
           type: array
           description: |
@@ -2516,6 +2985,20 @@ components:
             Combined with `name`, uniquely identifies the element within the organization.
             If not provided, the `default` namespace is used.
           example: "personal"
+        version:
+          type: string
+          description: The version identifier of the consent element. Present in responses; omitted in requests.
+          example: "v1"
+        displayName:
+          type: string
+          nullable: true
+          description: Human-readable display name of the element version. Included in responses when `details=true`; omitted from minimal responses and requests.
+          example: "User email address"
+        description:
+          type: string
+          nullable: true
+          description: Description of the element version. Included in responses when `details=true`; omitted from minimal responses and requests.
+          example: "The user's email address"
         approved:
           type: boolean
           description: |
@@ -2959,11 +3442,13 @@ components:
               - elementId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
                 name: "user_email"
                 namespace: "personal"
+                version: "v1"
                 approved: true
                 value: {}
               - elementId: "b2c3d4e5-f6a7-8901-bcde-f12345678901"
                 name: "user_mobile"
                 namespace: "personal"
+                version: "v1"
                 approved: true
                 value: {}
         createdTime: 1702800000000
@@ -3057,11 +3542,15 @@ components:
               - elementId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
                 name: "user_email"
                 namespace: "personal"
+                version: "v1"
+                mandatory: true
                 approved: true
                 value: {}
               - elementId: "b2c3d4e5-f6a7-8901-bcde-f12345678901"
                 name: "user_mobile"
                 namespace: "personal"
+                version: "v1"
+                mandatory: false
                 approved: true
                 value: {}
         createdTime: 1702800000000
@@ -3152,6 +3641,82 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ConsentAuthorizationCreateResponse"
+        statusHistory:
+          description: Consent status audit history. Included only when `includeStatusHistory=true`.
+          type: array
+          items:
+            $ref: "#/components/schemas/ConsentStatusAuditItem"
+    ConsentStatusAuditItem:
+      type: object
+      description: A single consent status audit history entry.
+      properties:
+        statusAuditId:
+          type: string
+          description: Unique identifier of the status audit entry.
+          example: "s3c4d5e6-f7a8-9012-abcd-ef1234567890"
+        previousStatus:
+          type: string
+          description: Consent status before the transition. Omitted for the initial status audit entry.
+          example: "CREATED"
+        currentStatus:
+          type: string
+          description: Consent status after the transition.
+          example: "ACTIVE"
+        actionTime:
+          type: integer
+          format: int64
+          description: Time at which the status transition occurred.
+          example: 1745050000000
+        actionBy:
+          type: string
+          nullable: true
+          description: Actor that triggered the transition, when available.
+          example: "client-app-123"
+        reason:
+          type: string
+          nullable: true
+          description: Human-readable status transition reason.
+          example: "All authorizations approved"
+    ConsentHistoryResponse:
+      type: object
+      description: Consent history response.
+      properties:
+        id:
+          type: string
+          description: Unique identifier of the consent.
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        history:
+          type: array
+          description: Consent history entries in descending action time order.
+          items:
+            $ref: "#/components/schemas/ConsentHistoryItem"
+    ConsentHistoryItem:
+      type: object
+      description: A single consent history entry.
+      properties:
+        historyId:
+          type: string
+          description: Unique identifier of the history entry.
+          example: "m3c4d5e6-f7a8-9012-abcd-ef1234567890"
+        actionTime:
+          type: integer
+          format: int64
+          description: Time at which the history event occurred.
+          example: 1745200000000
+        actionBy:
+          type: string
+          nullable: true
+          description: Actor that triggered the history event, when available.
+          example: "client-app-123"
+        reason:
+          type: string
+          nullable: true
+          description: Server-generated history reason.
+          example: "Consent updated"
+        snapshot:
+          description: Full pre-mutation consent response snapshot. Included only when `includeSnapshots=true`.
+          allOf:
+            - $ref: "#/components/schemas/ConsentRetrievalResponse"
     ConsentRevokedResponse:
       type: object
       description: The response body returned after successfully revoking a consent.
@@ -3739,6 +4304,24 @@ components:
           example: 3
     ConsentAttributeSearchResponse:
       $ref: "#/components/schemas/ConsentIdsResponse"
+    ConsentGroupIDsResponse:
+      type: object
+      description: Response payload containing group IDs matching the search criteria.
+      required:
+        - groupIds
+        - count
+      properties:
+        groupIds:
+          description: Array of distinct group IDs, sorted alphabetically.
+          type: array
+          uniqueItems: true
+          items:
+            type: string
+          example: ["group-001", "group-002"]
+        count:
+          description: The number of distinct group IDs returned.
+          type: integer
+          example: 2
     ConsentElementCreateRequest:
       type: object
       required:
@@ -4506,6 +5089,16 @@ components:
           type: string
           description: The specific version of the element referenced in this purpose version (e.g., v1, v2)
           example: "v1"
+        displayName:
+          type: string
+          nullable: true
+          description: Human-readable display name of the element version.
+          example: "User email address"
+        description:
+          type: string
+          nullable: true
+          description: Description of the element version.
+          example: "The user's email address"
         mandatory:
           type: boolean
           description: |

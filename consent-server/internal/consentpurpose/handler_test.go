@@ -765,11 +765,21 @@ func TestDeletePurposeVersion_ServiceError(t *testing.T) {
 
 func TestGetPurpose_WithElements(t *testing.T) {
 	mockSvc := NewMockConsentPurposeService(t)
+	elementDisplayName := "Email address"
+	elementDescription := "The user's email address"
 
 	pv := &model.PurposeOutput{
 		ID: testPurposeID, Name: "Marketing", GroupID: testOrgID, VersionNum: 1,
 		Elements: []model.PurposeElementOutput{
-			{ElementID: "eid-1", Name: "email", Namespace: "default", VersionNum: 2, Mandatory: true},
+			{
+				ElementID:   "eid-1",
+				Name:        "email",
+				Namespace:   "default",
+				VersionNum:  2,
+				DisplayName: &elementDisplayName,
+				Description: &elementDescription,
+				Mandatory:   true,
+			},
 		},
 	}
 	mockSvc.On("GetPurpose", mock.Anything, testPurposeID, testOrgID).Return(pv, nil)
@@ -788,19 +798,31 @@ func TestGetPurpose_WithElements(t *testing.T) {
 	require.Len(t, resp.Elements, 1)
 	require.Equal(t, "email", resp.Elements[0].Name)
 	require.Equal(t, "v2", resp.Elements[0].Version)
+	require.Equal(t, elementDisplayName, *resp.Elements[0].DisplayName)
+	require.Equal(t, elementDescription, *resp.Elements[0].Description)
 	require.True(t, resp.Elements[0].Mandatory)
 }
 
 func TestListPurposeVersions_WithElements(t *testing.T) {
 	mockSvc := NewMockConsentPurposeService(t)
 
+	elementDisplayName := "Email address"
+	elementDescription := "The user's email address"
 	out := &model.PurposeVersionListOutput{
 		PurposeID: testPurposeID, Name: "Marketing", GroupID: testOrgID,
 		Versions: []model.PurposeOutput{
 			{
 				ID: testPurposeID, VersionNum: 1,
 				Elements: []model.PurposeElementOutput{
-					{ElementID: "eid-1", Name: "email", Namespace: "default", VersionNum: 1, Mandatory: false},
+					{
+						ElementID:   "eid-1",
+						Name:        "email",
+						Namespace:   "default",
+						VersionNum:  1,
+						DisplayName: &elementDisplayName,
+						Description: &elementDescription,
+						Mandatory:   false,
+					},
 				},
 			},
 		},
@@ -820,6 +842,8 @@ func TestListPurposeVersions_WithElements(t *testing.T) {
 	require.NoError(t, json.NewDecoder(rr.Body).Decode(&resp))
 	require.Len(t, resp.Versions[0].Elements, 1)
 	require.Equal(t, "email", resp.Versions[0].Elements[0].Name)
+	require.Equal(t, elementDisplayName, *resp.Versions[0].Elements[0].DisplayName)
+	require.Equal(t, elementDescription, *resp.Versions[0].Elements[0].Description)
 }
 
 // =============================================================================
