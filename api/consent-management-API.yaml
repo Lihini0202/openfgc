@@ -198,8 +198,10 @@ paths:
           description: |
             Filter consents by delegation role. Used to separate self-consents from delegated consents.
             - `true`: Returns consents where the user (specified by `userIds`) has authorization type `delegate`.
-            - `false`: Returns consents where the user has authorization type `primary` or `default` (self-consents).
+            - `false`: Returns consents where the user has authorization type `primary` (self-consents).
             - When omitted: Returns all consents for the user regardless of authorization type.
+
+            Custom authorization types match neither value; use `authTypes` to search for them.
 
             Can be used without `userIds` to query all delegation or self-consents system-wide.
             Cannot be used together with `authTypes` (mutually exclusive).
@@ -3034,24 +3036,24 @@ components:
         Payload for creating or updating an authorization resource.
 
         **Authorization Type:**
-        The `type` field is optional. When not provided, the server defaults to `"default"`.
-        `"default"` is treated as legacy self-consent, equivalent to `primary` for validation
-        and `delegation=false` searches.
+        The `type` field is optional. When not provided, the server defaults to `"primary"`.
 
         OpenFGC recognizes three **first-class authorization types** that are validated:
         - `primary`: Self-consent — the person consenting for themselves.
-        - `default`: Legacy self-consent used when `type` is omitted; treated like `primary`.
         - `delegate`: A person giving consent on behalf of another (e.g., a parent).
         - `delegate_subject`: A person who cannot consent for themselves (e.g., a minor child).
 
-        Data holders can also use **custom types** (e.g., `agent`, `carer`, `owner`). Custom types
-        are stored and filterable but not validated by OpenFGC.
+        Data holders can also use **custom types** (e.g., `agent`, `carer`, `account_owner`).
+        Custom types are stored and filterable but not validated by OpenFGC.
 
-        **First-Class Type Validation Rules:**
-        - `delegate` requires at least one `delegate_subject` in the same consent.
-        - `delegate_subject` requires at least one `delegate` in the same consent.
-        - `primary`/`default` cannot be mixed with `delegate` or `delegate_subject` in the same consent.
-        - Custom types skip these validation rules entirely.
+        **Delegated Consent Rules:**
+        A consent using `delegate` or `delegate_subject` is a delegated consent, and OpenFGC enforces:
+        - It must contain at least one `delegate` and at least one `delegate_subject`.
+        - It may contain no other authorization type. `primary` and custom types are rejected,
+          because a delegated consent records a decision taken on another person's behalf.
+
+        Consents that use neither delegation type are unconstrained: `primary` and custom types
+        may appear in any combination.
 
         **Authorization Status/State:**
         The `status` field represents the authorization state which determines the consent status:
@@ -3075,16 +3077,15 @@ components:
           example: "admin@carbon.super"
         type:
           description: |
-            The type of authorization. Defaults to `"default"` when not provided.
+            The type of authorization. Defaults to `"primary"` when not provided.
 
             **First-class types** (validated by OpenFGC):
             - `primary`: Self-consent — the person consenting for themselves
-            - `default`: Legacy self-consent used when `type` is omitted; treated like `primary`
             - `delegate`: Person giving consent on behalf of another (e.g., a parent)
             - `delegate_subject`: Person who cannot consent for themselves (e.g., a minor child)
 
             **Custom types** (stored and filterable, not validated):
-            Any other string value (e.g., `agent`, `carer`, `owner`, `authorisation`)
+            Any other string value (e.g., `agent`, `carer`, `account_owner`, `authorisation`)
           type: string
           example: "primary"
         status:
@@ -3160,12 +3161,17 @@ components:
         Derivation: RECORDED is skipped → only APPROVED remains → consent becomes ACTIVE.
 
         **Authorization Type Validation Rules:**
-        When first-class types are used, OpenFGC enforces:
-        - `delegate` requires at least one `delegate_subject` in the same consent
-        - `delegate_subject` requires at least one `delegate` in the same consent
-        - `primary`/`default` cannot be mixed with `delegate` or `delegate_subject`
-        - At least one authorization must have a non-RECORDED status
-        - Custom types skip the pairing rules but still require at least one non-RECORDED status
+        A consent using `delegate` or `delegate_subject` is a delegated consent, and OpenFGC enforces:
+        - It must contain at least one `delegate` and at least one `delegate_subject`
+        - It may contain no other authorization type; `primary` and custom types are rejected
+
+        Independently of type, every consent must have at least one authorization whose status is
+        not `RECORDED`, since a set of exclusively passive participants records no decision.
+
+        These rules apply to every request that writes authorizations, including
+        `POST /consents/{consentId}/authorizations` and
+        `PUT /consents/{consentId}/authorizations/{authorizationId}`, which are validated against
+        the authorizations the consent holds once the write completes.
 
         **Known Consent Statuses:**
         - `CREATED`: Consent is created but not yet approved
@@ -3234,14 +3240,13 @@ components:
         **Authorization Type:**
         The `type` field categorizes the authorization. OpenFGC recognizes three first-class types:
         - `primary`: Self-consent — the person consenting for themselves
-        - `default`: Legacy self-consent used when `type` is omitted; treated like `primary`
         - `delegate`: Person giving consent on behalf of another (e.g., a parent)
         - `delegate_subject`: Person who cannot consent for themselves (e.g., a minor child)
 
-        `primary`/`default` cannot be mixed with `delegate` or `delegate_subject` in the same consent.
+        A consent using `delegate` or `delegate_subject` may contain only those two types.
 
-        Custom types (e.g., `agent`, `carer`, `owner`) are also supported — stored and filterable
-        but not validated by OpenFGC.
+        Custom types (e.g., `agent`, `carer`, `account_owner`) are also supported — stored and
+        filterable but not validated by OpenFGC.
 
         **Authorization State:**
         The status field represents the authorization state which determines the consent status:
@@ -3259,9 +3264,9 @@ components:
           example: "admin@carbon.super"
         type:
           description: |
-            The type of authorization. First-class types: `primary`, `default`, `delegate`, `delegate_subject`.
+            The type of authorization. First-class types: `primary`, `delegate`, `delegate_subject`.
             Custom types (e.g., `agent`, `carer`) are also accepted.
-            `default` is used when `type` is omitted and is treated like `primary`.
+            `primary` is used when `type` is omitted.
           type: string
           example: "primary"
         status:

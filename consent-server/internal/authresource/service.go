@@ -22,6 +22,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/wso2/openfgc/internal/authresource/model"
 	authvalidator "github.com/wso2/openfgc/internal/authresource/validator"
@@ -60,7 +61,7 @@ func newAuthResourceService(registry *stores.StoreRegistry) AuthResourceServiceI
 // =============================================================================
 
 // CreateAuthResource creates a new authorization resource for a consent.
-// AuthType defaults to "default" and AuthStatus defaults to the configured approved state
+// AuthType defaults to "primary" and AuthStatus defaults to the configured approved state
 // when not provided by the caller.
 func (s *authResourceService) CreateAuthResource(
 	ctx context.Context,
@@ -76,7 +77,7 @@ func (s *authResourceService) CreateAuthResource(
 
 	// Apply defaults for optional fields
 	if input.AuthType == "" {
-		input.AuthType = model.DefaultAuthType
+		input.AuthType = model.AuthTypePrimary
 	}
 	if input.AuthStatus == "" {
 		input.AuthStatus = string(cfg.Consent.GetApprovedAuthStatus())
@@ -139,10 +140,21 @@ func (s *authResourceService) CreateAuthResource(
 			fmt.Sprintf("consent %s does not exist in org %s", consentID, orgID))
 	}
 
-	// Derive new consent status from all auth statuses (including the one being created)
-	authStatuses := make([]string, 0, len(allAuthResources)+1)
-	authStatuses = append(authStatuses, authResource.AuthStatus)
-	for _, ar := range allAuthResources {
+	if svcErr := ensureConsentAcceptsAuthorizationWrites(currentConsent); svcErr != nil {
+		return nil, svcErr
+	}
+
+	resultingAuthResources := make([]model.AuthResource, 0, len(allAuthResources)+1)
+	resultingAuthResources = append(resultingAuthResources, *authResource)
+	resultingAuthResources = append(resultingAuthResources, allAuthResources...)
+
+	// The rules describe a consent as a whole, so the resulting set is validated, not the input.
+	if err := validator.ValidateAuthResourceTypeConstraints(resultingAuthResources); err != nil {
+		return nil, serviceerror.CustomServiceError(ErrorValidationFailed, err.Error())
+	}
+
+	authStatuses := make([]string, 0, len(resultingAuthResources))
+	for _, ar := range resultingAuthResources {
 		authStatuses = append(authStatuses, ar.AuthStatus)
 	}
 	derivedConsentStatus := validator.EvaluateConsentStatusFromAuthStatuses(authStatuses)
@@ -314,35 +326,57 @@ func (s *authResourceService) UpdateAuthResource(
 		updated.Resources = &rs
 	}
 
-	// Pre-fetch data outside transaction if status changed (to derive new consent status)
+	// Pre-fetch data outside the transaction when the update changes the authorization type or
+	// status. The type is needed to validate the consent's resulting authorizations; the status
+	// is additionally needed to derive the consent status. Updates to other fields leave both
+	// unchanged and require neither.
+	currentConsent, err := s.stores.Consent.GetByID(ctx, consentID, orgID)
+	if err != nil {
+		return nil, serviceerror.CustomServiceError(ErrorInternalServerError,
+			fmt.Sprintf("failed to retrieve consent: %v", err))
+	}
+	if currentConsent == nil {
+		return nil, serviceerror.CustomServiceError(ErrorConsentNotFound,
+			fmt.Sprintf("consent %s does not exist in org %s", consentID, orgID))
+	}
+
+	if svcErr := ensureConsentAcceptsAuthorizationWrites(currentConsent); svcErr != nil {
+		return nil, svcErr
+	}
+
+	typeChanged := input.AuthType != "" && existing.AuthType != updated.AuthType
+
 	var allAuthResources []model.AuthResource
-	var currentConsent *consentModel.Consent
 	var derivedConsentStatus string
 
-	if statusChanged {
+	if statusChanged || typeChanged {
 		allAuthResources, err = store.GetByConsentID(ctx, consentID, orgID)
 		if err != nil {
 			return nil, serviceerror.CustomServiceError(ErrorInternalServerError,
 				fmt.Sprintf("failed to retrieve auth resources: %v", err))
 		}
-		currentConsent, err = s.stores.Consent.GetByID(ctx, consentID, orgID)
-		if err != nil {
-			return nil, serviceerror.CustomServiceError(ErrorInternalServerError,
-				fmt.Sprintf("failed to retrieve consent: %v", err))
-		}
-		if currentConsent == nil {
-			return nil, serviceerror.CustomServiceError(ErrorConsentNotFound,
-				fmt.Sprintf("consent %s does not exist in org %s", consentID, orgID))
-		}
-		authStatuses := make([]string, 0, len(allAuthResources))
+
+		resultingAuthResources := make([]model.AuthResource, 0, len(allAuthResources))
 		for _, ar := range allAuthResources {
 			if ar.AuthID == authID {
-				authStatuses = append(authStatuses, updated.AuthStatus)
-			} else {
+				resultingAuthResources = append(resultingAuthResources, updated)
+				continue
+			}
+			resultingAuthResources = append(resultingAuthResources, ar)
+		}
+
+		// The rules describe a consent as a whole, so the resulting set is validated, not the input.
+		if err := validator.ValidateAuthResourceTypeConstraints(resultingAuthResources); err != nil {
+			return nil, serviceerror.CustomServiceError(ErrorValidationFailed, err.Error())
+		}
+
+		if statusChanged {
+			authStatuses := make([]string, 0, len(resultingAuthResources))
+			for _, ar := range resultingAuthResources {
 				authStatuses = append(authStatuses, ar.AuthStatus)
 			}
+			derivedConsentStatus = validator.EvaluateConsentStatusFromAuthStatuses(authStatuses)
 		}
-		derivedConsentStatus = validator.EvaluateConsentStatusFromAuthStatuses(authStatuses)
 	}
 
 	txSteps := []func(tx dbmodel.TxInterface) error{
@@ -456,6 +490,26 @@ func (s *authResourceService) validateAuthIDAndOrgID(authID, orgID string) *serv
 		return serviceerror.CustomServiceError(ErrorValidationFailed, "auth ID too long (max 255 characters)")
 	}
 	return s.validateOrgID(orgID)
+}
+
+// ensureConsentAcceptsAuthorizationWrites rejects authorization writes to a revoked consent.
+// Revocation marks every authorization system-revoked, and those statuses are excluded from
+// consent status derivation. A later write would therefore derive a status from the incoming
+// authorization alone and could return the consent to an active state, contradicting the
+// withdrawal the revocation recorded.
+func ensureConsentAcceptsAuthorizationWrites(consent *consentModel.Consent) *serviceerror.ServiceError {
+	cfg := config.Get()
+	if cfg == nil {
+		return serviceerror.CustomServiceError(ErrorInternalServerError, "configuration not initialized")
+	}
+
+	if strings.EqualFold(consent.CurrentStatus, string(cfg.Consent.GetRevokedConsentStatus())) {
+		return serviceerror.CustomServiceError(ErrorValidationFailed,
+			fmt.Sprintf("consent %s is revoked; its authorizations can no longer be added to or modified",
+				consent.ConsentID))
+	}
+
+	return nil
 }
 
 func (s *authResourceService) validateConsentIDAndOrgID(consentID, orgID string) *serviceerror.ServiceError {

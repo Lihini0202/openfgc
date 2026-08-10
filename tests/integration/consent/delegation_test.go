@@ -196,6 +196,39 @@ func (ts *ConsentAPITestSuite) TestCreateConsentDelegation() {
 			wantStatus:    http.StatusBadRequest,
 			wantErrorCode: "CS-4002",
 		},
+		{
+			// Derivation recognises the recorded status without regard to case, so a differing
+			// case must not satisfy the participation rule either.
+			name:    "all recorded in lower case → 400",
+			groupID: "grp-deleg-err-5",
+			buildBody: func(_ string) any {
+				return ConsentCreateRequest{
+					Type: "accounts",
+					Authorizations: []AuthorizationRequest{
+						{UserID: "father-111", Type: "delegate", Status: "recorded"},
+						{UserID: "child-333", Type: "delegate_subject", Status: "recorded"},
+					},
+				}
+			},
+			wantStatus:    http.StatusBadRequest,
+			wantErrorCode: "CS-4002",
+		},
+		{
+			name:    "delegated consent with a custom type mixed in → 400",
+			groupID: "grp-deleg-err-6",
+			buildBody: func(_ string) any {
+				return ConsentCreateRequest{
+					Type: "accounts",
+					Authorizations: []AuthorizationRequest{
+						{UserID: "father-111", Type: "delegate", Status: "APPROVED"},
+						{UserID: "child-333", Type: "delegate_subject", Status: "RECORDED"},
+						{UserID: "agent-ai", Type: "agent", Status: "RECORDED"},
+					},
+				}
+			},
+			wantStatus:    http.StatusBadRequest,
+			wantErrorCode: "CS-4002",
+		},
 	}
 
 	for _, tc := range cases {
@@ -543,4 +576,141 @@ func (ts *ConsentAPITestSuite) TestSearchConsentsDelegation() {
 			}
 		})
 	}
+}
+
+// =============================================================================
+// TestDelegationAuthorizationWrites covers the authorization sub-resource
+// endpoints, which write to a consent that already exists.
+//
+// The authorization type and participation rules describe a consent as a whole,
+// so these endpoints are validated against the authorizations the consent holds
+// once the write completes rather than against the incoming authorization alone.
+// =============================================================================
+
+func (ts *ConsentAPITestSuite) TestDelegationAuthorizationWrites() {
+	// delegatedConsent returns a consent holding one delegate and one delegate subject.
+	delegatedConsent := func(orgID, groupID string) *ConsentResponse {
+		return ts.mustCreateConsent(orgID, groupID, ConsentCreateRequest{
+			Type: "accounts",
+			Authorizations: []AuthorizationRequest{
+				{UserID: "father-111", Type: "delegate", Status: "APPROVED"},
+				{UserID: "son-333", Type: "delegate_subject", Status: "RECORDED"},
+			},
+		})
+	}
+
+	// authorizationOfType returns the id and user id of the first authorization of a type.
+	authorizationOfType := func(consent *ConsentResponse, authType string) (string, string) {
+		for _, auth := range consent.Authorizations {
+			if auth.Type != authType {
+				continue
+			}
+			userID := ""
+			if auth.UserID != nil {
+				userID = *auth.UserID
+			}
+			return auth.ID, userID
+		}
+		ts.Require().Fail("consent has no authorization of type " + authType)
+		return "", ""
+	}
+
+	ts.Run("POST rejects a custom type on a delegated consent", func() {
+		orgID := freshOrgID()
+		consent := delegatedConsent(orgID, "grp-deleg-post-custom")
+
+		status, body := ts.doRequest(http.MethodPost,
+			"/api/v1/consents/"+consent.ID+"/authorizations", orgID, "",
+			map[string]any{"userId": "agent-ai", "type": "agent", "status": "RECORDED"})
+		ts.Require().Equal(http.StatusBadRequest, status, "unexpected status; body: %s", body)
+		ts.assertAPIError(body, "AR-4002")
+
+		_, after := ts.doGetConsent(orgID, consent.ID)
+		ts.Len(after.Authorizations, 2, "the rejected authorization must not be persisted")
+	})
+
+	ts.Run("POST rejects primary on a delegated consent", func() {
+		orgID := freshOrgID()
+		consent := delegatedConsent(orgID, "grp-deleg-post-primary")
+
+		status, body := ts.doRequest(http.MethodPost,
+			"/api/v1/consents/"+consent.ID+"/authorizations", orgID, "",
+			map[string]any{"userId": "aunt-444", "type": "primary", "status": "APPROVED"})
+		ts.Require().Equal(http.StatusBadRequest, status, "unexpected status; body: %s", body)
+		ts.assertAPIError(body, "AR-4002")
+	})
+
+	ts.Run("POST accepts an additional delegate", func() {
+		orgID := freshOrgID()
+		consent := delegatedConsent(orgID, "grp-deleg-post-delegate")
+
+		status, body := ts.doRequest(http.MethodPost,
+			"/api/v1/consents/"+consent.ID+"/authorizations", orgID, "",
+			map[string]any{"userId": "mother-222", "type": "delegate", "status": "APPROVED"})
+		ts.Require().Equal(http.StatusOK, status, "unexpected status; body: %s", body)
+
+		_, after := ts.doGetConsent(orgID, consent.ID)
+		ts.Len(after.Authorizations, 3)
+		ts.Equal("ACTIVE", after.Status)
+	})
+
+	ts.Run("PUT rejects changing a delegate to a custom type", func() {
+		orgID := freshOrgID()
+		consent := delegatedConsent(orgID, "grp-deleg-put-type")
+		authID, userID := authorizationOfType(consent, "delegate")
+
+		status, body := ts.doRequest(http.MethodPut,
+			"/api/v1/consents/"+consent.ID+"/authorizations/"+authID, orgID, "",
+			map[string]any{"userId": userID, "type": "carer"})
+		ts.Require().Equal(http.StatusBadRequest, status, "unexpected status; body: %s", body)
+		ts.assertAPIError(body, "AR-4002")
+
+		_, after := ts.doGetConsent(orgID, consent.ID)
+		unchangedID, _ := authorizationOfType(after, "delegate")
+		ts.Equal(authID, unchangedID, "the authorization type must be unchanged")
+	})
+
+	ts.Run("PUT rejects recording the only approving authorization", func() {
+		orgID := freshOrgID()
+		consent := delegatedConsent(orgID, "grp-deleg-put-recorded")
+		authID, userID := authorizationOfType(consent, "delegate")
+
+		status, body := ts.doRequest(http.MethodPut,
+			"/api/v1/consents/"+consent.ID+"/authorizations/"+authID, orgID, "",
+			map[string]any{"userId": userID, "status": "RECORDED"})
+		ts.Require().Equal(http.StatusBadRequest, status, "unexpected status; body: %s", body)
+		ts.assertAPIError(body, "AR-4002")
+
+		_, after := ts.doGetConsent(orgID, consent.ID)
+		ts.Equal("ACTIVE", after.Status, "the consent must keep its derived status")
+	})
+
+	ts.Run("PUT accepts a resources-only change", func() {
+		orgID := freshOrgID()
+		consent := delegatedConsent(orgID, "grp-deleg-put-resources")
+		authID, userID := authorizationOfType(consent, "delegate_subject")
+
+		status, body := ts.doRequest(http.MethodPut,
+			"/api/v1/consents/"+consent.ID+"/authorizations/"+authID, orgID, "",
+			map[string]any{"userId": userID, "resources": map[string]any{
+				"delegationType":   "parental_biological",
+				"revocationPolicy": "ANY",
+			}})
+		ts.Require().Equal(http.StatusOK, status, "unexpected status; body: %s", body)
+	})
+
+	ts.Run("POST leaves a consent without delegation types unconstrained", func() {
+		orgID := freshOrgID()
+		consent := ts.mustCreateConsent(orgID, "grp-custom-post", ConsentCreateRequest{
+			Type: "accounts",
+			Authorizations: []AuthorizationRequest{
+				{UserID: "owner-1", Type: "account_owner", Status: "APPROVED"},
+			},
+		})
+
+		status, body := ts.doRequest(http.MethodPost,
+			"/api/v1/consents/"+consent.ID+"/authorizations", orgID, "",
+			map[string]any{"userId": "agent-ai", "type": "agent", "status": "RECORDED"})
+		ts.Require().Equal(http.StatusOK, status, "unexpected status; body: %s", body)
+	})
 }

@@ -186,12 +186,10 @@ type ConsentSearchFilter struct {
 	Offset           int
 	OrgID            string
 
-	// --- Consent delegation search filters ---
-
 	// Delegation filters consents by delegation role when combined with UserIDs.
 	// nil = not specified (return all consents for the user regardless of auth type).
 	// true = user is a delegate (auth type = "delegate").
-	// false = user's own self-consents (auth type = "primary" or "default").
+	// false = user's own self-consent (auth type = "primary").
 	Delegation *bool
 
 	// DelegateSubject filters consents where this user ID is the delegate subject.
@@ -373,7 +371,7 @@ type ConsentPurposeRefRequest struct {
 
 // AuthorizationRequest is one authorization entry in a consent create/update body.
 // UserID is required — it identifies the user who performed the authorization.
-// Type is optional and defaults to "default" when absent.
+// Type is optional and defaults to "primary" when absent.
 // Status is optional and defaults to "APPROVED" when absent.
 type AuthorizationRequest struct {
 	UserID    string      `json:"userId"`

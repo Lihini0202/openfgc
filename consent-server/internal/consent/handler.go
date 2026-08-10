@@ -216,8 +216,7 @@ func (h *consentHandler) listConsents(w http.ResponseWriter, r *http.Request) {
 		filters.UserIDs = parts
 	}
 
-	// delegation (boolean) — filters by delegation role when combined with userIds
-	// true = user is a delegate, false = user's own self-consents
+	// delegation
 	if s := r.URL.Query().Get("delegation"); s != "" {
 		switch strings.ToLower(s) {
 		case "true":
@@ -233,10 +232,10 @@ func (h *consentHandler) listConsents(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// delegateSubject — filter consents where this userId is the delegate subject
+	// delegateSubject
 	filters.DelegateSubject = r.URL.Query().Get("delegateSubject")
 
-	// authTypes — filter by specific auth type values (e.g., "agent", "carer")
+	// authTypes
 	if s := r.URL.Query().Get("authTypes"); s != "" {
 		parts := strings.Split(s, ",")
 		for i := range parts {
@@ -309,7 +308,7 @@ func (h *consentHandler) listConsents(w http.ResponseWriter, r *http.Request) {
 			"elementVersion requires elementName or elementNamespace to be specified"))
 		return
 	}
-	// delegation and authTypes are mutually exclusive — use one or the other
+	// delegation and authTypes are mutually exclusive
 	if filters.Delegation != nil && len(filters.AuthTypes) > 0 {
 		utils.SendError(w, r, serviceerror.CustomServiceError(ErrorValidationFailed,
 			"delegation and authTypes cannot be used together; use delegation for first-class types or authTypes for custom types"))

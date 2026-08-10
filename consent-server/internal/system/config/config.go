@@ -166,9 +166,7 @@ func (c *ConsentConfig) GetCreatedAuthStatus() AuthStatus {
 	return AuthStatus(c.AuthStatusMappings.CreatedState)
 }
 
-// GetRecordedAuthStatus returns the typed recorded auth status from config.
-// RECORDED means "this person is recorded in the consent but no action is needed from them"
-// (e.g., a child in a parent-child delegation, or an AI agent).
+// GetRecordedAuthStatus returns the typed recorded auth status from config
 func (c *ConsentConfig) GetRecordedAuthStatus() AuthStatus {
 	return AuthStatus(c.AuthStatusMappings.RecordedState)
 }
@@ -256,6 +254,8 @@ func Load(configPath string) (*Config, error) {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 	}
 
+	applyDefaults(&config)
+
 	// Validate config
 	if err := validateConfig(&config); err != nil {
 		logger.Error("Config validation failed", log.Error(err))
@@ -302,6 +302,19 @@ func substituteEnvironmentVariables(data []byte) ([]byte, error) {
 	}
 
 	return []byte(content), nil
+}
+
+// defaultRecordedAuthStatus is used when a deployment does not map the recorded auth status.
+// The status marks a participant recorded on a consent who takes no decision, such as the
+// subject of a delegated consent.
+const defaultRecordedAuthStatus = "RECORDED"
+
+// applyDefaults fills in optional settings a deployment may omit, so that configurations
+// written before a setting existed remain loadable.
+func applyDefaults(config *Config) {
+	if config.Consent.AuthStatusMappings.RecordedState == "" {
+		config.Consent.AuthStatusMappings.RecordedState = defaultRecordedAuthStatus
+	}
 }
 
 // validateConfig validates the configuration
@@ -357,9 +370,6 @@ func validateConfig(config *Config) error {
 	}
 	if config.Consent.AuthStatusMappings.CreatedState == "" {
 		return fmt.Errorf("auth created status mapping is required")
-	}
-	if config.Consent.AuthStatusMappings.RecordedState == "" {
-		return fmt.Errorf("auth recorded status mapping is required")
 	}
 	if config.Consent.AuthStatusMappings.SystemExpiredState == "" {
 		return fmt.Errorf("auth system expired status mapping is required")
