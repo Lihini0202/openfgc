@@ -666,8 +666,11 @@ func (ts *ConsentAPITestSuite) TestDelegationAuthorizationWrites() {
 		ts.assertAPIError(body, "AR-4002")
 
 		_, after := ts.doGetConsent(orgID, consent.ID)
-		unchangedID, _ := authorizationOfType(after, "delegate")
-		ts.Equal(authID, unchangedID, "the authorization type must be unchanged")
+		for _, auth := range after.Authorizations {
+			if auth.ID == authID {
+				ts.Equal("delegate", auth.Type, "the authorization type must be unchanged")
+			}
+		}
 	})
 
 	ts.Run("PUT rejects recording the only approving authorization", func() {

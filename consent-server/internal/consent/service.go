@@ -1395,6 +1395,8 @@ func buildAuthResource(
 	if authType == "" {
 		authType = authmodel.AuthTypePrimary
 	}
+	// Canonicalise reserved types so the persisted value matches what validation and search expect.
+	authType = authmodel.NormalizeAuthType(authType)
 	status := input.AuthStatus
 	if status == "" {
 		status = defaultAuthStatus

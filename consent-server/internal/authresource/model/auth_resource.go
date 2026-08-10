@@ -19,6 +19,8 @@
 // Package model provides data models for authorization resources.
 package model
 
+import "strings"
+
 // Authorization types recognised by OpenFGC. Any other value is a custom type: it is
 // stored and can be filtered on, but carries no meaning to the server.
 const (
@@ -39,6 +41,24 @@ const (
 // delegation. A consent using either role is a delegated consent and is validated as such.
 func IsDelegationAuthType(authType string) bool {
 	return authType == AuthTypeDelegate || authType == AuthTypeDelegateSubject
+}
+
+// NormalizeAuthType canonicalises the reserved authorization types so they are recognised
+// regardless of the casing a caller sends (e.g. "Delegate" becomes "delegate"). This keeps
+// type matching consistent with the case-insensitive status handling, so pairing and
+// exclusivity rules apply and searches on the persisted type stay reliable. Custom types
+// carry no reserved meaning and are returned unchanged.
+func NormalizeAuthType(authType string) string {
+	switch strings.ToLower(authType) {
+	case AuthTypePrimary:
+		return AuthTypePrimary
+	case AuthTypeDelegate:
+		return AuthTypeDelegate
+	case AuthTypeDelegateSubject:
+		return AuthTypeDelegateSubject
+	default:
+		return authType
+	}
 }
 
 // =============================================================================

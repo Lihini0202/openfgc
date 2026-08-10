@@ -274,12 +274,13 @@ func validateDelegationTypes(auths []authTypeStatus) error {
 }
 
 // effectiveAuthType returns the authorization type the service layer persists, which is
-// AuthTypePrimary when the caller omits one.
+// AuthTypePrimary when the caller omits one. Reserved types are normalized so a differently
+// cased value (e.g. "Delegate") is still recognised and validated as a delegation type.
 func effectiveAuthType(authType string) string {
 	if authType == "" {
 		return authmodel.AuthTypePrimary
 	}
-	return authType
+	return authmodel.NormalizeAuthType(authType)
 }
 
 // ValidateConsentGetRequest validates consent retrieval request parameters.
