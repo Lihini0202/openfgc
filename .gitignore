@@ -1,0 +1,33 @@
+# Compiled class file
+*.class
+
+# Log file
+*.log
+
+# Package files (build outputs live under target/)
+hs_err_pid*
+replay_pid*
+
+# Maven
+target/
+release.properties
+pom.xml.releaseBackup
+
+# Node
+**/node_modules/
+**/frontend/dist/
+**/frontend/npm/
+npm-debug.log*
+
+# Accelerator overlay: the exploded webapp is generated at package time.
+**/carbon-home/repository/deployment/server/webapps/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.DS_Store
+
+# Env
+.env
+.env.local
