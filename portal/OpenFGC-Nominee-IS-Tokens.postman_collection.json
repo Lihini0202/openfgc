@@ -1,0 +1,1097 @@
+{
+  "info": {
+    "name": "OpenFGC Nominee - IS Tokens",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "is_base",
+      "value": "https://localhost:9443"
+    },
+    {
+      "key": "client_id",
+      "value": "RDCuQpBugmer_wQyKw9zTfcRJoMa"
+    },
+    {
+      "key": "client_secret",
+      "value": ""
+    },
+    {
+      "key": "redirect_uri",
+      "value": "http://localhost:8080/auth/callback"
+    },
+    {
+      "key": "nominee_username",
+      "value": "test2"
+    },
+    {
+      "key": "nominee_password",
+      "value": ""
+    },
+    {
+      "key": "owner_id",
+      "value": "cb0d2ba6-8ecf-4630-899a-b920f878a5bc"
+    },
+    {
+      "key": "scopes",
+      "value": "openid internal_user_impersonate portal:consents:read:self portal:consents:write:self portal:consents:approve:self"
+    },
+    {
+      "key": "session_data_key",
+      "value": ""
+    },
+    {
+      "key": "auth_code",
+      "value": ""
+    },
+    {
+      "key": "login_access_token",
+      "value": ""
+    },
+    {
+      "key": "subject_token",
+      "value": ""
+    },
+    {
+      "key": "impersonation_access_token",
+      "value": ""
+    },
+    {
+      "key": "follow_url",
+      "value": ""
+    },
+    {
+      "key": "outsider_username",
+      "value": "test1"
+    },
+    {
+      "key": "outsider_password",
+      "value": ""
+    },
+    {
+      "key": "outsider_id",
+      "value": "cb0d2ba6-8ecf-4630-899a-b920f878a5bc"
+    },
+    {
+      "key": "not_nominated_owner_id",
+      "value": "496152f4-7f45-4ecb-a912-699b08d14d24"
+    },
+    {
+      "key": "nominee_service",
+      "value": "http://localhost:8082"
+    },
+    {
+      "key": "bff_base",
+      "value": "http://localhost:8080"
+    },
+    {
+      "key": "gate_key",
+      "value": "dev-impersonation-gate-key"
+    },
+    {
+      "key": "o_session_data_key",
+      "value": ""
+    },
+    {
+      "key": "o_follow_url",
+      "value": ""
+    },
+    {
+      "key": "o_auth_code",
+      "value": ""
+    },
+    {
+      "key": "o_login_access_token",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "A. Positive - a nominee acts for an owner",
+      "description": "Six requests, no browser. Ends with an impersonation token: sub = owner, act = nominee.",
+      "item": [
+        {
+          "name": "1 authorize  [302 expected]",
+          "protocolProfileBehavior": {
+            "followRedirects": false
+          },
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{is_base}}/oauth2/authorize?response_type=code&client_id={{client_id}}&redirect_uri={{redirect_uri}}&scope={{scopes}}",
+              "host": [
+                "{{is_base}}"
+              ],
+              "path": [
+                "oauth2",
+                "authorize"
+              ],
+              "query": [
+                {
+                  "key": "response_type",
+                  "value": "code"
+                },
+                {
+                  "key": "client_id",
+                  "value": "{{client_id}}"
+                },
+                {
+                  "key": "redirect_uri",
+                  "value": "{{redirect_uri}}"
+                },
+                {
+                  "key": "scope",
+                  "value": "{{scopes}}"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const loc = pm.response.headers.get('Location') || '';",
+                  "const m = loc.match(/sessionDataKey=([0-9a-fA-F-]{36})/);",
+                  "if (m) pm.collectionVariables.set('session_data_key', m[1]);",
+                  "pm.test('302 as expected', function () { pm.response.to.have.status(302); });",
+                  "pm.test('sessionDataKey captured', function () { pm.expect(m).to.not.be.null; });",
+                  "pm.test('no HTML', function () { pm.expect(pm.response.text()).to.not.include('<html'); });",
+                  "const out = {",
+                  "  'status': pm.response.code + '   302 is correct here - do not follow it',",
+                  "  'sessionDataKey': m ? m[1] : 'NOT FOUND'",
+                  "};",
+                  "",
+                  "const rows = Object.entries(out).map(function (e) {",
+                  "  return '<tr><td style=\"padding:6px 16px 6px 0;color:#777;white-space:nowrap;vertical-align:top\">'",
+                  "       + e[0]",
+                  "       + '</td><td style=\"padding:6px 0;font-family:monospace;font-size:12px;word-break:break-all\">'",
+                  "       + e[1] + '</td></tr>';",
+                  "}).join('');",
+                  "pm.visualizer.set('<table style=\"font:13px sans-serif;border-collapse:collapse\">' + rows + '</table>');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "2 authenticate  [302 expected]",
+          "protocolProfileBehavior": {
+            "followRedirects": false
+          },
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "username",
+                  "value": "{{nominee_username}}"
+                },
+                {
+                  "key": "password",
+                  "value": "{{nominee_password}}"
+                },
+                {
+                  "key": "sessionDataKey",
+                  "value": "{{session_data_key}}"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{is_base}}/commonauth",
+              "host": [
+                "{{is_base}}"
+              ],
+              "path": [
+                "commonauth"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const loc = pm.response.headers.get('Location') || '';",
+                  "const ok = loc !== '' && loc.indexOf('authFailure') < 0 && loc.indexOf('login.do') < 0;",
+                  "if (ok) pm.collectionVariables.set('follow_url', loc);",
+                  "pm.test('302 as expected', function () { pm.response.to.have.status(302); });",
+                  "pm.test('credentials accepted', function () { pm.expect(ok).to.be.true; });",
+                  "pm.test('no HTML', function () { pm.expect(pm.response.text()).to.not.include('<html'); });",
+                  "const out = {",
+                  "  'status': pm.response.code + '   302 is correct here - do not follow it',",
+                  "  'credentials': ok ? 'accepted' : 'REJECTED - check nominee_username and nominee_password'",
+                  "};",
+                  "",
+                  "const rows = Object.entries(out).map(function (e) {",
+                  "  return '<tr><td style=\"padding:6px 16px 6px 0;color:#777;white-space:nowrap;vertical-align:top\">'",
+                  "       + e[0]",
+                  "       + '</td><td style=\"padding:6px 0;font-family:monospace;font-size:12px;word-break:break-all\">'",
+                  "       + e[1] + '</td></tr>';",
+                  "}).join('');",
+                  "pm.visualizer.set('<table style=\"font:13px sans-serif;border-collapse:collapse\">' + rows + '</table>');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "3 get code  [302 expected]",
+          "protocolProfileBehavior": {
+            "followRedirects": false
+          },
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{follow_url}}",
+              "host": [
+                "{{follow_url}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const u = pm.collectionVariables.get('follow_url');",
+                  "if (!u) {",
+                  "  throw new Error('follow_url is empty. Step 2 did not complete. Run the whole collection from step 1 (Run Collection), not this request on its own.');",
+                  "}",
+                  "console.log('follow_url = ' + u);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const loc = pm.response.headers.get('Location') || '';",
+                  "const m = loc.match(/[?&]code=([^&]+)/);",
+                  "if (m) pm.collectionVariables.set('auth_code', decodeURIComponent(m[1]));",
+                  "pm.test('302 as expected', function () { pm.response.to.have.status(302); });",
+                  "pm.test('authorization code captured', function () { pm.expect(m).to.not.be.null; });",
+                  "pm.test('no HTML', function () { pm.expect(pm.response.text()).to.not.include('<html'); });",
+                  "const out = {",
+                  "  'status': pm.response.code + '   302 is correct here - do not follow it',",
+                  "  'authorization code': m ? decodeURIComponent(m[1]) : 'NOT FOUND'",
+                  "};",
+                  "",
+                  "const rows = Object.entries(out).map(function (e) {",
+                  "  return '<tr><td style=\"padding:6px 16px 6px 0;color:#777;white-space:nowrap;vertical-align:top\">'",
+                  "       + e[0]",
+                  "       + '</td><td style=\"padding:6px 0;font-family:monospace;font-size:12px;word-break:break-all\">'",
+                  "       + e[1] + '</td></tr>';",
+                  "}).join('');",
+                  "pm.visualizer.set('<table style=\"font:13px sans-serif;border-collapse:collapse\">' + rows + '</table>');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "4 login access token",
+          "protocolProfileBehavior": {
+            "followRedirects": false
+          },
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{client_id}}"
+                },
+                {
+                  "key": "password",
+                  "value": "{{client_secret}}"
+                }
+              ]
+            },
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "grant_type",
+                  "value": "authorization_code"
+                },
+                {
+                  "key": "code",
+                  "value": "{{auth_code}}"
+                },
+                {
+                  "key": "redirect_uri",
+                  "value": "{{redirect_uri}}"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{is_base}}/oauth2/token",
+              "host": [
+                "{{is_base}}"
+              ],
+              "path": [
+                "oauth2",
+                "token"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', function () { pm.response.to.have.status(200); });",
+                  "const j = pm.response.json();",
+                  "pm.collectionVariables.set('login_access_token', j.access_token);",
+                  "const cl = JSON.parse(Buffer.from(j.access_token.split('.')[1], 'base64').toString());",
+                  "pm.test('sub = ' + cl.sub, function () { pm.expect(cl.sub).to.be.a('string'); });",
+                  "pm.test('scope = ' + cl.scope, function () { pm.expect(cl.scope).to.be.a('string'); });",
+                  "pm.test('no act claim - plain login token', function () { pm.expect(cl.act).to.be.undefined; });",
+                  "const out = {",
+                  "  'status': pm.response.code,",
+                  "  'sub   (NOMINEE, as themselves)': cl.sub,",
+                  "  'act claim': cl.act ? JSON.stringify(cl.act) : 'none - this is a plain login token',",
+                  "  'scope': cl.scope,",
+                  "  'expires_in': j.expires_in,",
+                  "  'LOGIN ACCESS TOKEN': j.access_token",
+                  "};",
+                  "",
+                  "const rows = Object.entries(out).map(function (e) {",
+                  "  return '<tr><td style=\"padding:6px 16px 6px 0;color:#777;white-space:nowrap;vertical-align:top\">'",
+                  "       + e[0]",
+                  "       + '</td><td style=\"padding:6px 0;font-family:monospace;font-size:12px;word-break:break-all\">'",
+                  "       + e[1] + '</td></tr>';",
+                  "}).join('');",
+                  "pm.visualizer.set('<table style=\"font:13px sans-serif;border-collapse:collapse\">' + rows + '</table>');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "5 subject token  [302 expected]",
+          "protocolProfileBehavior": {
+            "followRedirects": false
+          },
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{is_base}}/oauth2/authorize?response_type=id_token subject_token&client_id={{client_id}}&redirect_uri={{redirect_uri}}&requested_subject={{owner_id}}&scope={{scopes}}&state=s1&nonce=n1",
+              "host": [
+                "{{is_base}}"
+              ],
+              "path": [
+                "oauth2",
+                "authorize"
+              ],
+              "query": [
+                {
+                  "key": "response_type",
+                  "value": "id_token subject_token"
+                },
+                {
+                  "key": "client_id",
+                  "value": "{{client_id}}"
+                },
+                {
+                  "key": "redirect_uri",
+                  "value": "{{redirect_uri}}"
+                },
+                {
+                  "key": "requested_subject",
+                  "value": "{{owner_id}}"
+                },
+                {
+                  "key": "scope",
+                  "value": "{{scopes}}"
+                },
+                {
+                  "key": "state",
+                  "value": "s1"
+                },
+                {
+                  "key": "nonce",
+                  "value": "n1"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const loc = pm.response.headers.get('Location') || '';",
+                  "const m = loc.match(/[#&]subject_token=([^&]+)/);",
+                  "const t = m ? decodeURIComponent(m[1]) : '';",
+                  "if (t) pm.collectionVariables.set('subject_token', t);",
+                  "const cl = t ? JSON.parse(Buffer.from(t.split('.')[1], 'base64').toString()) : {};",
+                  "pm.test('302 as expected', function () { pm.response.to.have.status(302); });",
+                  "pm.test('subject token issued', function () { pm.expect(t).to.not.eql(''); });",
+                  "pm.test('no HTML', function () { pm.expect(pm.response.text()).to.not.include('<html'); });",
+                  "pm.test('sub = ' + (cl.sub || '-') + '   (the OWNER)', function () { pm.expect(cl.sub).to.eql(pm.collectionVariables.get('owner_id')); });",
+                  "pm.test('may_act.sub = ' + ((cl.may_act && cl.may_act.sub) || '-') + '   (the NOMINEE)', function () { pm.expect(cl.may_act).to.not.be.undefined; });",
+                  "const out = {",
+                  "  'status': pm.response.code + '   302 is correct - the token rides in the Location fragment',",
+                  "  'sub   (the OWNER)': cl.sub || '-',",
+                  "  'may_act.sub   (the NOMINEE)': (cl.may_act && cl.may_act.sub) || '-',",
+                  "  'scope   (narrowed to what the owner granted)': cl.scope || '-',",
+                  "  'SUBJECT TOKEN': t || 'NOT ISSUED'",
+                  "};",
+                  "",
+                  "const rows = Object.entries(out).map(function (e) {",
+                  "  return '<tr><td style=\"padding:6px 16px 6px 0;color:#777;white-space:nowrap;vertical-align:top\">'",
+                  "       + e[0]",
+                  "       + '</td><td style=\"padding:6px 0;font-family:monospace;font-size:12px;word-break:break-all\">'",
+                  "       + e[1] + '</td></tr>';",
+                  "}).join('');",
+                  "pm.visualizer.set('<table style=\"font:13px sans-serif;border-collapse:collapse\">' + rows + '</table>');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "6 impersonation access token",
+          "protocolProfileBehavior": {
+            "followRedirects": false
+          },
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{client_id}}"
+                },
+                {
+                  "key": "password",
+                  "value": "{{client_secret}}"
+                }
+              ]
+            },
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "grant_type",
+                  "value": "urn:ietf:params:oauth:grant-type:token-exchange"
+                },
+                {
+                  "key": "subject_token",
+                  "value": "{{subject_token}}"
+                },
+                {
+                  "key": "subject_token_type",
+                  "value": "urn:ietf:params:oauth:token-type:jwt"
+                },
+                {
+                  "key": "actor_token",
+                  "value": "{{login_access_token}}"
+                },
+                {
+                  "key": "actor_token_type",
+                  "value": "urn:ietf:params:oauth:token-type:jwt"
+                },
+                {
+                  "key": "requested_token_type",
+                  "value": "urn:ietf:params:oauth:token-type:access_token"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{is_base}}/oauth2/token",
+              "host": [
+                "{{is_base}}"
+              ],
+              "path": [
+                "oauth2",
+                "token"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', function () { pm.response.to.have.status(200); });",
+                  "const j = pm.response.json();",
+                  "pm.collectionVariables.set('impersonation_access_token', j.access_token);",
+                  "const cl = JSON.parse(Buffer.from(j.access_token.split('.')[1], 'base64').toString());",
+                  "pm.test('sub = ' + cl.sub + '   (the OWNER)', function () { pm.expect(cl.sub).to.eql(pm.collectionVariables.get('owner_id')); });",
+                  "pm.test('act.sub = ' + ((cl.act && cl.act.sub) || '-') + '   (the NOMINEE)', function () { pm.expect(cl.act).to.not.be.undefined; });",
+                  "pm.test('scope = ' + cl.scope, function () { pm.expect(cl.scope).to.be.a('string'); });",
+                  "const out = {",
+                  "  'status': pm.response.code,",
+                  "  'sub   (the OWNER)': cl.sub,",
+                  "  'act.sub   (the NOMINEE)': (cl.act && cl.act.sub) || '-',",
+                  "  'scope': cl.scope,",
+                  "  'expires_in': j.expires_in,",
+                  "  '1. LOGIN ACCESS TOKEN': pm.collectionVariables.get('login_access_token'),",
+                  "  '2. SUBJECT TOKEN': pm.collectionVariables.get('subject_token'),",
+                  "  '3. IMPERSONATION ACCESS TOKEN': j.access_token",
+                  "};",
+                  "",
+                  "const rows = Object.entries(out).map(function (e) {",
+                  "  return '<tr><td style=\"padding:6px 16px 6px 0;color:#777;white-space:nowrap;vertical-align:top\">'",
+                  "       + e[0]",
+                  "       + '</td><td style=\"padding:6px 0;font-family:monospace;font-size:12px;word-break:break-all\">'",
+                  "       + e[1] + '</td></tr>';",
+                  "}).join('');",
+                  "pm.visualizer.set('<table style=\"font:13px sans-serif;border-collapse:collapse\">' + rows + '</table>');"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "B. Negative - a non-nominee is refused",
+      "description": "The same API calls, made by a valid signed-in user who was never nominated for the account they are reaching for.\n\nEvery request here is EXPECTED to be refused. A green run means the refusals happened.\n\nRun folder A first, or run the whole collection top to bottom.",
+      "item": [
+        {
+          "name": "7 authorize as non-nominee  [302 expected]",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Drop the Identity Server session left behind by folder A.",
+                  "//",
+                  "// Postman keeps ONE cookie jar for the whole run, so the session cookie set",
+                  "// when the nominee signed in at step 2 is still being sent. Left in place, IS",
+                  "// recognises it, skips the login page entirely, and this folder re-runs as the",
+                  "// NOMINEE - every assertion below then passes for the wrong reason.",
+                  "const jar = pm.cookies.jar();",
+                  "jar.clear(pm.collectionVariables.get('is_base'), function (err) {",
+                  "  if (err) { console.log('cookie jar clear failed: ' + err); }",
+                  "  else { console.log('cookie jar cleared for ' + pm.collectionVariables.get('is_base')); }",
+                  "});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const loc = pm.response.headers.get('Location') || '';",
+                  "const m = loc.match(/sessionDataKey=([0-9a-fA-F-]{36})/);",
+                  "if (m) pm.collectionVariables.set('o_session_data_key', m[1]);",
+                  "pm.test('302 as expected', function () { pm.response.to.have.status(302); });",
+                  "pm.test('a fresh login is demanded, not the previous session', function () { pm.expect(m).to.not.be.null; });",
+                  "const out = {",
+                  "  'status': pm.response.code + '   302 is correct here - do not follow it',",
+                  "  'session isolation': 'two independent measures: the cookie jar is cleared in the pre-request script, and prompt=login tells IS to authenticate again regardless. Either alone is sufficient; both are kept so removing one does not silently turn this folder back into a second run of folder A.',",
+                  "  'sessionDataKey': m ? m[1] : 'NOT FOUND - the previous session was reused'",
+                  "};",
+                  "",
+                  "const rows = Object.entries(out).map(function (e) {",
+                  "  return '<tr><td style=\"padding:6px 16px 6px 0;color:#777;white-space:nowrap;vertical-align:top\">'",
+                  "       + e[0]",
+                  "       + '</td><td style=\"padding:6px 0;font-family:monospace;font-size:12px;word-break:break-all\">'",
+                  "       + e[1] + '</td></tr>';",
+                  "}).join('');",
+                  "pm.visualizer.set('<table style=\"font:13px sans-serif;border-collapse:collapse\">' + rows + '</table>');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{is_base}}/oauth2/authorize?response_type=code&client_id={{client_id}}&redirect_uri={{redirect_uri}}&scope={{scopes}}&prompt=login",
+              "host": [
+                "{{is_base}}"
+              ],
+              "path": [
+                "oauth2",
+                "authorize"
+              ],
+              "query": [
+                {
+                  "key": "response_type",
+                  "value": "code"
+                },
+                {
+                  "key": "client_id",
+                  "value": "{{client_id}}"
+                },
+                {
+                  "key": "redirect_uri",
+                  "value": "{{redirect_uri}}"
+                },
+                {
+                  "key": "scope",
+                  "value": "{{scopes}}"
+                },
+                {
+                  "key": "prompt",
+                  "value": "login"
+                }
+              ]
+            },
+            "description": "Starts a login for someone who is NOT a nominee of the account they will try to reach.\n\nPostman keeps ONE cookie jar for the whole run, so the Identity Server session created at step 2 is still live and still being sent. Left in place, IS recognises it, skips the login page, and this folder signs in as the NOMINEE again - every assertion below then passes for the wrong reason and the negative flow proves nothing.\n\nTwo measures prevent that, either of which works on its own:\n\n  1. the pre-request script clears the cookie jar for {{is_base}}\n  2. prompt=login asks IS to authenticate again regardless of any session\n\nBoth are kept deliberately. If one is later removed the folder still tests what it claims to test."
+          },
+          "protocolProfileBehavior": {
+            "followRedirects": false
+          }
+        },
+        {
+          "name": "8 authenticate as non-nominee  [302 expected]",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const loc = pm.response.headers.get('Location') || '';",
+                  "const ok = loc !== '' && loc.indexOf('authFailure') < 0 && loc.indexOf('login.do') < 0;",
+                  "if (ok) pm.collectionVariables.set('o_follow_url', loc);",
+                  "pm.test('302 as expected', function () { pm.response.to.have.status(302); });",
+                  "pm.test('credentials accepted', function () { pm.expect(ok).to.be.true; });",
+                  "const out = {",
+                  "  'status': pm.response.code,",
+                  "  'user': pm.collectionVariables.get('outsider_username'),",
+                  "  'credentials': ok ? 'accepted - this is a real, valid user' : 'REJECTED - check outsider_username and outsider_password'",
+                  "};",
+                  "",
+                  "const rows = Object.entries(out).map(function (e) {",
+                  "  return '<tr><td style=\"padding:6px 16px 6px 0;color:#777;white-space:nowrap;vertical-align:top\">'",
+                  "       + e[0]",
+                  "       + '</td><td style=\"padding:6px 0;font-family:monospace;font-size:12px;word-break:break-all\">'",
+                  "       + e[1] + '</td></tr>';",
+                  "}).join('');",
+                  "pm.visualizer.set('<table style=\"font:13px sans-serif;border-collapse:collapse\">' + rows + '</table>');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "username",
+                  "value": "{{outsider_username}}"
+                },
+                {
+                  "key": "password",
+                  "value": "{{outsider_password}}"
+                },
+                {
+                  "key": "sessionDataKey",
+                  "value": "{{o_session_data_key}}"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{is_base}}/commonauth",
+              "host": [
+                "{{is_base}}"
+              ],
+              "path": [
+                "commonauth"
+              ]
+            },
+            "description": "The point of this step is that it SUCCEEDS. The refusal further down is not a failed login - it is a valid, authenticated user being told they may not act for someone who never nominated them."
+          },
+          "protocolProfileBehavior": {
+            "followRedirects": false
+          }
+        },
+        {
+          "name": "9 get code  [302 expected]",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const u = pm.collectionVariables.get('o_follow_url');",
+                  "if (!u) {",
+                  "  throw new Error('o_follow_url is empty. Step 8 did not complete. Run the whole collection, not this request on its own.');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const loc = pm.response.headers.get('Location') || '';",
+                  "const m = loc.match(/[?&]code=([^&]+)/);",
+                  "if (m) pm.collectionVariables.set('o_auth_code', decodeURIComponent(m[1]));",
+                  "pm.test('302 as expected', function () { pm.response.to.have.status(302); });",
+                  "pm.test('authorization code captured', function () { pm.expect(m).to.not.be.null; });",
+                  "const out = {",
+                  "  'status': pm.response.code,",
+                  "  'authorization code': m ? decodeURIComponent(m[1]) : 'NOT FOUND'",
+                  "};",
+                  "",
+                  "const rows = Object.entries(out).map(function (e) {",
+                  "  return '<tr><td style=\"padding:6px 16px 6px 0;color:#777;white-space:nowrap;vertical-align:top\">'",
+                  "       + e[0]",
+                  "       + '</td><td style=\"padding:6px 0;font-family:monospace;font-size:12px;word-break:break-all\">'",
+                  "       + e[1] + '</td></tr>';",
+                  "}).join('');",
+                  "pm.visualizer.set('<table style=\"font:13px sans-serif;border-collapse:collapse\">' + rows + '</table>');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{o_follow_url}}",
+              "host": [
+                "{{o_follow_url}}"
+              ],
+              "path": []
+            }
+          },
+          "protocolProfileBehavior": {
+            "followRedirects": false
+          }
+        },
+        {
+          "name": "10 non-nominee login token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const b = pm.response.json();",
+                  "const t = b.access_token || '';",
+                  "if (t) pm.collectionVariables.set('o_login_access_token', t);",
+                  "const cl = t ? JSON.parse(Buffer.from(t.split('.')[1], 'base64').toString()) : {};",
+                  "pm.test('200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('token issued', function () { pm.expect(t).to.not.eql(''); });",
+                  "pm.test('sub = ' + (cl.sub || '-') + '   (the non-nominee, signed in as themselves)', function () {",
+                  "  pm.expect(cl.sub).to.eql(pm.collectionVariables.get('outsider_id'));",
+                  "});",
+                  "pm.test('carries no delegation claim', function () {",
+                  "  pm.expect(cl.act).to.be.undefined; pm.expect(cl.may_act).to.be.undefined;",
+                  "});",
+                  "const out = {",
+                  "  'sub': cl.sub || '-',",
+                  "  'scope   (a full set - nothing is withheld at login)': cl.scope || '-',",
+                  "  'act / may_act': 'absent - they are not acting for anyone',",
+                  "  'NOTE': 'This user holds every portal scope, including internal_user_impersonate. Scope alone is therefore NOT what stops them below.',",
+                  "  'LOGIN TOKEN': t || 'NOT ISSUED'",
+                  "};",
+                  "",
+                  "const rows = Object.entries(out).map(function (e) {",
+                  "  return '<tr><td style=\"padding:6px 16px 6px 0;color:#777;white-space:nowrap;vertical-align:top\">'",
+                  "       + e[0]",
+                  "       + '</td><td style=\"padding:6px 0;font-family:monospace;font-size:12px;word-break:break-all\">'",
+                  "       + e[1] + '</td></tr>';",
+                  "}).join('');",
+                  "pm.visualizer.set('<table style=\"font:13px sans-serif;border-collapse:collapse\">' + rows + '</table>');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{client_id}}"
+                },
+                {
+                  "key": "password",
+                  "value": "{{client_secret}}"
+                }
+              ]
+            },
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "grant_type",
+                  "value": "authorization_code"
+                },
+                {
+                  "key": "code",
+                  "value": "{{o_auth_code}}"
+                },
+                {
+                  "key": "redirect_uri",
+                  "value": "{{redirect_uri}}"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{is_base}}/oauth2/token",
+              "host": [
+                "{{is_base}}"
+              ],
+              "path": [
+                "oauth2",
+                "token"
+              ]
+            },
+            "description": "This user is fully authenticated and holds every portal scope, including internal_user_impersonate.\n\nThat is exactly why the next step matters: holding the impersonation scope says you may impersonate SOMEONE. It does not say you may impersonate THIS someone."
+          },
+          "protocolProfileBehavior": {
+            "followRedirects": false
+          }
+        },
+        {
+          "name": "11 subject token for a stranger  [DENIED - this is the proof]",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const loc = pm.response.headers.get('Location') || '';",
+                  "const issued = loc.match(/[#&]subject_token=([^&]+)/);",
+                  "const err = loc.match(/[#&]error=([^&]+)/);",
+                  "pm.test('NO subject token was issued', function () { pm.expect(issued).to.be.null; });",
+                  "pm.test('an error came back instead', function () { pm.expect(err).to.not.be.null; });",
+                  "const out = {",
+                  "  'subject token': issued ? 'ISSUED - THIS IS A BUG' : 'NOT ISSUED  <-- correct',",
+                  "  'error': err ? decodeURIComponent(err[1]) : '-',",
+                  "  'requested_subject': pm.collectionVariables.get('not_nominated_owner_id'),",
+                  "  'requested by': pm.collectionVariables.get('outsider_id'),",
+                  "  'refused by': 'NominationImpersonationValidator, inside the Identity Server',",
+                  "  'reason': 'no ACTIVE nomination exists from that owner to this caller',",
+                  "  'confirm in the IS log': 'WARN ... Impersonation denied: no active nomination. owner=... nominee=...',",
+                  "  'what this means': 'The refusal happens BEFORE any token exists. There is nothing to replay, narrow or leak - the caller never receives credentials for that account at all.'",
+                  "};",
+                  "",
+                  "const rows = Object.entries(out).map(function (e) {",
+                  "  return '<tr><td style=\"padding:6px 16px 6px 0;color:#777;white-space:nowrap;vertical-align:top\">'",
+                  "       + e[0]",
+                  "       + '</td><td style=\"padding:6px 0;font-family:monospace;font-size:12px;word-break:break-all\">'",
+                  "       + e[1] + '</td></tr>';",
+                  "}).join('');",
+                  "pm.visualizer.set('<table style=\"font:13px sans-serif;border-collapse:collapse\">' + rows + '</table>');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{is_base}}/oauth2/authorize?response_type=id_token subject_token&client_id={{client_id}}&redirect_uri={{redirect_uri}}&requested_subject={{not_nominated_owner_id}}&scope={{scopes}}&state=s1&nonce=n1",
+              "host": [
+                "{{is_base}}"
+              ],
+              "path": [
+                "oauth2",
+                "authorize"
+              ],
+              "query": [
+                {
+                  "key": "response_type",
+                  "value": "id_token subject_token"
+                },
+                {
+                  "key": "client_id",
+                  "value": "{{client_id}}"
+                },
+                {
+                  "key": "redirect_uri",
+                  "value": "{{redirect_uri}}"
+                },
+                {
+                  "key": "requested_subject",
+                  "value": "{{not_nominated_owner_id}}"
+                },
+                {
+                  "key": "scope",
+                  "value": "{{scopes}}"
+                },
+                {
+                  "key": "state",
+                  "value": "s1"
+                },
+                {
+                  "key": "nonce",
+                  "value": "n1"
+                }
+              ]
+            },
+            "description": "The same request as step 5, made by someone who was never nominated for this account.\n\nStep 5 returns a subject token. This returns an error and no token.\n\nOut of the box the Identity Server would allow this - its own validator only checks that the caller holds the impersonation scope, which step 10 shows they do. The nomination check is what refuses it."
+          },
+          "protocolProfileBehavior": {
+            "followRedirects": false
+          }
+        },
+        {
+          "name": "12 ask the gate directly  [active: false]",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const b = pm.response.json();",
+                  "pm.test('200 - the gate answers, it does not error', function () { pm.response.to.have.status(200); });",
+                  "pm.test('active = false', function () { pm.expect(b.active).to.eql(false); });",
+                  "pm.test('no permissions carried', function () { pm.expect(b.permissions).to.eql([]); });",
+                  "const out = {",
+                  "  'active': String(b.active) + '   <-- the reason step 11 was refused',",
+                  "  'permissions': JSON.stringify(b.permissions),",
+                  "  'this is the same call': 'the Identity Server extension makes at mint time, and the portal backend makes on every acting request',",
+                  "  'why 200 and not 404': 'absence is a valid answer to the question asked. The gate reports what is true; the caller decides what to do about it.',",
+                  "  'no caching': 'read from the database per call, which is why withdrawing a nomination takes effect on the very next request rather than at token expiry'",
+                  "};",
+                  "",
+                  "const rows = Object.entries(out).map(function (e) {",
+                  "  return '<tr><td style=\"padding:6px 16px 6px 0;color:#777;white-space:nowrap;vertical-align:top\">'",
+                  "       + e[0]",
+                  "       + '</td><td style=\"padding:6px 0;font-family:monospace;font-size:12px;word-break:break-all\">'",
+                  "       + e[1] + '</td></tr>';",
+                  "}).join('');",
+                  "pm.visualizer.set('<table style=\"font:13px sans-serif;border-collapse:collapse\">' + rows + '</table>');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Internal-Key",
+                "value": "{{gate_key}}"
+              }
+            ],
+            "url": {
+              "raw": "{{nominee_service}}/internal/nominations/permissions?owner={{not_nominated_owner_id}}&nominee={{outsider_id}}",
+              "host": [
+                "{{nominee_service}}"
+              ],
+              "path": [
+                "internal",
+                "nominations",
+                "permissions"
+              ],
+              "query": [
+                {
+                  "key": "owner",
+                  "value": "{{not_nominated_owner_id}}"
+                },
+                {
+                  "key": "nominee",
+                  "value": "{{outsider_id}}"
+                }
+              ]
+            },
+            "description": "Asks Nominee Service the same question the Identity Server asked, so the refusal in step 11 can be seen at its source.\n\nThis endpoint carries no user token - the caller is infrastructure asking ABOUT a user, not acting AS one - so it authenticates with a shared key. Remove the X-Internal-Key header and it returns 401."
+          },
+          "protocolProfileBehavior": {
+            "followRedirects": false
+          }
+        },
+        {
+          "name": "13 portal refuses an acting request  [401]",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401', function () { pm.response.to.have.status(401); });",
+                  "const out = {",
+                  "  'status': pm.response.code + '   <-- correct',",
+                  "  'endpoint': 'GET /acting/consents - the call a nominee makes to read the owner consents',",
+                  "  'why refused': 'no impersonation token was presented. There is none to present: step 11 never issued one.',",
+                  "  'the second layer': 'Even WITH a valid impersonation token this endpoint re-checks the live nomination on every request, so a withdrawn permission is refused immediately rather than at token expiry.'",
+                  "};",
+                  "",
+                  "const rows = Object.entries(out).map(function (e) {",
+                  "  return '<tr><td style=\"padding:6px 16px 6px 0;color:#777;white-space:nowrap;vertical-align:top\">'",
+                  "       + e[0]",
+                  "       + '</td><td style=\"padding:6px 0;font-family:monospace;font-size:12px;word-break:break-all\">'",
+                  "       + e[1] + '</td></tr>';",
+                  "}).join('');",
+                  "pm.visualizer.set('<table style=\"font:13px sans-serif;border-collapse:collapse\">' + rows + '</table>');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{bff_base}}/acting/consents",
+              "host": [
+                "{{bff_base}}"
+              ],
+              "path": [
+                "acting",
+                "consents"
+              ]
+            },
+            "description": "The end of the road for the non-nominee. Without a subject token there is no impersonation token, and without that the portal has nothing to act on."
+          },
+          "protocolProfileBehavior": {
+            "followRedirects": false
+          }
+        }
+      ]
+    }
+  ],
+  "protocolProfileBehavior": {
+    "followRedirects": false
+  }
+}
