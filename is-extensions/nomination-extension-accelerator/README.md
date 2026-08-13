@@ -38,16 +38,16 @@ On Windows, `winget install EclipseAdoptium.Temurin.21.JDK` and
 mvn clean package
 ```
 
-Produces `target/nomination-impersonation-validator-<version>.jar`.
+Produces `target/nomination-extension-accelerator-<version>.jar`.
 
 ## Deploy
 
 ```bash
 # 1. Remove any older copy first - two versions means two validators registered
-rm $IS_HOME/repository/components/dropins/nomination-impersonation-validator-*.jar
+rm $IS_HOME/repository/components/dropins/nomination-extension-accelerator-*.jar
 
 # 2. Drop in the new jar
-cp target/nomination-impersonation-validator-1.5.0.jar \
+cp target/nomination-extension-accelerator-1.5.0.jar \
    $IS_HOME/repository/components/dropins/
 
 # 3. Remove stale entries from the OSGi bundle list
@@ -77,8 +77,8 @@ match Nominee Service's `impersonation-gate.internal-api-key`.
 Run an impersonation and look in `$IS_HOME/repository/logs/wso2carbon.log`:
 
 ```
-INFO {com.openfgc.is.impersonation.NominationImpersonationValidator} - Impersonation allowed: ...
-INFO {com.openfgc.is.impersonation.NominationImpersonationValidator} - Narrowed impersonation scopes ...
+INFO {org.wso2.dpdp.nomination.extension.accelerator.NominationImpersonationValidator} - Impersonation allowed: ...
+INFO {org.wso2.dpdp.nomination.extension.accelerator.NominationImpersonationValidator} - Narrowed impersonation scopes ...
 ```
 
 **If nothing appears, the bundle did not resolve.** Two usual causes:

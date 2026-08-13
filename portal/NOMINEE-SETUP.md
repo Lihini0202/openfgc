@@ -143,9 +143,9 @@ nominations needs `PortalAdmin`.
 ### 1.5 Build and deploy the impersonation validator
 
 ```bash
-cd is-extensions/nomination-impersonation-validator
+cd is-extensions/nomination-extension-accelerator
 mvn clean package
-cp target/nomination-impersonation-validator-1.5.0.jar \
+cp target/nomination-extension-accelerator-1.5.0.jar \
    $IS_HOME/repository/components/dropins/
 ```
 

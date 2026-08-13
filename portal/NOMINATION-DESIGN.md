@@ -76,7 +76,7 @@ flowchart LR
 | Component | Responsibility |
 |---|---|
 | **Identity Server** | Authenticates people. Issues the delegated token, having asked whether the nomination permits it. |
-| **Nomination validator** (IS extension) | Confirms an active nomination before a delegated token is minted, and narrows its scopes to the owner's grant. Designed in [`is-extensions/nomination-impersonation-validator/DESIGN.md`](../is-extensions/nomination-impersonation-validator/DESIGN.md). |
+| **Nomination validator** (IS extension) | Confirms an active nomination before a delegated token is minted, and narrows its scopes to the owner's grant. Designed in [`is-extensions/nomination-extension-accelerator/DESIGN.md`](../is-extensions/nomination-extension-accelerator/DESIGN.md). |
 | **Nominee Service** | Owns the nomination record, answers the gate question, and holds the audit trail. Designed in [`nominee-service/DESIGN.md`](../nominee-service/DESIGN.md). |
 | **Portal Backend** | Drives the delegation exchange, enforces every acting request, and proxies to the Consent Server. |
 | **Portal Frontend** | Owner, nominee and administrator interfaces. |

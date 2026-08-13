@@ -4,8 +4,8 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>com.openfgc.is</groupId>
-    <artifactId>nomination-impersonation-validator</artifactId>
+    <groupId>org.wso2.dpdp.nomination.extension.accelerator</groupId>
+    <artifactId>nomination-extension-accelerator</artifactId>
     <version>1.5.0</version>
     <packaging>bundle</packaging>
 
@@ -84,11 +84,16 @@
                 <extensions>true</extensions>
                 <configuration>
                     <instructions>
-                        <Bundle-SymbolicName>com.openfgc.is.nomination-impersonation-validator</Bundle-SymbolicName>
+                        <!-- The groupId alone, not groupId.artifactId: the artifactId
+                             now repeats the groupId's own tail, and appending it would
+                             just duplicate "nomination.extension.accelerator" a second
+                             time in the symbolic name. The groupId is already a unique,
+                             fully-qualified identifier on its own. -->
+                        <Bundle-SymbolicName>org.wso2.dpdp.nomination.extension.accelerator</Bundle-SymbolicName>
                         <Bundle-Name>OpenFGC Nomination Impersonation Validator</Bundle-Name>
                         <!-- Register the service from a plain BundleActivator - no
                              dependency on the SCR extender processing a descriptor. -->
-                        <Bundle-Activator>com.openfgc.is.impersonation.NominationValidatorActivator</Bundle-Activator>
+                        <Bundle-Activator>org.wso2.dpdp.nomination.extension.accelerator.NominationValidatorActivator</Bundle-Activator>
                         <!-- Wide ranges: some IS packages (e.g. impersonation.models)
                              are exported with no version (=0.0.0), so strict ranges
                              would fail OSGi resolution. -->
@@ -105,7 +110,7 @@
                             org.wso2.carbon.identity.application.authentication.framework.exception;version="[0,9)",
                             *
                         </Import-Package>
-                        <Private-Package>com.openfgc.is.impersonation</Private-Package>
+                        <Private-Package>org.wso2.dpdp.nomination.extension.accelerator</Private-Package>
                     </instructions>
                 </configuration>
             </plugin>

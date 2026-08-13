@@ -1,4 +1,4 @@
-package com.openfgc.is.impersonation;
+package org.wso2.dpdp.nomination.extension.accelerator;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;

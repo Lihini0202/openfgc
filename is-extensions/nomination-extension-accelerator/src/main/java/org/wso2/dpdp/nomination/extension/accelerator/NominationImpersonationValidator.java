@@ -1,4 +1,4 @@
-package com.openfgc.is.impersonation;
+package org.wso2.dpdp.nomination.extension.accelerator;
 
 import java.net.URI;
 import java.net.URLEncoder;
